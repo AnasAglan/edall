@@ -3727,24 +3727,75 @@
                     `;
                 }
                 
+                // Exam section
                 if (lesson.exam) {
+                    const examResults = JSON.parse(localStorage.getItem(LS_KEYS.EXAM_RESULTS)) || {};
+                    const userExamKey = currentUser ? `${currentUser.id}_${courseId}_${lessonId}` : null;
+                    const previousResult = userExamKey ? examResults[userExamKey] : null;
+                    
                     modalContent += `
                         <div style="margin-bottom:20px;">
-                            <h4>${currentLanguage === 'ar' ? 'امتحان المحاضرة' : 'Lesson Exam'}</h4>
-                            <div class="list-item">
-                                <div>
-                                    <i class="fas fa-clipboard-list"></i>
-                                    <span>${currentLanguage === 'ar' ? 'امتحان' : 'Exam'} ${lesson.title}</span>
-                                    <div style="font-size:0.9rem;color:var(--text-muted);">
-                                        ${lesson.exam.questions.length} ${currentLanguage === 'ar' ? 'سؤال' : 'questions'}
-                                    </div>
+                            <h4><i class="fas fa-clipboard-list"></i> ${currentLanguage === 'ar' ? 'امتحان المحاضرة' : 'Lesson Exam'}</h4>
+                            <div style="background:var(--card-light);border-radius:var(--radius);padding:15px;margin:10px 0;">
+                                <div style="margin-bottom:10px;">
+                                    <span style="color:var(--text-muted);">${currentLanguage === 'ar' ? 'عدد الأسئلة:' : 'Questions:'} ${lesson.exam.questions.length}</span>
+                                    ${lesson.exam.timeLimit ? `<span style="color:var(--text-muted);margin-right:15px;margin-left:15px;"><i class="fas fa-clock"></i> ${lesson.exam.timeLimit} ${currentLanguage === 'ar' ? 'دقيقة' : 'min'}</span>` : ''}
+                                    <span style="color:var(--text-muted);margin-right:15px;margin-left:15px;">${currentLanguage === 'ar' ? 'درجة النجاح:' : 'Pass:'} ${lesson.exam.passingGrade || 50}%</span>
                                 </div>
-                                <button class="btn btn-sm" onclick="takeExam('${courseId}', '${lessonId}')">
-                                    <i class="fas fa-play"></i> ${currentLanguage === 'ar' ? 'بدء الامتحان' : 'Start Exam'}
-                                </button>
+                                ${previousResult ? `
+                                    <div class="exam-result ${previousResult.passed ? 'success' : 'error'}" style="margin-bottom:10px;">
+                                        ${previousResult.passed ? 
+                                            (currentLanguage === 'ar' ? '✅ ناجح' : '✅ Passed') : 
+                                            (currentLanguage === 'ar' ? '❌ راسب' : '❌ Failed')
+                                        } - ${previousResult.score}%
+                                        ${previousResult.hasEssay && !previousResult.essayGraded ? 
+                                            `<div style="font-size:0.9rem;margin-top:5px;color:var(--warning);">${currentLanguage === 'ar' ? '⏳ بانتظار تصحيح الأسئلة المقالية' : '⏳ Waiting for essay grading'}</div>` : ''}
+                                    </div>
+                                ` : ''}
+                                <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                                    ${!previousResult || lesson.exam.allowRetake ? `
+                                        <button class="btn btn-success btn-sm" onclick="takeExam('${courseId}', '${lessonId}')">
+                                            <i class="fas fa-play"></i> ${currentLanguage === 'ar' ? 'بدء الامتحان' : 'Start Exam'}
+                                        </button>
+                                    ` : `
+                                        <button class="btn btn-sm" disabled style="opacity:0.5;">
+                                            <i class="fas fa-ban"></i> ${currentLanguage === 'ar' ? 'لا يُسمح بالإعادة' : 'No Retake Allowed'}
+                                        </button>
+                                    `}
+                    `;
+                    
+                    // Show Edit Exam and Correction buttons only for course owner or admin
+                    const canEdit = canUserEditCourse(course);
+                    if (canEdit) {
+                        const pendingCount = getPendingEssayCount(courseId, lessonId);
+                        modalContent += `
+                                    <button class="btn btn-sm" style="background:var(--warning);color:white;" onclick="showEditExamModal('${courseId}', '${lessonId}')">
+                                        <i class="fas fa-edit"></i> ${currentLanguage === 'ar' ? 'تعديل الامتحان' : 'Edit Exam'}
+                                    </button>
+                                    <button class="btn btn-sm" style="background:var(--warning);color:white;position:relative;" onclick="showCorrectionPanel('${courseId}', '${lessonId}')">
+                                        <i class="fas fa-check-double"></i> ${currentLanguage === 'ar' ? 'تصحيح' : 'Grade'}
+                                        ${pendingCount > 0 ? `<span style="position:absolute;top:-6px;right:-6px;background:var(--danger);color:white;border-radius:50%;width:20px;height:20px;font-size:0.75rem;display:flex;align-items:center;justify-content:center;">${pendingCount}</span>` : ''}
+                                    </button>
+                        `;
+                    }
+                    
+                    modalContent += `
+                                </div>
                             </div>
                         </div>
                     `;
+                } else {
+                    // No exam yet - show "Add Exam" button for teacher/admin
+                    const canEdit = canUserEditCourse(course);
+                    if (canEdit) {
+                        modalContent += `
+                            <div style="margin-bottom:20px;">
+                                <button class="btn btn-accent" onclick="showAddExamModal('${courseId}', '${lessonId}')">
+                                    <i class="fas fa-plus-circle"></i> ${currentLanguage === 'ar' ? 'إضافة امتحان' : 'Add Exam'}
+                                </button>
+                            </div>
+                        `;
+                    }
                 }
                 
                 modalContent += `
@@ -3762,15 +3813,788 @@
             }
         }
 
+        // ==================== EXAM SYSTEM ====================
+
+        let examTimerInterval = null;
+        let examTimeRemaining = 0;
+
+        function showAddExamModal(courseId, lessonId) {
+            try {
+                showModal(`
+                    <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">
+                        <i class="fas fa-clipboard-list"></i> ${currentLanguage === 'ar' ? 'إضافة امتحان' : 'Add Exam'}
+                    </div>
+                    
+                    <div style="margin-bottom:15px;">
+                        <label style="font-weight:bold;display:block;margin-bottom:5px;">${currentLanguage === 'ar' ? 'درجة النجاح (%)' : 'Passing Grade (%)'}</label>
+                        <input type="number" id="examPassingGrade" value="50" min="0" max="100" style="width:120px;">
+                    </div>
+                    
+                    <div style="margin-bottom:15px;">
+                        <label style="font-weight:bold;display:block;margin-bottom:5px;">${currentLanguage === 'ar' ? 'وقت الامتحان (بالدقائق، اتركه فارغاً بدون وقت)' : 'Exam Time (minutes, leave empty for no limit)'}</label>
+                        <input type="number" id="examTimeLimit" value="" min="1" placeholder="${currentLanguage === 'ar' ? 'بدون حد زمني' : 'No time limit'}" style="width:180px;">
+                    </div>
+                    
+                    <div style="margin-bottom:15px;">
+                        <label style="font-weight:bold;display:block;margin-bottom:5px;">
+                            <input type="checkbox" id="examAllowRetake" checked style="width:auto;margin-bottom:0;margin-left:8px;margin-right:8px;">
+                            ${currentLanguage === 'ar' ? 'السماح بإعادة الامتحان' : 'Allow Retake'}
+                        </label>
+                    </div>
+                    
+                    <div style="font-weight:bold;margin-bottom:10px;">${currentLanguage === 'ar' ? 'الأسئلة:' : 'Questions:'}</div>
+                    <div id="examQuestionsBuilder"></div>
+                    
+                    <button class="btn btn-accent btn-sm" onclick="addQuestionToBuilder()" style="margin:10px 0;">
+                        <i class="fas fa-plus"></i> ${currentLanguage === 'ar' ? 'إضافة سؤال' : 'Add Question'}
+                    </button>
+                    
+                    <div style="display:flex;gap:10px;margin-top:20px;">
+                        <button class="btn" onclick="saveExam('${courseId}', '${lessonId}')">
+                            <i class="fas fa-save"></i> ${currentLanguage === 'ar' ? 'حفظ الامتحان' : 'Save Exam'}
+                        </button>
+                        <button class="btn btn-outline" onclick="closeModal()">
+                            <i class="fas fa-times"></i> ${currentLanguage === 'ar' ? 'إلغاء' : 'Cancel'}
+                        </button>
+                    </div>
+                `);
+                
+                window._examBuilderQuestions = [];
+                addQuestionToBuilder();
+            } catch (error) {
+                console.error('Error showing add exam modal:', error);
+                showToast('حدث خطأ', 'error');
+            }
+        }
+
+        window._examBuilderQuestions = [];
+
+        function addQuestionToBuilder() {
+            const qIndex = window._examBuilderQuestions.length;
+            window._examBuilderQuestions.push({ type: 'multiple', text: '', options: ['', ''], correctOption: 0 });
+            renderExamBuilder();
+        }
+
+        function renderExamBuilder() {
+            const container = document.getElementById('examQuestionsBuilder');
+            if (!container) return;
+            
+            container.innerHTML = window._examBuilderQuestions.map((q, qIdx) => `
+                <div class="question-item" style="margin-bottom:15px;">
+                    <div class="question-header">
+                        <strong>${currentLanguage === 'ar' ? 'سؤال' : 'Q'} ${qIdx + 1}</strong>
+                        <button class="btn btn-sm btn-danger" onclick="removeQuestion(${qIdx})" style="padding:4px 10px;">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                    <div class="question-type-selector">
+                        <button class="type-btn ${q.type === 'multiple' ? 'active' : ''}" onclick="setQuestionType(${qIdx}, 'multiple')">
+                            ${currentLanguage === 'ar' ? 'اختياري' : 'MCQ'}
+                        </button>
+                        <button class="type-btn ${q.type === 'essay' ? 'active' : ''}" onclick="setQuestionType(${qIdx}, 'essay')">
+                            ${currentLanguage === 'ar' ? 'مقالي' : 'Essay'}
+                        </button>
+                    </div>
+                    <input placeholder="${currentLanguage === 'ar' ? 'نص السؤال' : 'Question text'}" value="${q.text}" onchange="updateQuestionText(${qIdx}, this.value)" style="margin-bottom:10px;">
+                    ${q.type === 'multiple' ? `
+                        <div class="options-container">
+                            ${(q.options || []).map((opt, optIdx) => `
+                                <div class="option-row">
+                                    <input type="radio" name="correct_${qIdx}" ${q.correctOption === optIdx ? 'checked' : ''} 
+                                        onchange="setCorrectOption(${qIdx}, ${optIdx})" style="width:auto;margin:0;" title="${currentLanguage === 'ar' ? 'الإجابة الصحيحة' : 'Correct answer'}">
+                                    <input class="option-input" placeholder="${currentLanguage === 'ar' ? 'الخيار' : 'Option'} ${optIdx + 1}" 
+                                        value="${opt}" onchange="updateOption(${qIdx}, ${optIdx}, this.value)">
+                                    ${(q.options || []).length > 2 ? `
+                                        <button onclick="removeOption(${qIdx}, ${optIdx})" style="background:var(--danger);color:white;border:none;border-radius:50%;width:28px;height:28px;cursor:pointer;font-size:0.8rem;">✕</button>
+                                    ` : ''}
+                                </div>
+                            `).join('')}
+                            ${(q.options || []).length < 5 ? `
+                                <button class="btn btn-sm btn-outline" onclick="addOption(${qIdx})" style="margin-top:5px;">
+                                    <i class="fas fa-plus"></i> ${currentLanguage === 'ar' ? 'إضافة خيار' : 'Add Option'}
+                                </button>
+                            ` : ''}
+                        </div>
+                        <div style="font-size:0.8rem;color:var(--success);margin-top:5px;">
+                            <i class="fas fa-check-circle"></i> ${currentLanguage === 'ar' ? 'الإجابة الصحيحة: الخيار' : 'Correct: Option'} ${(q.correctOption || 0) + 1}
+                        </div>
+                    ` : `
+                        <div style="font-size:0.9rem;color:var(--text-muted);padding:10px;background:var(--bg);border-radius:var(--radius-sm);">
+                            <i class="fas fa-info-circle"></i> ${currentLanguage === 'ar' ? 'سيتم تصحيح هذا السؤال يدوياً من قبل المدرس' : 'This question will be graded manually by the teacher'}
+                        </div>
+                    `}
+                </div>
+            `).join('');
+        }
+
+        function removeQuestion(qIdx) {
+            window._examBuilderQuestions.splice(qIdx, 1);
+            renderExamBuilder();
+        }
+
+        function setQuestionType(qIdx, type) {
+            window._examBuilderQuestions[qIdx].type = type;
+            if (type === 'multiple' && (!window._examBuilderQuestions[qIdx].options || window._examBuilderQuestions[qIdx].options.length === 0)) {
+                window._examBuilderQuestions[qIdx].options = ['', ''];
+                window._examBuilderQuestions[qIdx].correctOption = 0;
+            }
+            renderExamBuilder();
+        }
+
+        function updateQuestionText(qIdx, text) {
+            window._examBuilderQuestions[qIdx].text = text;
+        }
+
+        function setCorrectOption(qIdx, optIdx) {
+            window._examBuilderQuestions[qIdx].correctOption = optIdx;
+            renderExamBuilder();
+        }
+
+        function updateOption(qIdx, optIdx, value) {
+            window._examBuilderQuestions[qIdx].options[optIdx] = value;
+        }
+
+        function addOption(qIdx) {
+            if (window._examBuilderQuestions[qIdx].options.length < 5) {
+                window._examBuilderQuestions[qIdx].options.push('');
+                renderExamBuilder();
+            }
+        }
+
+        function removeOption(qIdx, optIdx) {
+            if (window._examBuilderQuestions[qIdx].options.length > 2) {
+                window._examBuilderQuestions[qIdx].options.splice(optIdx, 1);
+                if (window._examBuilderQuestions[qIdx].correctOption >= window._examBuilderQuestions[qIdx].options.length) {
+                    window._examBuilderQuestions[qIdx].correctOption = 0;
+                }
+                renderExamBuilder();
+            }
+        }
+
+        function saveExam(courseId, lessonId) {
+            try {
+                const course = courses.find(c => c.id === courseId);
+                const lesson = course ? course.lessons.find(l => l.id === lessonId) : null;
+                if (!lesson) {
+                    showToast(currentLanguage === 'ar' ? 'المحاضرة غير موجودة' : 'Lesson not found', 'error');
+                    return;
+                }
+                
+                const questions = window._examBuilderQuestions;
+                if (!questions || questions.length === 0) {
+                    showToast(currentLanguage === 'ar' ? 'يرجى إضافة سؤال واحد على الأقل' : 'Please add at least one question', 'warning');
+                    return;
+                }
+                
+                for (let i = 0; i < questions.length; i++) {
+                    if (!questions[i].text.trim()) {
+                        showToast(currentLanguage === 'ar' ? `يرجى كتابة نص السؤال ${i + 1}` : `Please enter text for question ${i + 1}`, 'warning');
+                        return;
+                    }
+                    if (questions[i].type === 'multiple') {
+                        const emptyOpts = questions[i].options.filter(o => !o.trim());
+                        if (emptyOpts.length > 0) {
+                            showToast(currentLanguage === 'ar' ? `يرجى ملء جميع خيارات السؤال ${i + 1}` : `Please fill all options for question ${i + 1}`, 'warning');
+                            return;
+                        }
+                    }
+                }
+                
+                const passingGrade = parseInt(document.getElementById('examPassingGrade').value) || 50;
+                const timeLimitVal = document.getElementById('examTimeLimit').value.trim();
+                const timeLimit = timeLimitVal ? parseInt(timeLimitVal) : null;
+                const allowRetake = document.getElementById('examAllowRetake').checked;
+                
+                lesson.exam = {
+                    questions: questions.map(q => ({
+                        text: q.text,
+                        type: q.type,
+                        options: q.type === 'multiple' ? q.options : [],
+                        correctOption: q.type === 'multiple' ? q.correctOption : null
+                    })),
+                    passingGrade: passingGrade,
+                    timeLimit: timeLimit,
+                    allowRetake: allowRetake,
+                    createdAt: Date.now()
+                };
+                
+                saveAllData();
+                closeModal();
+                showToast(currentLanguage === 'ar' ? 'تم حفظ الامتحان بنجاح' : 'Exam saved successfully', 'success');
+                openLesson(courseId, lessonId);
+            } catch (error) {
+                console.error('Error saving exam:', error);
+                showToast('حدث خطأ في حفظ الامتحان', 'error');
+            }
+        }
+
+        function showEditExamModal(courseId, lessonId) {
+            try {
+                const course = courses.find(c => c.id === courseId);
+                const lesson = course ? course.lessons.find(l => l.id === lessonId) : null;
+                if (!lesson || !lesson.exam) {
+                    showToast(currentLanguage === 'ar' ? 'لا يوجد امتحان' : 'No exam found', 'error');
+                    return;
+                }
+                
+                // Pre-populate builder with existing exam data
+                window._examBuilderQuestions = lesson.exam.questions.map(q => ({
+                    type: q.type,
+                    text: q.text,
+                    options: q.options ? [...q.options] : ['', ''],
+                    correctOption: q.correctOption || 0
+                }));
+                
+                showModal(`
+                    <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">
+                        <i class="fas fa-edit"></i> ${currentLanguage === 'ar' ? 'تعديل الامتحان' : 'Edit Exam'}
+                    </div>
+                    
+                    <div style="margin-bottom:15px;">
+                        <label style="font-weight:bold;display:block;margin-bottom:5px;">${currentLanguage === 'ar' ? 'درجة النجاح (%)' : 'Passing Grade (%)'}</label>
+                        <input type="number" id="examPassingGrade" value="${lesson.exam.passingGrade || 50}" min="0" max="100" style="width:120px;">
+                    </div>
+                    
+                    <div style="margin-bottom:15px;">
+                        <label style="font-weight:bold;display:block;margin-bottom:5px;">${currentLanguage === 'ar' ? 'وقت الامتحان (بالدقائق)' : 'Exam Time (minutes)'}</label>
+                        <input type="number" id="examTimeLimit" value="${lesson.exam.timeLimit || ''}" min="1" placeholder="${currentLanguage === 'ar' ? 'بدون حد زمني' : 'No time limit'}" style="width:180px;">
+                    </div>
+                    
+                    <div style="margin-bottom:15px;">
+                        <label style="font-weight:bold;display:block;margin-bottom:5px;">
+                            <input type="checkbox" id="examAllowRetake" ${lesson.exam.allowRetake ? 'checked' : ''} style="width:auto;margin-bottom:0;margin-left:8px;margin-right:8px;">
+                            ${currentLanguage === 'ar' ? 'السماح بإعادة الامتحان' : 'Allow Retake'}
+                        </label>
+                    </div>
+                    
+                    <div style="font-weight:bold;margin-bottom:10px;">${currentLanguage === 'ar' ? 'الأسئلة:' : 'Questions:'}</div>
+                    <div id="examQuestionsBuilder"></div>
+                    
+                    <button class="btn btn-accent btn-sm" onclick="addQuestionToBuilder()" style="margin:10px 0;">
+                        <i class="fas fa-plus"></i> ${currentLanguage === 'ar' ? 'إضافة سؤال' : 'Add Question'}
+                    </button>
+                    
+                    <div style="display:flex;gap:10px;margin-top:20px;">
+                        <button class="btn" onclick="saveExam('${courseId}', '${lessonId}')">
+                            <i class="fas fa-save"></i> ${currentLanguage === 'ar' ? 'حفظ التعديلات' : 'Save Changes'}
+                        </button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteExam('${courseId}', '${lessonId}')">
+                            <i class="fas fa-trash"></i> ${currentLanguage === 'ar' ? 'حذف الامتحان' : 'Delete Exam'}
+                        </button>
+                        <button class="btn btn-outline" onclick="closeModal()">
+                            <i class="fas fa-times"></i> ${currentLanguage === 'ar' ? 'إلغاء' : 'Cancel'}
+                        </button>
+                    </div>
+                `);
+                
+                renderExamBuilder();
+            } catch (error) {
+                console.error('Error showing edit exam modal:', error);
+                showToast('حدث خطأ', 'error');
+            }
+        }
+
+        function deleteExam(courseId, lessonId) {
+            try {
+                if (!confirm(currentLanguage === 'ar' ? 'هل أنت متأكد من حذف الامتحان؟' : 'Are you sure you want to delete this exam?')) return;
+                const course = courses.find(c => c.id === courseId);
+                const lesson = course ? course.lessons.find(l => l.id === lessonId) : null;
+                if (lesson) {
+                    delete lesson.exam;
+                    saveAllData();
+                    closeModal();
+                    showToast(currentLanguage === 'ar' ? 'تم حذف الامتحان' : 'Exam deleted', 'success');
+                    openLesson(courseId, lessonId);
+                }
+            } catch (error) {
+                console.error('Error deleting exam:', error);
+            }
+        }
+
+        function takeExam(courseId, lessonId) {
+            try {
+                const course = courses.find(c => c.id === courseId);
+                const lesson = course.lessons.find(l => l.id === lessonId);
+                
+                if (!lesson.exam) {
+                    showToast(currentLanguage === 'ar' ? 'لا يوجد امتحان لهذه المحاضرة' : 'No exam for this lesson', 'error');
+                    return;
+                }
+                
+                if (!currentUser) {
+                    showToast(currentLanguage === 'ar' ? 'يرجى تسجيل الدخول أولاً' : 'Please login first', 'error');
+                    return;
+                }
+                
+                let timerHTML = '';
+                if (lesson.exam.timeLimit) {
+                    examTimeRemaining = lesson.exam.timeLimit * 60;
+                    timerHTML = `<div class="exam-timer" id="examTimer"><i class="fas fa-clock"></i> <span id="examTimerText">${formatTime(examTimeRemaining)}</span></div>`;
+                }
+                
+                let questionsHTML = '';
+                lesson.exam.questions.forEach((question, index) => {
+                    questionsHTML += `
+                        <div class="question-item" id="examQ_${index}">
+                            <div style="font-weight:bold;margin-bottom:10px;">
+                                ${currentLanguage === 'ar' ? 'سؤال' : 'Question'} ${index + 1}: ${question.text}
+                                <span class="badge ${question.type === 'multiple' ? 'badge-accent' : 'badge-primary'}" style="margin-right:8px;margin-left:8px;">
+                                    ${question.type === 'multiple' ? (currentLanguage === 'ar' ? 'اختياري' : 'MCQ') : (currentLanguage === 'ar' ? 'مقالي' : 'Essay')}
+                                </span>
+                            </div>
+                            ${question.type === 'multiple' ? `
+                                <div class="options-container">
+                                    ${question.options.map((option, optIndex) => `
+                                        <div class="option-row" style="cursor:pointer;" onclick="document.getElementById('q${index}_opt${optIndex}').checked = true;">
+                                            <input type="radio" name="question_${index}" value="${optIndex}" id="q${index}_opt${optIndex}" style="width:auto;margin:0;">
+                                            <label for="q${index}_opt${optIndex}" style="cursor:pointer;flex:1;">${option}</label>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            ` : `
+                                <textarea class="essay-answer" id="essay_${index}" placeholder="${currentLanguage === 'ar' ? 'اكتب إجابتك هنا...' : 'Write your answer here...'}" rows="4"></textarea>
+                            `}
+                        </div>
+                    `;
+                });
+
+                // Question navigation
+                let navHTML = '<div class="question-navigation">';
+                lesson.exam.questions.forEach((_, index) => {
+                    navHTML += `<button class="question-nav-btn" onclick="document.getElementById('examQ_${index}').scrollIntoView({behavior:'smooth'})">${index + 1}</button>`;
+                });
+                navHTML += '</div>';
+
+                showModal(`
+                    <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">
+                        <i class="fas fa-clipboard-list"></i> ${currentLanguage === 'ar' ? 'امتحان:' : 'Exam:'} ${lesson.title}
+                    </div>
+                    ${timerHTML}
+                    ${navHTML}
+                    <div id="examQuestionsContainer">${questionsHTML}</div>
+                    <div class="exam-controls">
+                        <button class="btn btn-success" onclick="submitExam('${courseId}', '${lessonId}')">
+                            <i class="fas fa-paper-plane"></i> ${currentLanguage === 'ar' ? 'تسليم الامتحان' : 'Submit Exam'}
+                        </button>
+                        <button class="btn btn-outline" onclick="cancelExam()">
+                            <i class="fas fa-times"></i> ${currentLanguage === 'ar' ? 'إلغاء' : 'Cancel'}
+                        </button>
+                    </div>
+                `);
+                
+                // Start timer if needed
+                if (lesson.exam.timeLimit) {
+                    startExamTimer(courseId, lessonId);
+                }
+            } catch (error) {
+                console.error('Error taking exam:', error);
+                showToast('حدث خطأ في بدء الامتحان', 'error');
+            }
+        }
+
+        function formatTime(seconds) {
+            const m = Math.floor(seconds / 60);
+            const s = seconds % 60;
+            return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        }
+
+        function startExamTimer(courseId, lessonId) {
+            if (examTimerInterval) clearInterval(examTimerInterval);
+            examTimerInterval = setInterval(() => {
+                examTimeRemaining--;
+                const timerText = document.getElementById('examTimerText');
+                if (timerText) {
+                    timerText.textContent = formatTime(examTimeRemaining);
+                }
+                if (examTimeRemaining <= 0) {
+                    clearInterval(examTimerInterval);
+                    showToast(currentLanguage === 'ar' ? 'انتهى الوقت! يتم تسليم الامتحان تلقائياً' : 'Time is up! Auto-submitting...', 'warning');
+                    submitExam(courseId, lessonId);
+                }
+            }, 1000);
+        }
+
+        function cancelExam() {
+            if (examTimerInterval) clearInterval(examTimerInterval);
+            closeModal();
+        }
+
+        function submitExam(courseId, lessonId) {
+            try {
+                if (examTimerInterval) clearInterval(examTimerInterval);
+                
+                const course = courses.find(c => c.id === courseId);
+                const lesson = course.lessons.find(l => l.id === lessonId);
+                if (!lesson || !lesson.exam || !currentUser) return;
+                
+                const exam = lesson.exam;
+                let mcqCorrect = 0;
+                let mcqTotal = 0;
+                let hasEssay = false;
+                const answers = [];
+                
+                exam.questions.forEach((question, index) => {
+                    if (question.type === 'multiple') {
+                        mcqTotal++;
+                        const selected = document.querySelector(`input[name="question_${index}"]:checked`);
+                        const selectedValue = selected ? parseInt(selected.value) : -1;
+                        const isCorrect = selectedValue === question.correctOption;
+                        if (isCorrect) mcqCorrect++;
+                        answers.push({
+                            questionIndex: index,
+                            type: 'multiple',
+                            selectedOption: selectedValue,
+                            isCorrect: isCorrect
+                        });
+                    } else {
+                        hasEssay = true;
+                        const essayInput = document.getElementById(`essay_${index}`);
+                        const essayText = essayInput ? essayInput.value.trim() : '';
+                        answers.push({
+                            questionIndex: index,
+                            type: 'essay',
+                            answer: essayText,
+                            grade: null, // will be graded by teacher
+                            graded: false
+                        });
+                    }
+                });
+                
+                // Calculate MCQ score
+                const mcqScore = mcqTotal > 0 ? Math.round((mcqCorrect / mcqTotal) * 100) : 0;
+                
+                // If no essay, final score = mcqScore
+                // If has essay, score is partial until teacher grades
+                const totalQuestions = exam.questions.length;
+                const mcqWeight = mcqTotal / totalQuestions;
+                
+                let finalScore = mcqScore;
+                let essayGraded = !hasEssay;
+                
+                if (hasEssay) {
+                    // Partial score based on MCQ only until essays are graded
+                    finalScore = mcqTotal > 0 ? Math.round(mcqScore * mcqWeight) : 0;
+                    essayGraded = false;
+                }
+                
+                const passed = !hasEssay ? (finalScore >= (exam.passingGrade || 50)) : false;
+                
+                // Save result
+                const examResults = JSON.parse(localStorage.getItem(LS_KEYS.EXAM_RESULTS)) || {};
+                const resultKey = `${currentUser.id}_${courseId}_${lessonId}`;
+                examResults[resultKey] = {
+                    userId: currentUser.id,
+                    userName: currentUser.name,
+                    courseId: courseId,
+                    lessonId: lessonId,
+                    answers: answers,
+                    mcqScore: mcqScore,
+                    mcqCorrect: mcqCorrect,
+                    mcqTotal: mcqTotal,
+                    score: finalScore,
+                    passed: passed,
+                    hasEssay: hasEssay,
+                    essayGraded: essayGraded,
+                    timestamp: Date.now()
+                };
+                localStorage.setItem(LS_KEYS.EXAM_RESULTS, JSON.stringify(examResults));
+                
+                trackLessonProgress(courseId, lessonId, 'examCompleted', true);
+                trackLessonProgress(courseId, lessonId, 'examScore', finalScore);
+                
+                // Show results
+                let resultHTML = `
+                    <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">
+                        <i class="fas fa-chart-bar"></i> ${currentLanguage === 'ar' ? 'نتائج الامتحان' : 'Exam Results'}
+                    </div>
+                `;
+                
+                if (mcqTotal > 0) {
+                    resultHTML += `
+                        <div style="margin-bottom:15px;">
+                            <strong>${currentLanguage === 'ar' ? 'الأسئلة الاختيارية:' : 'MCQ Results:'}</strong>
+                            <div style="font-size:1.5rem;font-weight:bold;color:${mcqScore >= (exam.passingGrade || 50) ? 'var(--success)' : 'var(--danger)'};">
+                                ${mcqCorrect} / ${mcqTotal} (${mcqScore}%)
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                // Show each MCQ answer
+                exam.questions.forEach((question, index) => {
+                    const answer = answers[index];
+                    if (question.type === 'multiple') {
+                        resultHTML += `
+                            <div style="padding:10px;margin:5px 0;background:${answer.isCorrect ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)'};border-radius:var(--radius-sm);border-right:4px solid ${answer.isCorrect ? 'var(--success)' : 'var(--danger)'};">
+                                <div><strong>${currentLanguage === 'ar' ? 'سؤال' : 'Q'} ${index + 1}:</strong> ${question.text}</div>
+                                <div style="color:${answer.isCorrect ? 'var(--success)' : 'var(--danger)'};">
+                                    ${answer.isCorrect ? '✅' : '❌'} 
+                                    ${currentLanguage === 'ar' ? 'إجابتك:' : 'Your answer:'} ${answer.selectedOption >= 0 ? question.options[answer.selectedOption] : (currentLanguage === 'ar' ? 'لم تجب' : 'No answer')}
+                                </div>
+                                ${!answer.isCorrect ? `<div style="color:var(--success);font-size:0.9rem;">${currentLanguage === 'ar' ? 'الإجابة الصحيحة:' : 'Correct:'} ${question.options[question.correctOption]}</div>` : ''}
+                            </div>
+                        `;
+                    }
+                });
+                
+                if (hasEssay) {
+                    resultHTML += `
+                        <div style="padding:15px;margin:15px 0;background:rgba(245,158,11,0.1);border-radius:var(--radius);border-right:4px solid var(--warning);">
+                            <i class="fas fa-hourglass-half" style="color:var(--warning);"></i>
+                            <strong>${currentLanguage === 'ar' ? 'الأسئلة المقالية بانتظار تصحيح المدرس' : 'Essay questions are waiting for teacher grading'}</strong>
+                        </div>
+                    `;
+                }
+                
+                if (!hasEssay) {
+                    resultHTML += `
+                        <div class="exam-result ${passed ? 'success' : 'error'}">
+                            ${passed ? (currentLanguage === 'ar' ? '🎉 مبروك! لقد نجحت' : '🎉 Congratulations! You passed') : (currentLanguage === 'ar' ? '😔 للأسف لم تنجح' : '😔 Unfortunately you did not pass')}
+                            <br>${currentLanguage === 'ar' ? 'الدرجة:' : 'Score:'} ${finalScore}% | ${currentLanguage === 'ar' ? 'درجة النجاح:' : 'Passing:'} ${exam.passingGrade || 50}%
+                        </div>
+                    `;
+                }
+                
+                resultHTML += `
+                    <div style="display:flex;gap:10px;margin-top:20px;">
+                        <button class="btn" onclick="closeModal()">
+                            <i class="fas fa-times"></i> ${currentLanguage === 'ar' ? 'إغلاق' : 'Close'}
+                        </button>
+                    </div>
+                `;
+                
+                showModal(resultHTML);
+                
+                // Notify teacher
+                if (hasEssay && course.createdBy) {
+                    const teacher = users.find(u => u.email === course.createdBy);
+                    if (teacher) {
+                        createNotification(
+                            teacher.id,
+                            currentLanguage === 'ar' ? 'امتحان يحتاج تصحيح' : 'Exam needs grading',
+                            currentLanguage === 'ar' ? `الطالب ${currentUser.name} أكمل امتحان "${lesson.title}" ويحتاج تصحيح الأسئلة المقالية` : `Student ${currentUser.name} completed exam "${lesson.title}" and needs essay grading`,
+                            'exam'
+                        );
+                    }
+                }
+                
+            } catch (error) {
+                console.error('Error submitting exam:', error);
+                showToast('حدث خطأ في تسليم الامتحان', 'error');
+            }
+        }
+
+        function getPendingEssayCount(courseId, lessonId) {
+            try {
+                const examResults = JSON.parse(localStorage.getItem(LS_KEYS.EXAM_RESULTS)) || {};
+                let count = 0;
+                Object.keys(examResults).forEach(key => {
+                    const result = examResults[key];
+                    if (result.courseId === courseId && result.lessonId === lessonId && result.hasEssay && !result.essayGraded) {
+                        count++;
+                    }
+                });
+                return count;
+            } catch (error) {
+                return 0;
+            }
+        }
+
+        function showCorrectionPanel(courseId, lessonId) {
+            try {
+                const course = courses.find(c => c.id === courseId);
+                const lesson = course ? course.lessons.find(l => l.id === lessonId) : null;
+                if (!lesson || !lesson.exam) return;
+                
+                const examResults = JSON.parse(localStorage.getItem(LS_KEYS.EXAM_RESULTS)) || {};
+                const relevantResults = Object.keys(examResults)
+                    .filter(key => examResults[key].courseId === courseId && examResults[key].lessonId === lessonId)
+                    .map(key => ({ ...examResults[key], resultKey: key }));
+                
+                if (relevantResults.length === 0) {
+                    showModal(`
+                        <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">
+                            <i class="fas fa-check-double"></i> ${currentLanguage === 'ar' ? 'تصحيح الامتحانات' : 'Grade Exams'}
+                        </div>
+                        <div style="text-align:center;padding:30px;color:var(--text-muted);">
+                            <i class="fas fa-clipboard-check" style="font-size:3rem;margin-bottom:15px;"></i>
+                            <p>${currentLanguage === 'ar' ? 'لا توجد امتحانات مسلمة حتى الآن' : 'No exams submitted yet'}</p>
+                        </div>
+                        <button class="btn btn-outline" onclick="closeModal()"><i class="fas fa-times"></i> ${currentLanguage === 'ar' ? 'إغلاق' : 'Close'}</button>
+                    `);
+                    return;
+                }
+                
+                let html = `
+                    <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">
+                        <i class="fas fa-check-double"></i> ${currentLanguage === 'ar' ? 'تصحيح امتحانات:' : 'Grade Exams:'} ${lesson.title}
+                    </div>
+                `;
+                
+                relevantResults.forEach(result => {
+                    const student = users.find(u => u.id === result.userId);
+                    html += `
+                        <div class="student-exam-result" style="border-color:${result.essayGraded || !result.hasEssay ? 'var(--success)' : 'var(--warning)'};">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                                <strong><i class="fas fa-user"></i> ${student ? student.name : result.userName || 'Unknown'}</strong>
+                                <span class="badge ${result.passed ? 'badge-success' : (result.essayGraded ? 'badge-primary' : 'badge-accent')}">
+                                    ${result.essayGraded || !result.hasEssay ? 
+                                        (result.passed ? (currentLanguage === 'ar' ? 'ناجح' : 'Passed') : (currentLanguage === 'ar' ? 'راسب' : 'Failed')) :
+                                        (currentLanguage === 'ar' ? 'بانتظار التصحيح' : 'Pending')
+                                    }
+                                </span>
+                            </div>
+                            <div style="font-size:0.9rem;color:var(--text-muted);margin-bottom:10px;">
+                                ${currentLanguage === 'ar' ? 'الدرجة الحالية:' : 'Current Score:'} ${result.score}% | 
+                                ${currentLanguage === 'ar' ? 'الاختياري:' : 'MCQ:'} ${result.mcqCorrect}/${result.mcqTotal}
+                                ${result.hasEssay && !result.essayGraded ? ` | <span style="color:var(--warning);">${currentLanguage === 'ar' ? 'المقالي: لم يُصحح بعد' : 'Essay: Not graded'}</span>` : ''}
+                            </div>
+                    `;
+                    
+                    // Show essay answers for grading
+                    if (result.hasEssay) {
+                        result.answers.forEach((answer, aIdx) => {
+                            if (answer.type === 'essay') {
+                                const question = lesson.exam.questions[answer.questionIndex];
+                                html += `
+                                    <div class="essay-grading">
+                                        <div style="font-weight:bold;margin-bottom:5px;">${currentLanguage === 'ar' ? 'سؤال' : 'Q'} ${answer.questionIndex + 1}: ${question ? question.text : ''}</div>
+                                        <div style="background:var(--input-bg);padding:10px;border-radius:var(--radius-sm);margin-bottom:10px;white-space:pre-wrap;">
+                                            ${answer.answer || (currentLanguage === 'ar' ? '<em>لم يُجب</em>' : '<em>No answer</em>')}
+                                        </div>
+                                        <div class="grading-panel">
+                                            <label>${currentLanguage === 'ar' ? 'الدرجة (0-100):' : 'Grade (0-100):'}</label>
+                                            <input type="number" class="grade-input" id="grade_${result.resultKey}_${aIdx}" 
+                                                value="${answer.grade !== null ? answer.grade : ''}" min="0" max="100" style="width:80px;">
+                                        </div>
+                                    </div>
+                                `;
+                            }
+                        });
+                        
+                        if (!result.essayGraded) {
+                            html += `
+                                <button class="btn btn-sm" style="margin-top:10px;background:var(--success);" onclick="saveEssayGrades('${result.resultKey}', '${courseId}', '${lessonId}')">
+                                    <i class="fas fa-check"></i> ${currentLanguage === 'ar' ? 'حفظ التصحيح' : 'Save Grades'}
+                                </button>
+                            `;
+                        }
+                    }
+                    
+                    html += `</div>`;
+                });
+                
+                html += `
+                    <div style="display:flex;gap:10px;margin-top:20px;">
+                        <button class="btn btn-outline" onclick="closeModal()">
+                            <i class="fas fa-times"></i> ${currentLanguage === 'ar' ? 'إغلاق' : 'Close'}
+                        </button>
+                    </div>
+                `;
+                
+                showModal(html);
+            } catch (error) {
+                console.error('Error showing correction panel:', error);
+                showToast('حدث خطأ في عرض لوحة التصحيح', 'error');
+            }
+        }
+
+        function saveEssayGrades(resultKey, courseId, lessonId) {
+            try {
+                const examResults = JSON.parse(localStorage.getItem(LS_KEYS.EXAM_RESULTS)) || {};
+                const result = examResults[resultKey];
+                if (!result) return;
+                
+                const course = courses.find(c => c.id === courseId);
+                const lesson = course ? course.lessons.find(l => l.id === lessonId) : null;
+                if (!lesson || !lesson.exam) return;
+                
+                let essayTotal = 0;
+                let essayScore = 0;
+                let allGraded = true;
+                
+                result.answers.forEach((answer, aIdx) => {
+                    if (answer.type === 'essay') {
+                        essayTotal++;
+                        const gradeInput = document.getElementById(`grade_${resultKey}_${aIdx}`);
+                        const grade = gradeInput ? parseInt(gradeInput.value) : null;
+                        
+                        if (grade !== null && !isNaN(grade)) {
+                            answer.grade = Math.max(0, Math.min(100, grade));
+                            answer.graded = true;
+                            essayScore += answer.grade;
+                        } else {
+                            allGraded = false;
+                        }
+                    }
+                });
+                
+                if (!allGraded) {
+                    showToast(currentLanguage === 'ar' ? 'يرجى تصحيح جميع الأسئلة المقالية' : 'Please grade all essay questions', 'warning');
+                    return;
+                }
+                
+                // Recalculate final score
+                const totalQuestions = lesson.exam.questions.length;
+                const mcqWeight = result.mcqTotal / totalQuestions;
+                const essayWeight = essayTotal / totalQuestions;
+                const essayAvg = essayTotal > 0 ? essayScore / essayTotal : 0;
+                
+                result.score = Math.round((result.mcqScore * mcqWeight) + (essayAvg * essayWeight));
+                result.essayGraded = true;
+                result.passed = result.score >= (lesson.exam.passingGrade || 50);
+                
+                examResults[resultKey] = result;
+                localStorage.setItem(LS_KEYS.EXAM_RESULTS, JSON.stringify(examResults));
+                
+                // Update tracking
+                trackLessonProgress(courseId, lessonId, 'examScore', result.score);
+                
+                // Notify student
+                const student = users.find(u => u.id === result.userId);
+                if (student) {
+                    createNotification(
+                        student.id,
+                        currentLanguage === 'ar' ? 'تم تصحيح امتحانك' : 'Your exam has been graded',
+                        currentLanguage === 'ar' ? 
+                            `تم تصحيح امتحان "${lesson.title}". الدرجة النهائية: ${result.score}% - ${result.passed ? 'ناجح ✅' : 'راسب ❌'}` :
+                            `Exam "${lesson.title}" graded. Final score: ${result.score}% - ${result.passed ? 'Passed ✅' : 'Failed ❌'}`,
+                        'exam_result'
+                    );
+                }
+                
+                showToast(currentLanguage === 'ar' ? 'تم حفظ التصحيح بنجاح' : 'Grades saved successfully', 'success');
+                showCorrectionPanel(courseId, lessonId);
+            } catch (error) {
+                console.error('Error saving essay grades:', error);
+                showToast('حدث خطأ في حفظ التصحيح', 'error');
+            }
+        }
+
+        // ==================== FIXED PROGRESS CALCULATION ====================
+
         function calculateLessonProgress(lessonTracking) {
             try {
-                let totalActivities = 3;
+                let totalActivities = 0;
                 let completedActivities = 0;
                 
+                // Always count video watching
+                totalActivities++;
                 if (lessonTracking.videoWatched) completedActivities++;
-                if (lessonTracking.pdfOpened) completedActivities++;
-                if (lessonTracking.examCompleted) completedActivities++;
                 
+                // Count PDF if it was ever tracked
+                if (lessonTracking.pdfOpened !== undefined) {
+                    totalActivities++;
+                    if (lessonTracking.pdfOpened) completedActivities++;
+                }
+                
+                // Count exam if exists
+                if (lessonTracking.examCompleted !== undefined) {
+                    totalActivities++;
+                    if (lessonTracking.examCompleted) completedActivities++;
+                }
+                
+                if (totalActivities === 0) return 0;
                 return Math.round((completedActivities / totalActivities) * 100);
             } catch (error) {
                 console.error('Error calculating lesson progress:', error);
@@ -3781,7 +4605,7 @@
         function getCourseCompletionStatus(courseId) {
             try {
                 const course = courses.find(c => c.id === courseId);
-                if (!course || !course.lessons) return { completed: 0, total: 0, progress: 0, details: {} };
+                if (!course || !course.lessons || course.lessons.length === 0) return { completed: 0, total: 0, progress: 0, details: {} };
                 
                 const tracking = JSON.parse(localStorage.getItem(LS_KEYS.COMPLETION_TRACKING)) || {};
                 const userId = currentUser ? currentUser.id : 'guest';
@@ -3789,20 +4613,32 @@
                 const courseTracking = userTracking[courseId] || {};
                 
                 let completedLessons = 0;
-                let totalProgress = 0;
+                let totalItems = 0;
+                let completedItems = 0;
                 
                 course.lessons.forEach(lesson => {
                     const lessonTracking = courseTracking[lesson.id] || {};
-                    const lessonProgress = calculateLessonProgress(lessonTracking);
                     
-                    totalProgress += lessonProgress;
+                    // Count lecture
+                    totalItems++;
+                    if (lessonTracking.videoWatched) completedItems++;
                     
-                    if (lessonProgress >= 100) {
-                        completedLessons++;
+                    // Count exam if lesson has one
+                    if (lesson.exam) {
+                        totalItems++;
+                        // Check if passed
+                        const examResults = JSON.parse(localStorage.getItem(LS_KEYS.EXAM_RESULTS)) || {};
+                        const resultKey = `${userId}_${courseId}_${lesson.id}`;
+                        const result = examResults[resultKey];
+                        if (result && result.passed) completedItems++;
                     }
+                    
+                    // Count full lesson completion
+                    const lessonProgress = calculateLessonProgress(lessonTracking);
+                    if (lessonProgress >= 100) completedLessons++;
                 });
                 
-                const progress = course.lessons.length > 0 ? Math.round(totalProgress / course.lessons.length) : 0;
+                const progress = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
                 
                 return {
                     completed: completedLessons,
@@ -3851,10 +4687,10 @@
                         <div>
                             <strong>${course.title}</strong>
                             <div style="color: var(--text-muted); font-size: 0.9rem;">
-                                ${course.lessons ? course.lessons.length : 0} محاضرة | ${getEnrolledStudentsCount(course.id)} طالب
+                                ${course.lessons ? course.lessons.length : 0} ${currentLanguage === 'ar' ? 'محاضرة' : 'lessons'} | ${getEnrolledStudentsCount(course.id)} ${currentLanguage === 'ar' ? 'طالب' : 'students'}
                             </div>
                         </div>
-                        <div style="display: flex; gap: 8px;">
+                        <div style="display: flex; gap: 8px; flex-wrap:wrap;">
                             <button class="btn btn-sm" data-action="view" data-course-id="${course.id}">
                                 <i class="fas fa-eye"></i>
                             </button>
@@ -3882,19 +4718,19 @@
                 
                 adminStats.innerHTML = `
                     <div class="stat-card">
-                        <div class="stat-label">إجمالي الطلاب</div>
+                        <div class="stat-label">${currentLanguage === 'ar' ? 'إجمالي الطلاب' : 'Total Students'}</div>
                         <div class="stat-number">${totalStudents}</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-label">إجمالي المدرسين</div>
+                        <div class="stat-label">${currentLanguage === 'ar' ? 'إجمالي المدرسين' : 'Total Teachers'}</div>
                         <div class="stat-number">${totalTeachers}</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-label">إجمالي الكورسات</div>
+                        <div class="stat-label">${currentLanguage === 'ar' ? 'إجمالي الكورسات' : 'Total Courses'}</div>
                         <div class="stat-number">${totalCourses}</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-label">إجمالي التسجيلات</div>
+                        <div class="stat-label">${currentLanguage === 'ar' ? 'إجمالي التسجيلات' : 'Total Enrollments'}</div>
                         <div class="stat-number">${totalEnrollments}</div>
                     </div>
                 `;
@@ -3928,7 +4764,7 @@
                         </div>
                         <div style="display: flex; gap: 8px;">
                             <button class="btn btn-sm view-user-btn" data-user-id="${user.id}">
-                                <i class="fas fa-info-circle"></i>
+                                <i class="fas fa-eye"></i>
                             </button>
                             <button class="btn btn-sm btn-danger delete-user-btn" data-user-id="${user.id}">
                                 <i class="fas fa-trash"></i>
@@ -3969,16 +4805,16 @@
                 };
                 
                 users.push(newUser);
+                saveAllData();
                 
                 document.getElementById('newUserName').value = '';
                 document.getElementById('newUserEmail').value = '';
                 document.getElementById('newUserPass').value = '';
                 
-                saveAllData();
                 showToast(currentLanguage === 'ar' ? 'تم إضافة المستخدم بنجاح' : 'User added successfully', 'success');
-                renderUserList();
+                renderAdminPage();
             } catch (error) {
-                console.error('Error adding new user:', error);
+                console.error('Error adding user:', error);
                 showToast('حدث خطأ في إضافة المستخدم', 'error');
             }
         }
@@ -3990,42 +4826,42 @@
                     showToast(currentLanguage === 'ar' ? 'المستخدم غير موجود' : 'User not found', 'error');
                     return;
                 }
-                
+
                 const enrollments = JSON.parse(localStorage.getItem(LS_KEYS.USER_ENROLLMENTS)) || {};
-                const userEnrollments = enrollments[userId] || [];
+                const userEnrollments = enrollments[user.id] || [];
                 const enrolledCourses = courses.filter(c => userEnrollments.includes(c.id));
-                
+
                 showModal(`
-                    <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">تفاصيل المستخدم</div>
+                    <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">${currentLanguage === 'ar' ? 'تفاصيل المستخدم' : 'User Details'}</div>
                     <div class="user-details-grid">
                         <div class="user-detail-card">
-                            <h4>الاسم</h4>
-                            <p>${user.name || 'غير محدد'}</p>
+                            <h4>${currentLanguage === 'ar' ? 'الاسم' : 'Name'}</h4>
+                            <p>${user.name || (currentLanguage === 'ar' ? 'غير محدد' : 'Not set')}</p>
                         </div>
                         <div class="user-detail-card">
-                            <h4>البريد الإلكتروني</h4>
+                            <h4>${currentLanguage === 'ar' ? 'البريد الإلكتروني' : 'Email'}</h4>
                             <p>${user.email}</p>
                         </div>
                         <div class="user-detail-card">
-                            <h4>الصلاحيات</h4>
-                            <p>${user.roles ? user.roles.join(', ') : 'طالب'}</p>
+                            <h4>${currentLanguage === 'ar' ? 'الصلاحيات' : 'Roles'}</h4>
+                            <p>${user.roles ? user.roles.join(', ') : (currentLanguage === 'ar' ? 'طالب' : 'student')}</p>
                         </div>
                         <div class="user-detail-card">
-                            <h4>تاريخ التسجيل</h4>
+                            <h4>${currentLanguage === 'ar' ? 'تاريخ التسجيل' : 'Joined'}</h4>
                             <p>${new Date(user.joined).toLocaleDateString(currentLanguage === 'ar' ? 'ar-EG' : 'en-US')}</p>
                         </div>
                         <div class="user-detail-card">
-                            <h4>آخر نشاط</h4>
+                            <h4>${currentLanguage === 'ar' ? 'آخر نشاط' : 'Last Active'}</h4>
                             <p>${new Date(user.lastActive).toLocaleDateString(currentLanguage === 'ar' ? 'ar-EG' : 'en-US')}</p>
                         </div>
                         <div class="user-detail-card">
-                            <h4>الكورسات المنضمة</h4>
-                            <p>${enrolledCourses.length} كورس</p>
+                            <h4>${currentLanguage === 'ar' ? 'الكورسات المنضمة' : 'Enrolled Courses'}</h4>
+                            <p>${enrolledCourses.length} ${currentLanguage === 'ar' ? 'كورس' : 'courses'}</p>
                         </div>
                     </div>
                     ${enrolledCourses.length > 0 ? `
                         <div style="margin-top: 20px;">
-                            <h4>الكورسات المنضمة:</h4>
+                            <h4>${currentLanguage === 'ar' ? 'الكورسات المنضمة:' : 'Enrolled Courses:'}</h4>
                             ${enrolledCourses.map(course => `
                                 <div class="list-item" style="margin: 5px 0;">
                                     <span>${course.title}</span>
@@ -4035,7 +4871,7 @@
                     ` : ''}
                     <div style="display:flex;gap:10px;margin-top:20px;">
                         <button class="btn btn-outline" onclick="closeModal()">
-                            <i class="fas fa-times"></i> إغلاق
+                            <i class="fas fa-times"></i> ${currentLanguage === 'ar' ? 'إغلاق' : 'Close'}
                         </button>
                     </div>
                 `);
@@ -4205,7 +5041,7 @@
                         <p style="color: var(--text-muted);">${currentUser.email}</p>
                         <div style="display: flex; gap: 10px; justify-content: center; margin-top: 10px;">
                             ${currentUser.roles && currentUser.roles.map(role => 
-                                `<span class="badge ${role === 'admin' ? 'badge-primary' : role === 'teacher' ? 'badge-accent' : 'badge-success'}">${role === 'admin' ? 'مدير' : role === 'teacher' ? 'مدرس' : 'طالب'}</span>`
+                                `<span class="badge ${role === 'admin' ? 'badge-primary' : role === 'teacher' ? 'badge-accent' : 'badge-success'}">${role === 'admin' ? (currentLanguage === 'ar' ? 'مدير' : 'Admin') : role === 'teacher' ? (currentLanguage === 'ar' ? 'مدرس' : 'Teacher') : (currentLanguage === 'ar' ? 'طالب' : 'Student')}</span>`
                             ).join('')}
                         </div>
                     </div>
@@ -4220,7 +5056,6 @@
                         <div style="text-align: center; padding: 20px; color: var(--text-muted);">
                             <i class="fas fa-book-open" style="font-size: 2rem; margin-bottom: 10px;"></i>
                             <h3>${currentLanguage === 'ar' ? 'لا توجد كورسات منضمة' : 'No enrolled courses'}</h3>
-                            <p>لم تنضم إلى أي كورسات بعد.</p>
                         </div>
                     `;
                 } else {
@@ -4234,11 +5069,11 @@
                                         <div class="progress-fill" style="width: ${completionStatus.progress}%"></div>
                                     </div>
                                     <div style="color: var(--text-muted); font-size: 0.9rem;">
-                                        ${completionStatus.progress}% مكتمل
+                                        ${completionStatus.progress}% ${currentLanguage === 'ar' ? 'مكتمل' : 'complete'}
                                     </div>
                                 </div>
                                 <button class="btn btn-sm" onclick="showCourseDetails('${course.id}')">
-                                    <i class="fas fa-eye"></i> عرض
+                                    <i class="fas fa-eye"></i> ${currentLanguage === 'ar' ? 'عرض' : 'View'}
                                 </button>
                             </div>
                         `;
@@ -4260,7 +5095,7 @@
                 }
                 
                 if (userNotifications.length === 0) {
-                    notificationsList.innerHTML = '<p style="color: var(--text-muted); text-align: center;">لا توجد إشعارات</p>';
+                    notificationsList.innerHTML = `<p style="color: var(--text-muted); text-align: center;">${currentLanguage === 'ar' ? 'لا توجد إشعارات' : 'No notifications'}</p>`;
                     return;
                 }
                 
@@ -4425,69 +5260,7 @@
             }
         }
 
-        function takeExam(courseId, lessonId) {
-            try {
-                const course = courses.find(c => c.id === courseId);
-                const lesson = course.lessons.find(l => l.id === lessonId);
-                
-                if (!lesson.exam) {
-                    showToast(currentLanguage === 'ar' ? 'لا يوجد امتحان لهذه المحاضرة' : 'No exam for this lesson', 'error');
-                    return;
-                }
-                
-                showModal(`
-                    <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">${currentLanguage === 'ar' ? 'امتحان:' : 'Exam:'} ${lesson.title}</div>
-                    <div id="examQuestionsContainer"></div>
-                    <div style="display:flex;gap:10px;margin-top:20px;">
-                        <button class="btn" onclick="submitExam('${courseId}', '${lessonId}')">
-                            <i class="fas fa-paper-plane"></i> ${currentLanguage === 'ar' ? 'تسليم الامتحان' : 'Submit Exam'}
-                        </button>
-                        <button class="btn btn-outline" onclick="closeModal()">
-                            <i class="fas fa-times"></i> ${currentLanguage === 'ar' ? 'إلغاء' : 'Cancel'}
-                        </button>
-                    </div>
-                `);
-                
-                const container = document.getElementById('examQuestionsContainer');
-                lesson.exam.questions.forEach((question, index) => {
-                    container.innerHTML += `
-                        <div class="question-item">
-                            <div>
-                                <strong>${currentLanguage === 'ar' ? 'سؤال' : 'Question'} ${index + 1}: ${question.text}</strong>
-                            </div>
-                            ${question.type === 'multiple' ? `
-                                <div class="options-container">
-                                    ${question.options.map((option, optIndex) => `
-                                        <div class="option-row">
-                                            <input type="radio" name="question_${index}" value="${optIndex}" id="q${index}_opt${optIndex}">
-                                            <label for="q${index}_opt${optIndex}">${option}</label>
-                                        </div>
-                                    `).join('')}
-                                </div>
-                            ` : `
-                                <textarea class="essay-answer" id="essay_${index}" placeholder="${currentLanguage === 'ar' ? 'أدخل إجابتك هنا...' : 'Enter your answer here...'}"></textarea>
-                            `}
-                        </div>
-                    `;
-                });
-            } catch (error) {
-                console.error('Error taking exam:', error);
-                showToast('حدث خطأ في بدء الامتحان', 'error');
-            }
-        }
-
-        function submitExam(courseId, lessonId) {
-            try {
-                showToast(currentLanguage === 'ar' ? 'تم تسليم الامتحان بنجاح' : 'Exam submitted successfully', 'success');
-                trackLessonProgress(courseId, lessonId, 'examCompleted', true);
-                trackLessonProgress(courseId, lessonId, 'examScore', 85);
-                closeModal();
-            } catch (error) {
-                console.error('Error submitting exam:', error);
-                showToast('حدث خطأ في تسليم الامتحان', 'error');
-            }
-        }
-
+        // Window exports
         window.showCourseDetails = showCourseDetails;
         window.addLessonToCourse = addLessonToCourse;
         window.saveLesson = saveLesson;
@@ -4520,6 +5293,22 @@
         window.showPdfModal = showPdfModal;
         window.takeExam = takeExam;
         window.submitExam = submitExam;
+        window.showAddExamModal = showAddExamModal;
+        window.addQuestionToBuilder = addQuestionToBuilder;
+        window.removeQuestion = removeQuestion;
+        window.setQuestionType = setQuestionType;
+        window.updateQuestionText = updateQuestionText;
+        window.setCorrectOption = setCorrectOption;
+        window.updateOption = updateOption;
+        window.addOption = addOption;
+        window.removeOption = removeOption;
+        window.saveExam = saveExam;
+        window.showEditExamModal = showEditExamModal;
+        window.deleteExam = deleteExam;
+        window.cancelExam = cancelExam;
+        window.showCorrectionPanel = showCorrectionPanel;
+        window.saveEssayGrades = saveEssayGrades;
+        window.getPendingEssayCount = getPendingEssayCount;
 
     </script>
 </body>
