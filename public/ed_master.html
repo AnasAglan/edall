@@ -2450,6 +2450,8 @@
             document.getElementById('languageText').textContent = currentLanguage === 'ar' ? 'العربية' : 'English';
             document.documentElement.dir = currentLanguage === 'ar' ? 'rtl' : 'ltr';
             document.documentElement.lang = currentLanguage;
+            document.body.dir = currentLanguage === 'ar' ? 'rtl' : 'ltr';
+            document.body.lang = currentLanguage;
         }
 
         function toggleUserMenu() {
