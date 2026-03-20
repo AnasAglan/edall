@@ -2015,6 +2015,9 @@
                     ensureLocalStorageKeys();
                 }
                 
+                // Migrate lesson.exam to lesson.exams array
+                migrateExamsToArray();
+                
                 const darkMode = localStorage.getItem(LS_KEYS.DARK_MODE) !== 'false';
                 applyDarkMode(darkMode);
             } catch (error) {
