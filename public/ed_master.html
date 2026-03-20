@@ -2737,9 +2737,9 @@
                             if (lessonTracking.pdfOpened) lessonProgress++;
                         }
                         
-                        if (lesson && lesson.exam) {
-                            totalActivities++;
-                            if (lessonTracking.examCompleted) lessonProgress++;
+                        if (lesson && lesson.exams && lesson.exams.length > 0) {
+                            totalActivities += lesson.exams.length;
+                            if (lessonTracking.examCompleted) lessonProgress += lesson.exams.length; // simplified
                         }
                         
                         if (totalActivities > 0 && lessonProgress < totalActivities) {
