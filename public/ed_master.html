@@ -1874,8 +1874,72 @@
     </div>
 
     <script>
-        window.showPage = function(pageId) {
+        // URL Routing
+        const pageToRoute = {
+            'mainPage': '',
+            'loginPage': 'login',
+            'adminPage': 'admin',
+            'profilePage': 'profile',
+            'notificationsPage': 'notifications',
+            'settingsPage': 'settings',
+            'enrolledPage': 'enrolled',
+            'favoritesPage': 'favorites',
+            'manageCoursesPage': 'manage'
+        };
+        const routeToPage = {};
+        for (const [page, route] of Object.entries(pageToRoute)) {
+            routeToPage[route] = page;
+        }
+
+        function updateURL(pageId, extraParams) {
+            const route = pageToRoute[pageId];
+            const params = new URLSearchParams();
+            if (route) params.set('page', route);
+            if (extraParams) {
+                for (const [k, v] of Object.entries(extraParams)) params.set(k, v);
+            }
+            const qs = params.toString();
+            const newUrl = window.location.pathname + (qs ? '?' + qs : '');
+            history.pushState({ pageId }, '', newUrl);
+        }
+
+        function handleURLRoute() {
+            const params = new URLSearchParams(window.location.search);
+            const page = params.get('page');
+            const courseId = params.get('id');
+            
+            if (page === 'admin') {
+                if (!currentUser || !currentUser.roles || !currentUser.roles.includes('admin')) {
+                    showToast(currentLanguage === 'ar' ? 'يجب تسجيل الدخول كمدير للوصول لهذه الصفحة' : 'You must be logged in as admin to access this page', 'error');
+                    showPage('loginPage', true);
+                    return;
+                }
+            }
+            
+            if (page === 'course' && courseId) {
+                showPage('mainPage', true);
+                setTimeout(() => showCourseDetails(courseId), 100);
+                return;
+            }
+            
+            const targetPage = routeToPage[page || ''] || 'mainPage';
+            showPage(targetPage, true);
+        }
+
+        window.addEventListener('popstate', function(e) {
+            handleURLRoute();
+        });
+
+        window.showPage = function(pageId, skipPushState) {
             try {
+                // Protect admin page
+                if (pageId === 'adminPage') {
+                    if (!currentUser || !currentUser.roles || !currentUser.roles.includes('admin')) {
+                        showToast(currentLanguage === 'ar' ? 'يجب تسجيل الدخول كمدير للوصول لهذه الصفحة' : 'Admin access required', 'error');
+                        return;
+                    }
+                }
+
                 document.querySelectorAll('.page').forEach(page => {
                     page.classList.remove('active');
                 });
@@ -1907,6 +1971,11 @@
 
                 updateBreadcrumb(pageId);
                 updateLanguageUI();
+                
+                if (!skipPushState) {
+                    updateURL(pageId);
+                }
+                
                 window.scrollTo(0, 0);
             } catch (error) {
                 console.error('Error in showPage:', error);
