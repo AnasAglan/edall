@@ -4944,7 +4944,12 @@
                 
                 const title = document.getElementById('lessonTitle').value.trim();
                 const content = document.getElementById('lessonContent').value.trim();
-                const video = document.getElementById('lessonVideo').value.trim();
+                const videoInputs = document.querySelectorAll('.lesson-video-input');
+                const videos = [];
+                videoInputs.forEach(input => {
+                    const val = input.value.trim();
+                    if (val) videos.push(val);
+                });
                 
                 if (!title) {
                     showToast(currentLanguage === 'ar' ? 'يرجى إدخال عنوان المحاضرة' : 'Please enter lesson title', 'warning');
@@ -4955,7 +4960,7 @@
                     id: generateId('lesson'),
                     title: title,
                     content: content,
-                    videos: video ? [video] : [],
+                    videos: videos,
                     files: [],
                     pdfName: "",
                     created: Date.now()
