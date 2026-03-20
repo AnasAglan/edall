@@ -2487,6 +2487,26 @@
             localStorage.setItem(LS_KEYS.LANGUAGE, lang);
             updateLanguageUI();
             hideLanguageMenu();
+            
+            // Re-render all visible content with new language
+            renderCoursesGrid();
+            updateUI();
+            updateQuickStats();
+            
+            // Re-render active page
+            const activePage = document.querySelector('.page.active');
+            if (activePage) {
+                const pageId = activePage.id;
+                if (pageId === 'adminPage') renderAdminPage();
+                updateBreadcrumb(pageId);
+            }
+            
+            // Update static text elements
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput) searchInput.placeholder = lang === 'ar' ? 'ابحث عن كورس...' : 'Search courses...';
+            const userSearchInput = document.getElementById('userSearchInput');
+            if (userSearchInput) userSearchInput.placeholder = lang === 'ar' ? 'ابحث عن مستخدم...' : 'Search users...';
+            
             showToast(lang === 'ar' ? 'تم تغيير اللغة إلى العربية' : 'Language changed to English', 'success');
         }
 
