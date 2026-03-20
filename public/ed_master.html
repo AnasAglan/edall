@@ -2054,10 +2054,17 @@
                 initializeFloatingBackButton();
                 initializeCompletionTracking();
                 updateUI();
-                renderCoursesGrid();
                 document.getElementById('yr').textContent = new Date().getFullYear();
-                updateBreadcrumb('mainPage');
                 initializeLanguage();
+                
+                // Handle URL routing on initial load
+                const params = new URLSearchParams(window.location.search);
+                if (params.has('page') || params.has('id')) {
+                    handleURLRoute();
+                } else {
+                    renderCoursesGrid();
+                    updateBreadcrumb('mainPage');
+                }
             } catch (error) {
                 console.error('Error initializing app:', error);
                 showToast('حدث خطأ في تهيئة التطبيق', 'error');
