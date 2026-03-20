@@ -4001,6 +4001,41 @@
             if (changed) saveAllData();
         }
 
+        function canAccessLesson(courseId, lessonIndex) {
+            if (lessonIndex === 0) return true;
+            if (!currentUser) return true;
+            
+            const course = courses.find(c => c.id === courseId);
+            if (!course || !course.lessons) return true;
+            
+            // Check if user is teacher/admin (they can always access)
+            if (canUserEditCourse(course)) return true;
+            
+            // Check all previous lessons for required_to_progress exams
+            for (let i = 0; i < lessonIndex; i++) {
+                const prevLesson = course.lessons[i];
+                if (!prevLesson || !prevLesson.exams) continue;
+                
+                const requiredExams = prevLesson.exams.filter(e => e.requiredToProgress);
+                if (requiredExams.length === 0) continue;
+                
+                const examResults = JSON.parse(localStorage.getItem(LS_KEYS.EXAM_RESULTS)) || {};
+                
+                for (let examIdx = 0; examIdx < prevLesson.exams.length; examIdx++) {
+                    const exam = prevLesson.exams[examIdx];
+                    if (!exam.requiredToProgress) continue;
+                    
+                    const resultKey = `${currentUser.id}_${courseId}_${prevLesson.id}_${examIdx}`;
+                    const result = examResults[resultKey];
+                    
+                    if (!result || !result.passed) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
         function showAddExamModal(courseId, lessonId) {
             try {
                 showModal(`
