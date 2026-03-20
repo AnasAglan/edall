@@ -3769,11 +3769,16 @@
                     course.lessons.forEach((lesson, index) => {
                         const lessonTracking = completionStatus.details[lesson.id] || {};
                         const lessonProgress = calculateLessonProgress(lessonTracking);
+                        const isLocked = !canAccessLesson(courseId, index);
                         
                         modalContent += `
-                            <div class="list-item" style="margin:10px 0;">
+                            <div class="list-item" style="margin:10px 0;${isLocked ? 'opacity:0.6;' : ''}">
                                 <div>
-                                    <strong>${currentLanguage === 'ar' ? 'المحاضرة' : 'Lesson'} ${index + 1}: ${lesson.title}</strong>
+                                    <strong>
+                                        ${isLocked ? '<i class="fas fa-lock lock-icon"></i>' : ''}
+                                        ${currentLanguage === 'ar' ? 'المحاضرة' : 'Lesson'} ${index + 1}: ${lesson.title}
+                                    </strong>
+                                    ${isLocked ? `<div style="color:var(--danger);font-size:0.85rem;"><i class="fas fa-exclamation-triangle"></i> ${currentLanguage === 'ar' ? 'يجب النجاح في امتحان المحاضرة السابقة أولاً' : 'Must pass previous lesson exam first'}</div>` : ''}
                                     <div style="color:var(--text-muted);font-size:0.9rem;">
                                         ${lesson.content || (currentLanguage === 'ar' ? 'لا يوجد وصف للمحاضرة' : 'No lesson description')}
                                     </div>
@@ -3784,8 +3789,8 @@
                                         ${currentLanguage === 'ar' ? 'التقدم:' : 'Progress:'} ${lessonProgress}%
                                     </div>
                                 </div>
-                                <button class="btn btn-sm" onclick="openLesson('${courseId}', '${lesson.id}')">
-                                    <i class="fas fa-play"></i> ${currentLanguage === 'ar' ? 'فتح' : 'Open'}
+                                <button class="btn btn-sm" onclick="openLesson('${courseId}', '${lesson.id}')" ${isLocked ? 'disabled' : ''}>
+                                    <i class="fas ${isLocked ? 'fa-lock' : 'fa-play'}"></i> ${isLocked ? (currentLanguage === 'ar' ? 'مقفل' : 'Locked') : (currentLanguage === 'ar' ? 'فتح' : 'Open')}
                                 </button>
                             </div>
                         `;
