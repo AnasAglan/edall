@@ -4660,14 +4660,15 @@
                     totalItems++;
                     if (lessonTracking.videoWatched) completedItems++;
                     
-                    // Count exam if lesson has one
-                    if (lesson.exam) {
-                        totalItems++;
-                        // Check if passed
+                    // Count exams if lesson has any
+                    if (lesson.exams && lesson.exams.length > 0) {
                         const examResults = JSON.parse(localStorage.getItem(LS_KEYS.EXAM_RESULTS)) || {};
-                        const resultKey = `${userId}_${courseId}_${lesson.id}`;
-                        const result = examResults[resultKey];
-                        if (result && result.passed) completedItems++;
+                        lesson.exams.forEach((exam, examIdx) => {
+                            totalItems++;
+                            const resultKey = `${userId}_${courseId}_${lesson.id}_${examIdx}`;
+                            const result = examResults[resultKey];
+                            if (result && result.passed) completedItems++;
+                        });
                     }
                     
                     // Count full lesson completion
