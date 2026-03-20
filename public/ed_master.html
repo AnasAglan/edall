@@ -1874,8 +1874,72 @@
     </div>
 
     <script>
-        window.showPage = function(pageId) {
+        // URL Routing
+        const pageToRoute = {
+            'mainPage': '',
+            'loginPage': 'login',
+            'adminPage': 'admin',
+            'profilePage': 'profile',
+            'notificationsPage': 'notifications',
+            'settingsPage': 'settings',
+            'enrolledPage': 'enrolled',
+            'favoritesPage': 'favorites',
+            'manageCoursesPage': 'manage'
+        };
+        const routeToPage = {};
+        for (const [page, route] of Object.entries(pageToRoute)) {
+            routeToPage[route] = page;
+        }
+
+        function updateURL(pageId, extraParams) {
+            const route = pageToRoute[pageId];
+            const params = new URLSearchParams();
+            if (route) params.set('page', route);
+            if (extraParams) {
+                for (const [k, v] of Object.entries(extraParams)) params.set(k, v);
+            }
+            const qs = params.toString();
+            const newUrl = window.location.pathname + (qs ? '?' + qs : '');
+            history.pushState({ pageId }, '', newUrl);
+        }
+
+        function handleURLRoute() {
+            const params = new URLSearchParams(window.location.search);
+            const page = params.get('page');
+            const courseId = params.get('id');
+            
+            if (page === 'admin') {
+                if (!currentUser || !currentUser.roles || !currentUser.roles.includes('admin')) {
+                    showToast(currentLanguage === 'ar' ? 'يجب تسجيل الدخول كمدير للوصول لهذه الصفحة' : 'You must be logged in as admin to access this page', 'error');
+                    showPage('loginPage', true);
+                    return;
+                }
+            }
+            
+            if (page === 'course' && courseId) {
+                showPage('mainPage', true);
+                setTimeout(() => showCourseDetails(courseId), 100);
+                return;
+            }
+            
+            const targetPage = routeToPage[page || ''] || 'mainPage';
+            showPage(targetPage, true);
+        }
+
+        window.addEventListener('popstate', function(e) {
+            handleURLRoute();
+        });
+
+        window.showPage = function(pageId, skipPushState) {
             try {
+                // Protect admin page
+                if (pageId === 'adminPage') {
+                    if (!currentUser || !currentUser.roles || !currentUser.roles.includes('admin')) {
+                        showToast(currentLanguage === 'ar' ? 'يجب تسجيل الدخول كمدير للوصول لهذه الصفحة' : 'Admin access required', 'error');
+                        return;
+                    }
+                }
+
                 document.querySelectorAll('.page').forEach(page => {
                     page.classList.remove('active');
                 });
@@ -1907,6 +1971,11 @@
 
                 updateBreadcrumb(pageId);
                 updateLanguageUI();
+                
+                if (!skipPushState) {
+                    updateURL(pageId);
+                }
+                
                 window.scrollTo(0, 0);
             } catch (error) {
                 console.error('Error in showPage:', error);
@@ -1985,10 +2054,17 @@
                 initializeFloatingBackButton();
                 initializeCompletionTracking();
                 updateUI();
-                renderCoursesGrid();
                 document.getElementById('yr').textContent = new Date().getFullYear();
-                updateBreadcrumb('mainPage');
                 initializeLanguage();
+                
+                // Handle URL routing on initial load
+                const params = new URLSearchParams(window.location.search);
+                if (params.has('page') || params.has('id')) {
+                    handleURLRoute();
+                } else {
+                    renderCoursesGrid();
+                    updateBreadcrumb('mainPage');
+                }
             } catch (error) {
                 console.error('Error initializing app:', error);
                 showToast('حدث خطأ في تهيئة التطبيق', 'error');
@@ -2442,7 +2518,108 @@
             }
         }
 
+        const i18n = {
+            ar: {
+                loginText: 'دخول / تسجيل',
+                profileText: 'الملف الشخصي',
+                notificationsText: 'الإشعارات',
+                myCoursesText: 'كورساتي',
+                favoritesText: 'المفضلة',
+                manageCoursesText: 'إدارة الكورسات',
+                settingsText: 'الإعدادات',
+                logoutText: 'تسجيل خروج',
+                adminText: 'لوحة الإدارة',
+                themeText: 'الوضع الليلي',
+                headerTitle: 'ED MASTER',
+                headerDesc: 'منصة تعليمية متطورة تجمع بين أحدث التقنيات وأفضل المحتويات التعليمية بتجربة مستخدم استثنائية',
+                searchPlaceholder: 'ابحث عن كورس، محتوى، أو مدرس...',
+                filterAll: 'جميع الكورسات',
+                filterEnrolled: 'الكورسات المنضمة',
+                filterFavorites: 'المفضلة',
+                filterCompleted: 'المكتملة',
+                statCompleted: 'الكورسات المكتملة',
+                statWatched: 'المحاضرات المشاهدة',
+                statExams: 'الامتحانات المكتملة',
+                statAvg: 'متوسط الدرجات',
+                loginPageTitle: 'تسجيل الدخول أو إنشاء حساب',
+                loginPageDesc: 'مرحبا بك في ED MASTER، سجل الدخول أو أنشئ حسابًا للبدء',
+                adminPageTitle: 'لوحة الإدارة',
+                adminPageDesc: 'إدارة المستخدمين والكورسات',
+                profilePageTitle: 'الملف الشخصي',
+                profilePageDesc: 'معلوماتك الشخصية وكورساتك',
+                notificationsPageTitle: 'الإشعارات',
+                notificationsPageDesc: 'جميع الإشعارات الخاصة بك',
+                settingsPageTitle: 'الإعدادات',
+                settingsPageDesc: 'تخصيص تجربتك في المنصة',
+                enrolledPageTitle: 'كورساتي',
+                enrolledPageDesc: 'جميع الكورسات التي انضممت إليها',
+                favoritesPageTitle: 'المفضلة',
+                favoritesPageDesc: 'الكورسات المفضلة لديك',
+                manageCoursesPageTitle: 'إدارة الكورسات',
+                manageCoursesPageDesc: 'إدارة الكورسات التي قمت بإنشائها',
+                footerText: 'منصة تعليمية متكاملة بالسلاسة والتركيز',
+                backText: 'العودة',
+                addNewCourseText: 'إضافة كورس جديد',
+                darkModeSettingText: 'الوضع الليلي',
+                darkModeDescText: 'تفعيل أو تعطيل الوضع الليلي',
+                backButtonSettingText: 'زر العودة العائم',
+                backButtonDescText: 'إظهار أو إخفاء زر العودة العائم',
+                resetDataText: 'مسح جميع البيانات',
+                languageText: 'العربية'
+            },
+            en: {
+                loginText: 'Login / Register',
+                profileText: 'Profile',
+                notificationsText: 'Notifications',
+                myCoursesText: 'My Courses',
+                favoritesText: 'Favorites',
+                manageCoursesText: 'Manage Courses',
+                settingsText: 'Settings',
+                logoutText: 'Logout',
+                adminText: 'Admin Panel',
+                themeText: 'Dark Mode',
+                headerTitle: 'ED MASTER',
+                headerDesc: 'An advanced educational platform combining the latest technology with the best educational content',
+                searchPlaceholder: 'Search for courses, content, or teachers...',
+                filterAll: 'All Courses',
+                filterEnrolled: 'Enrolled',
+                filterFavorites: 'Favorites',
+                filterCompleted: 'Completed',
+                statCompleted: 'Completed Courses',
+                statWatched: 'Watched Lessons',
+                statExams: 'Completed Exams',
+                statAvg: 'Average Score',
+                loginPageTitle: 'Login or Create Account',
+                loginPageDesc: 'Welcome to ED MASTER, login or create an account to get started',
+                adminPageTitle: 'Admin Panel',
+                adminPageDesc: 'Manage users and courses',
+                profilePageTitle: 'Profile',
+                profilePageDesc: 'Your personal info and courses',
+                notificationsPageTitle: 'Notifications',
+                notificationsPageDesc: 'All your notifications',
+                settingsPageTitle: 'Settings',
+                settingsPageDesc: 'Customize your platform experience',
+                enrolledPageTitle: 'My Courses',
+                enrolledPageDesc: 'All courses you have joined',
+                favoritesPageTitle: 'Favorites',
+                favoritesPageDesc: 'Your favorite courses',
+                manageCoursesPageTitle: 'Manage Courses',
+                manageCoursesPageDesc: 'Manage courses you have created',
+                footerText: 'A comprehensive educational platform with smoothness and focus',
+                backText: 'Back',
+                addNewCourseText: 'Add New Course',
+                darkModeSettingText: 'Dark Mode',
+                darkModeDescText: 'Enable or disable dark mode',
+                backButtonSettingText: 'Floating Back Button',
+                backButtonDescText: 'Show or hide the floating back button',
+                resetDataText: 'Reset All Data',
+                languageText: 'English'
+            }
+        };
+
         function updateLanguageUI() {
+            const t = i18n[currentLanguage] || i18n['ar'];
+            
             document.querySelectorAll('.language-option').forEach(opt => {
                 opt.classList.remove('active');
                 if (opt.dataset.lang === currentLanguage) {
@@ -2450,35 +2627,76 @@
                 }
             });
             
-            document.getElementById('languageText').textContent = currentLanguage === 'ar' ? 'العربية' : 'English';
             document.documentElement.dir = currentLanguage === 'ar' ? 'rtl' : 'ltr';
             document.documentElement.lang = currentLanguage;
             document.body.dir = currentLanguage === 'ar' ? 'rtl' : 'ltr';
             document.body.lang = currentLanguage;
-        }
 
-        function toggleUserMenu() {
-            const userMenu = document.getElementById('userMenu');
-            userMenu.classList.toggle('show');
-        }
-
-        function hideUserMenu() {
-            const userMenu = document.getElementById('userMenu');
-            if (userMenu) {
-                userMenu.classList.remove('show');
+            // Update all static text elements by ID
+            const idMap = {
+                'loginText': t.loginText,
+                'profileText': t.profileText,
+                'notificationsText': t.notificationsText,
+                'myCoursesText': t.myCoursesText,
+                'favoritesText': t.favoritesText,
+                'manageCoursesText': t.manageCoursesText,
+                'settingsText': t.settingsText,
+                'logoutText': t.logoutText,
+                'adminText': t.adminText,
+                'themeText': t.themeText,
+                'languageText': t.languageText,
+                'loginPageTitle': t.loginPageTitle,
+                'loginPageDesc': t.loginPageDesc,
+                'adminPageTitle': t.adminPageTitle,
+                'adminPageDesc': t.adminPageDesc,
+                'profilePageTitle': t.profilePageTitle,
+                'profilePageDesc': t.profilePageDesc,
+                'notificationsPageTitle': t.notificationsPageTitle,
+                'notificationsPageDesc': t.notificationsPageDesc,
+                'settingsPageTitle': t.settingsPageTitle,
+                'settingsPageDesc': t.settingsPageDesc,
+                'enrolledPageTitle': t.enrolledPageTitle,
+                'enrolledPageDesc': t.enrolledPageDesc,
+                'favoritesPageTitle': t.favoritesPageTitle,
+                'favoritesPageDesc': t.favoritesPageDesc,
+                'manageCoursesPageTitle': t.manageCoursesPageTitle,
+                'manageCoursesPageDesc': t.manageCoursesPageDesc,
+                'footerText': t.footerText,
+                'darkModeSettingText': t.darkModeSettingText,
+                'darkModeDescText': t.darkModeDescText,
+                'backButtonSettingText': t.backButtonSettingText,
+                'backButtonDescText': t.backButtonDescText,
+                'resetDataText': t.resetDataText,
+                'addNewCourseText': t.addNewCourseText,
+                'enrolledBackText': t.backText,
+                'favoritesBackText': t.backText,
+                'manageCoursesBackText': t.backText
+            };
+            
+            for (const [id, text] of Object.entries(idMap)) {
+                const el = document.getElementById(id);
+                if (el) el.textContent = text;
             }
-        }
-
-        function toggleLanguageMenu() {
-            const languageSelector = document.getElementById('languageSelector');
-            languageSelector.classList.toggle('show');
-        }
-
-        function hideLanguageMenu() {
-            const languageSelector = document.getElementById('languageSelector');
-            if (languageSelector) {
-                languageSelector.classList.remove('show');
-            }
+            
+            // Header texts
+            const headerTitle = document.querySelector('#mainPage .header-title');
+            if (headerTitle) headerTitle.textContent = t.headerTitle;
+            const headerDesc = document.querySelector('#mainPage .header-desc');
+            if (headerDesc) headerDesc.textContent = t.headerDesc;
+            
+            // Search
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput) searchInput.placeholder = t.searchPlaceholder;
+            
+            // Filter tabs
+            const filterTabs = document.querySelectorAll('#courseFilters .filter-tab');
+            const filterTexts = [t.filterAll, t.filterEnrolled, t.filterFavorites, t.filterCompleted];
+            filterTabs.forEach((tab, i) => { if (filterTexts[i]) tab.textContent = filterTexts[i]; });
+            
+            // Stat labels
+            const statLabels = document.querySelectorAll('#quickStats .stat-label');
+            const statTexts = [t.statCompleted, t.statWatched, t.statExams, t.statAvg];
+            statLabels.forEach((label, i) => { if (statTexts[i]) label.textContent = statTexts[i]; });
         }
 
         function handleLanguageChange(e) {
@@ -2498,14 +2716,14 @@
             if (activePage) {
                 const pageId = activePage.id;
                 if (pageId === 'adminPage') renderAdminPage();
+                else if (pageId === 'profilePage') renderProfilePage();
+                else if (pageId === 'notificationsPage') renderNotificationsPage();
+                else if (pageId === 'settingsPage') renderSettingsPage();
+                else if (pageId === 'enrolledPage') renderEnrolledCourses();
+                else if (pageId === 'favoritesPage') renderFavoriteCourses();
+                else if (pageId === 'manageCoursesPage') renderManageCoursesPage();
                 updateBreadcrumb(pageId);
             }
-            
-            // Update static text elements
-            const searchInput = document.getElementById('searchInput');
-            if (searchInput) searchInput.placeholder = lang === 'ar' ? 'ابحث عن كورس...' : 'Search courses...';
-            const userSearchInput = document.getElementById('userSearchInput');
-            if (userSearchInput) userSearchInput.placeholder = lang === 'ar' ? 'ابحث عن مستخدم...' : 'Search users...';
             
             showToast(lang === 'ar' ? 'تم تغيير اللغة إلى العربية' : 'Language changed to English', 'success');
         }
@@ -3583,6 +3801,9 @@
                     return;
                 }
                 
+                // Update URL with course ID
+                updateURL('mainPage', { page: 'course', id: courseId });
+                
                 const isEnrolled = isUserEnrolled(courseId);
                 const completionStatus = getCourseCompletionStatus(courseId);
                 
@@ -3627,11 +3848,16 @@
                     course.lessons.forEach((lesson, index) => {
                         const lessonTracking = completionStatus.details[lesson.id] || {};
                         const lessonProgress = calculateLessonProgress(lessonTracking);
+                        const isLocked = !canAccessLesson(courseId, index);
                         
                         modalContent += `
-                            <div class="list-item" style="margin:10px 0;">
+                            <div class="list-item" style="margin:10px 0;${isLocked ? 'opacity:0.6;' : ''}">
                                 <div>
-                                    <strong>${currentLanguage === 'ar' ? 'المحاضرة' : 'Lesson'} ${index + 1}: ${lesson.title}</strong>
+                                    <strong>
+                                        ${isLocked ? '<i class="fas fa-lock lock-icon"></i>' : ''}
+                                        ${currentLanguage === 'ar' ? 'المحاضرة' : 'Lesson'} ${index + 1}: ${lesson.title}
+                                    </strong>
+                                    ${isLocked ? `<div style="color:var(--danger);font-size:0.85rem;"><i class="fas fa-exclamation-triangle"></i> ${currentLanguage === 'ar' ? 'يجب النجاح في امتحان المحاضرة السابقة أولاً' : 'Must pass previous lesson exam first'}</div>` : ''}
                                     <div style="color:var(--text-muted);font-size:0.9rem;">
                                         ${lesson.content || (currentLanguage === 'ar' ? 'لا يوجد وصف للمحاضرة' : 'No lesson description')}
                                     </div>
@@ -3642,8 +3868,8 @@
                                         ${currentLanguage === 'ar' ? 'التقدم:' : 'Progress:'} ${lessonProgress}%
                                     </div>
                                 </div>
-                                <button class="btn btn-sm" onclick="openLesson('${courseId}', '${lesson.id}')">
-                                    <i class="fas fa-play"></i> ${currentLanguage === 'ar' ? 'فتح' : 'Open'}
+                                <button class="btn btn-sm" onclick="openLesson('${courseId}', '${lesson.id}')" ${isLocked ? 'disabled' : ''}>
+                                    <i class="fas ${isLocked ? 'fa-lock' : 'fa-play'}"></i> ${isLocked ? (currentLanguage === 'ar' ? 'مقفل' : 'Locked') : (currentLanguage === 'ar' ? 'فتح' : 'Open')}
                                 </button>
                             </div>
                         `;
@@ -3683,6 +3909,13 @@
                 
                 if (!course || !lesson) {
                     showToast(currentLanguage === 'ar' ? 'المحاضرة غير موجودة' : 'Lesson not found', 'error');
+                    return;
+                }
+                
+                // Check if lesson is locked
+                const lessonIndex = course.lessons.findIndex(l => l.id === lessonId);
+                if (!canAccessLesson(courseId, lessonIndex)) {
+                    showToast(currentLanguage === 'ar' ? 'يجب النجاح في امتحان المحاضرة السابقة أولاً' : 'You must pass the previous lesson exam first', 'warning');
                     return;
                 }
                 
@@ -3859,6 +4092,41 @@
             if (changed) saveAllData();
         }
 
+        function canAccessLesson(courseId, lessonIndex) {
+            if (lessonIndex === 0) return true;
+            if (!currentUser) return true;
+            
+            const course = courses.find(c => c.id === courseId);
+            if (!course || !course.lessons) return true;
+            
+            // Check if user is teacher/admin (they can always access)
+            if (canUserEditCourse(course)) return true;
+            
+            // Check all previous lessons for required_to_progress exams
+            for (let i = 0; i < lessonIndex; i++) {
+                const prevLesson = course.lessons[i];
+                if (!prevLesson || !prevLesson.exams) continue;
+                
+                const requiredExams = prevLesson.exams.filter(e => e.requiredToProgress);
+                if (requiredExams.length === 0) continue;
+                
+                const examResults = JSON.parse(localStorage.getItem(LS_KEYS.EXAM_RESULTS)) || {};
+                
+                for (let examIdx = 0; examIdx < prevLesson.exams.length; examIdx++) {
+                    const exam = prevLesson.exams[examIdx];
+                    if (!exam.requiredToProgress) continue;
+                    
+                    const resultKey = `${currentUser.id}_${courseId}_${prevLesson.id}_${examIdx}`;
+                    const result = examResults[resultKey];
+                    
+                    if (!result || !result.passed) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
         function showAddExamModal(courseId, lessonId) {
             try {
                 showModal(`
@@ -3885,6 +4153,13 @@
                         <label style="font-weight:bold;display:block;margin-bottom:5px;">
                             <input type="checkbox" id="examAllowRetake" checked style="width:auto;margin-bottom:0;margin-left:8px;margin-right:8px;">
                             ${currentLanguage === 'ar' ? 'السماح بإعادة الامتحان' : 'Allow Retake'}
+                        </label>
+                    </div>
+                    
+                    <div style="margin-bottom:15px;">
+                        <label style="font-weight:bold;display:block;margin-bottom:5px;">
+                            <input type="checkbox" id="examRequiredToProgress" style="width:auto;margin-bottom:0;margin-left:8px;margin-right:8px;">
+                            ${currentLanguage === 'ar' ? 'يجب النجاح في الامتحان للدخول على المحاضرات التالية' : 'Must pass this exam to access next lessons'}
                         </label>
                     </div>
                     
@@ -4051,6 +4326,7 @@
                 const timeLimitVal = document.getElementById('examTimeLimit').value.trim();
                 const timeLimit = timeLimitVal ? parseInt(timeLimitVal) : null;
                 const allowRetake = document.getElementById('examAllowRetake').checked;
+                const requiredToProgress = document.getElementById('examRequiredToProgress') ? document.getElementById('examRequiredToProgress').checked : false;
                 
                 const examData = {
                     title: examTitle,
@@ -4063,6 +4339,7 @@
                     passingGrade: passingGrade,
                     timeLimit: timeLimit,
                     allowRetake: allowRetake,
+                    requiredToProgress: requiredToProgress,
                     createdAt: Date.now()
                 };
                 
@@ -4126,6 +4403,13 @@
                         <label style="font-weight:bold;display:block;margin-bottom:5px;">
                             <input type="checkbox" id="examAllowRetake" ${exam.allowRetake ? 'checked' : ''} style="width:auto;margin-bottom:0;margin-left:8px;margin-right:8px;">
                             ${currentLanguage === 'ar' ? 'السماح بإعادة الامتحان' : 'Allow Retake'}
+                        </label>
+                    </div>
+                    
+                    <div style="margin-bottom:15px;">
+                        <label style="font-weight:bold;display:block;margin-bottom:5px;">
+                            <input type="checkbox" id="examRequiredToProgress" ${exam.requiredToProgress ? 'checked' : ''} style="width:auto;margin-bottom:0;margin-left:8px;margin-right:8px;">
+                            ${currentLanguage === 'ar' ? 'يجب النجاح في الامتحان للدخول على المحاضرات التالية' : 'Must pass this exam to access next lessons'}
                         </label>
                     </div>
                     
@@ -5347,6 +5631,7 @@
 
         // Window exports
         window.showCourseDetails = showCourseDetails;
+        window.canAccessLesson = canAccessLesson;
         window.addLessonToCourse = addLessonToCourse;
         window.saveLesson = saveLesson;
         window.deleteCourse = deleteCourse;
@@ -5394,6 +5679,8 @@
         window.showCorrectionPanel = showCorrectionPanel;
         window.saveEssayGrades = saveEssayGrades;
         window.getPendingEssayCount = getPendingEssayCount;
+        window.addVideoInput = addVideoInput;
+        window.handleURLRoute = handleURLRoute;
 
     </script>
 </body>
