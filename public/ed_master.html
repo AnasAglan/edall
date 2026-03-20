@@ -3801,6 +3801,9 @@
                     return;
                 }
                 
+                // Update URL with course ID
+                updateURL('mainPage', { page: 'course', id: courseId });
+                
                 const isEnrolled = isUserEnrolled(courseId);
                 const completionStatus = getCourseCompletionStatus(courseId);
                 
