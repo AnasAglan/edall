@@ -3731,20 +3731,26 @@
                     `;
                 }
                 
-                // Exam section
-                if (lesson.exam) {
-                    const examResults = JSON.parse(localStorage.getItem(LS_KEYS.EXAM_RESULTS)) || {};
-                    const userExamKey = currentUser ? `${currentUser.id}_${courseId}_${lessonId}` : null;
-                    const previousResult = userExamKey ? examResults[userExamKey] : null;
+                // Exams section (multiple exams)
+                const lessonExams = lesson.exams || [];
+                const canEdit = canUserEditCourse(course);
+                
+                if (lessonExams.length > 0) {
+                    modalContent += `<div style="margin-bottom:20px;">
+                        <h4><i class="fas fa-clipboard-list"></i> ${currentLanguage === 'ar' ? 'امتحانات المحاضرة' : 'Lesson Exams'} (${lessonExams.length})</h4>`;
                     
-                    modalContent += `
-                        <div style="margin-bottom:20px;">
-                            <h4><i class="fas fa-clipboard-list"></i> ${currentLanguage === 'ar' ? 'امتحان المحاضرة' : 'Lesson Exam'}</h4>
-                            <div style="background:var(--card-light);border-radius:var(--radius);padding:15px;margin:10px 0;">
+                    lessonExams.forEach((exam, examIndex) => {
+                        const examResults = JSON.parse(localStorage.getItem(LS_KEYS.EXAM_RESULTS)) || {};
+                        const userExamKey = currentUser ? `${currentUser.id}_${courseId}_${lessonId}_${examIndex}` : null;
+                        const previousResult = userExamKey ? examResults[userExamKey] : null;
+                        
+                        modalContent += `
+                            <div style="background:var(--card-light);border-radius:var(--radius);padding:15px;margin:10px 0;border-right:4px solid var(--primary);">
+                                <div style="font-weight:bold;margin-bottom:8px;">${exam.title || ((currentLanguage === 'ar' ? 'امتحان ' : 'Exam ') + (examIndex + 1))}</div>
                                 <div style="margin-bottom:10px;">
-                                    <span style="color:var(--text-muted);">${currentLanguage === 'ar' ? 'عدد الأسئلة:' : 'Questions:'} ${lesson.exam.questions.length}</span>
-                                    ${lesson.exam.timeLimit ? `<span style="color:var(--text-muted);margin-right:15px;margin-left:15px;"><i class="fas fa-clock"></i> ${lesson.exam.timeLimit} ${currentLanguage === 'ar' ? 'دقيقة' : 'min'}</span>` : ''}
-                                    <span style="color:var(--text-muted);margin-right:15px;margin-left:15px;">${currentLanguage === 'ar' ? 'درجة النجاح:' : 'Pass:'} ${lesson.exam.passingGrade || 50}%</span>
+                                    <span style="color:var(--text-muted);">${currentLanguage === 'ar' ? 'عدد الأسئلة:' : 'Questions:'} ${exam.questions.length}</span>
+                                    ${exam.timeLimit ? `<span style="color:var(--text-muted);margin-right:15px;margin-left:15px;"><i class="fas fa-clock"></i> ${exam.timeLimit} ${currentLanguage === 'ar' ? 'دقيقة' : 'min'}</span>` : ''}
+                                    <span style="color:var(--text-muted);margin-right:15px;margin-left:15px;">${currentLanguage === 'ar' ? 'درجة النجاح:' : 'Pass:'} ${exam.passingGrade || 50}%</span>
                                 </div>
                                 ${previousResult ? `
                                     <div class="exam-result ${previousResult.passed ? 'success' : 'error'}" style="margin-bottom:10px;">
@@ -3753,12 +3759,12 @@
                                             (currentLanguage === 'ar' ? '❌ راسب' : '❌ Failed')
                                         } - ${previousResult.score}%
                                         ${previousResult.hasEssay && !previousResult.essayGraded ? 
-                                            `<div style="font-size:0.9rem;margin-top:5px;color:var(--warning);">${currentLanguage === 'ar' ? '⏳ بانتظار تصحيح الأسئلة المقالية' : '⏳ Waiting for essay grading'}</div>` : ''}
+                                            '<div style="font-size:0.9rem;margin-top:5px;color:var(--warning);">' + (currentLanguage === 'ar' ? '⏳ بانتظار تصحيح الأسئلة المقالية' : '⏳ Waiting for essay grading') + '</div>' : ''}
                                     </div>
                                 ` : ''}
                                 <div style="display:flex;gap:10px;flex-wrap:wrap;">
-                                    ${!previousResult || lesson.exam.allowRetake ? `
-                                        <button class="btn btn-success btn-sm" onclick="takeExam('${courseId}', '${lessonId}')">
+                                    ${!previousResult || exam.allowRetake ? `
+                                        <button class="btn btn-success btn-sm" onclick="takeExam('${courseId}', '${lessonId}', ${examIndex})">
                                             <i class="fas fa-play"></i> ${currentLanguage === 'ar' ? 'بدء الامتحان' : 'Start Exam'}
                                         </button>
                                     ` : `
@@ -3766,40 +3772,32 @@
                                             <i class="fas fa-ban"></i> ${currentLanguage === 'ar' ? 'لا يُسمح بالإعادة' : 'No Retake Allowed'}
                                         </button>
                                     `}
-                    `;
-                    
-                    // Show Edit Exam and Correction buttons only for course owner or admin
-                    const canEdit = canUserEditCourse(course);
-                    if (canEdit) {
-                        const pendingCount = getPendingEssayCount(courseId, lessonId);
-                        modalContent += `
-                                    <button class="btn btn-sm" style="background:var(--warning);color:white;" onclick="showEditExamModal('${courseId}', '${lessonId}')">
-                                        <i class="fas fa-edit"></i> ${currentLanguage === 'ar' ? 'تعديل الامتحان' : 'Edit Exam'}
-                                    </button>
-                                    <button class="btn btn-sm" style="background:var(--warning);color:white;position:relative;" onclick="showCorrectionPanel('${courseId}', '${lessonId}')">
-                                        <i class="fas fa-check-double"></i> ${currentLanguage === 'ar' ? 'تصحيح' : 'Grade'}
-                                        ${pendingCount > 0 ? `<span style="position:absolute;top:-6px;right:-6px;background:var(--danger);color:white;border-radius:50%;width:20px;height:20px;font-size:0.75rem;display:flex;align-items:center;justify-content:center;">${pendingCount}</span>` : ''}
-                                    </button>
-                        `;
-                    }
-                    
-                    modalContent += `
+                                    ${canEdit ? `
+                                        <button class="btn btn-sm" style="background:var(--warning);color:white;" onclick="showEditExamModal('${courseId}', '${lessonId}', ${examIndex})">
+                                            <i class="fas fa-edit"></i> ${currentLanguage === 'ar' ? 'تعديل' : 'Edit'}
+                                        </button>
+                                        <button class="btn btn-sm" style="background:var(--warning);color:white;position:relative;" onclick="showCorrectionPanel('${courseId}', '${lessonId}', ${examIndex})">
+                                            <i class="fas fa-check-double"></i> ${currentLanguage === 'ar' ? 'تصحيح' : 'Grade'}
+                                            ${(() => { const pc = getPendingEssayCount(courseId, lessonId, examIndex); return pc > 0 ? '<span style="position:absolute;top:-6px;right:-6px;background:var(--danger);color:white;border-radius:50%;width:20px;height:20px;font-size:0.75rem;display:flex;align-items:center;justify-content:center;">' + pc + '</span>' : ''; })()}
+                                        </button>
+                                    ` : ''}
                                 </div>
                             </div>
+                        `;
+                    });
+                    
+                    modalContent += `</div>`;
+                }
+                
+                // Always show "Add Exam" for teacher/admin
+                if (canEdit) {
+                    modalContent += `
+                        <div style="margin-bottom:20px;">
+                            <button class="btn btn-accent" onclick="showAddExamModal('${courseId}', '${lessonId}')">
+                                <i class="fas fa-plus-circle"></i> ${currentLanguage === 'ar' ? 'إضافة امتحان' : 'Add Exam'}
+                            </button>
                         </div>
                     `;
-                } else {
-                    // No exam yet - show "Add Exam" button for teacher/admin
-                    const canEdit = canUserEditCourse(course);
-                    if (canEdit) {
-                        modalContent += `
-                            <div style="margin-bottom:20px;">
-                                <button class="btn btn-accent" onclick="showAddExamModal('${courseId}', '${lessonId}')">
-                                    <i class="fas fa-plus-circle"></i> ${currentLanguage === 'ar' ? 'إضافة امتحان' : 'Add Exam'}
-                                </button>
-                            </div>
-                        `;
-                    }
                 }
                 
                 modalContent += `
