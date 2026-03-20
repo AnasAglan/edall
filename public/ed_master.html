@@ -3833,6 +3833,13 @@
                     return;
                 }
                 
+                // Check if lesson is locked
+                const lessonIndex = course.lessons.findIndex(l => l.id === lessonId);
+                if (!canAccessLesson(courseId, lessonIndex)) {
+                    showToast(currentLanguage === 'ar' ? 'يجب النجاح في امتحان المحاضرة السابقة أولاً' : 'You must pass the previous lesson exam first', 'warning');
+                    return;
+                }
+                
                 trackLessonProgress(courseId, lessonId, 'opened', true);
                 
                 let modalContent = `
