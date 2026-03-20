@@ -2442,7 +2442,108 @@
             }
         }
 
+        const i18n = {
+            ar: {
+                loginText: 'دخول / تسجيل',
+                profileText: 'الملف الشخصي',
+                notificationsText: 'الإشعارات',
+                myCoursesText: 'كورساتي',
+                favoritesText: 'المفضلة',
+                manageCoursesText: 'إدارة الكورسات',
+                settingsText: 'الإعدادات',
+                logoutText: 'تسجيل خروج',
+                adminText: 'لوحة الإدارة',
+                themeText: 'الوضع الليلي',
+                headerTitle: 'ED MASTER',
+                headerDesc: 'منصة تعليمية متطورة تجمع بين أحدث التقنيات وأفضل المحتويات التعليمية بتجربة مستخدم استثنائية',
+                searchPlaceholder: 'ابحث عن كورس، محتوى، أو مدرس...',
+                filterAll: 'جميع الكورسات',
+                filterEnrolled: 'الكورسات المنضمة',
+                filterFavorites: 'المفضلة',
+                filterCompleted: 'المكتملة',
+                statCompleted: 'الكورسات المكتملة',
+                statWatched: 'المحاضرات المشاهدة',
+                statExams: 'الامتحانات المكتملة',
+                statAvg: 'متوسط الدرجات',
+                loginPageTitle: 'تسجيل الدخول أو إنشاء حساب',
+                loginPageDesc: 'مرحبا بك في ED MASTER، سجل الدخول أو أنشئ حسابًا للبدء',
+                adminPageTitle: 'لوحة الإدارة',
+                adminPageDesc: 'إدارة المستخدمين والكورسات',
+                profilePageTitle: 'الملف الشخصي',
+                profilePageDesc: 'معلوماتك الشخصية وكورساتك',
+                notificationsPageTitle: 'الإشعارات',
+                notificationsPageDesc: 'جميع الإشعارات الخاصة بك',
+                settingsPageTitle: 'الإعدادات',
+                settingsPageDesc: 'تخصيص تجربتك في المنصة',
+                enrolledPageTitle: 'كورساتي',
+                enrolledPageDesc: 'جميع الكورسات التي انضممت إليها',
+                favoritesPageTitle: 'المفضلة',
+                favoritesPageDesc: 'الكورسات المفضلة لديك',
+                manageCoursesPageTitle: 'إدارة الكورسات',
+                manageCoursesPageDesc: 'إدارة الكورسات التي قمت بإنشائها',
+                footerText: 'منصة تعليمية متكاملة بالسلاسة والتركيز',
+                backText: 'العودة',
+                addNewCourseText: 'إضافة كورس جديد',
+                darkModeSettingText: 'الوضع الليلي',
+                darkModeDescText: 'تفعيل أو تعطيل الوضع الليلي',
+                backButtonSettingText: 'زر العودة العائم',
+                backButtonDescText: 'إظهار أو إخفاء زر العودة العائم',
+                resetDataText: 'مسح جميع البيانات',
+                languageText: 'العربية'
+            },
+            en: {
+                loginText: 'Login / Register',
+                profileText: 'Profile',
+                notificationsText: 'Notifications',
+                myCoursesText: 'My Courses',
+                favoritesText: 'Favorites',
+                manageCoursesText: 'Manage Courses',
+                settingsText: 'Settings',
+                logoutText: 'Logout',
+                adminText: 'Admin Panel',
+                themeText: 'Dark Mode',
+                headerTitle: 'ED MASTER',
+                headerDesc: 'An advanced educational platform combining the latest technology with the best educational content',
+                searchPlaceholder: 'Search for courses, content, or teachers...',
+                filterAll: 'All Courses',
+                filterEnrolled: 'Enrolled',
+                filterFavorites: 'Favorites',
+                filterCompleted: 'Completed',
+                statCompleted: 'Completed Courses',
+                statWatched: 'Watched Lessons',
+                statExams: 'Completed Exams',
+                statAvg: 'Average Score',
+                loginPageTitle: 'Login or Create Account',
+                loginPageDesc: 'Welcome to ED MASTER, login or create an account to get started',
+                adminPageTitle: 'Admin Panel',
+                adminPageDesc: 'Manage users and courses',
+                profilePageTitle: 'Profile',
+                profilePageDesc: 'Your personal info and courses',
+                notificationsPageTitle: 'Notifications',
+                notificationsPageDesc: 'All your notifications',
+                settingsPageTitle: 'Settings',
+                settingsPageDesc: 'Customize your platform experience',
+                enrolledPageTitle: 'My Courses',
+                enrolledPageDesc: 'All courses you have joined',
+                favoritesPageTitle: 'Favorites',
+                favoritesPageDesc: 'Your favorite courses',
+                manageCoursesPageTitle: 'Manage Courses',
+                manageCoursesPageDesc: 'Manage courses you have created',
+                footerText: 'A comprehensive educational platform with smoothness and focus',
+                backText: 'Back',
+                addNewCourseText: 'Add New Course',
+                darkModeSettingText: 'Dark Mode',
+                darkModeDescText: 'Enable or disable dark mode',
+                backButtonSettingText: 'Floating Back Button',
+                backButtonDescText: 'Show or hide the floating back button',
+                resetDataText: 'Reset All Data',
+                languageText: 'English'
+            }
+        };
+
         function updateLanguageUI() {
+            const t = i18n[currentLanguage] || i18n['ar'];
+            
             document.querySelectorAll('.language-option').forEach(opt => {
                 opt.classList.remove('active');
                 if (opt.dataset.lang === currentLanguage) {
@@ -2450,35 +2551,76 @@
                 }
             });
             
-            document.getElementById('languageText').textContent = currentLanguage === 'ar' ? 'العربية' : 'English';
             document.documentElement.dir = currentLanguage === 'ar' ? 'rtl' : 'ltr';
             document.documentElement.lang = currentLanguage;
             document.body.dir = currentLanguage === 'ar' ? 'rtl' : 'ltr';
             document.body.lang = currentLanguage;
-        }
 
-        function toggleUserMenu() {
-            const userMenu = document.getElementById('userMenu');
-            userMenu.classList.toggle('show');
-        }
-
-        function hideUserMenu() {
-            const userMenu = document.getElementById('userMenu');
-            if (userMenu) {
-                userMenu.classList.remove('show');
+            // Update all static text elements by ID
+            const idMap = {
+                'loginText': t.loginText,
+                'profileText': t.profileText,
+                'notificationsText': t.notificationsText,
+                'myCoursesText': t.myCoursesText,
+                'favoritesText': t.favoritesText,
+                'manageCoursesText': t.manageCoursesText,
+                'settingsText': t.settingsText,
+                'logoutText': t.logoutText,
+                'adminText': t.adminText,
+                'themeText': t.themeText,
+                'languageText': t.languageText,
+                'loginPageTitle': t.loginPageTitle,
+                'loginPageDesc': t.loginPageDesc,
+                'adminPageTitle': t.adminPageTitle,
+                'adminPageDesc': t.adminPageDesc,
+                'profilePageTitle': t.profilePageTitle,
+                'profilePageDesc': t.profilePageDesc,
+                'notificationsPageTitle': t.notificationsPageTitle,
+                'notificationsPageDesc': t.notificationsPageDesc,
+                'settingsPageTitle': t.settingsPageTitle,
+                'settingsPageDesc': t.settingsPageDesc,
+                'enrolledPageTitle': t.enrolledPageTitle,
+                'enrolledPageDesc': t.enrolledPageDesc,
+                'favoritesPageTitle': t.favoritesPageTitle,
+                'favoritesPageDesc': t.favoritesPageDesc,
+                'manageCoursesPageTitle': t.manageCoursesPageTitle,
+                'manageCoursesPageDesc': t.manageCoursesPageDesc,
+                'footerText': t.footerText,
+                'darkModeSettingText': t.darkModeSettingText,
+                'darkModeDescText': t.darkModeDescText,
+                'backButtonSettingText': t.backButtonSettingText,
+                'backButtonDescText': t.backButtonDescText,
+                'resetDataText': t.resetDataText,
+                'addNewCourseText': t.addNewCourseText,
+                'enrolledBackText': t.backText,
+                'favoritesBackText': t.backText,
+                'manageCoursesBackText': t.backText
+            };
+            
+            for (const [id, text] of Object.entries(idMap)) {
+                const el = document.getElementById(id);
+                if (el) el.textContent = text;
             }
-        }
-
-        function toggleLanguageMenu() {
-            const languageSelector = document.getElementById('languageSelector');
-            languageSelector.classList.toggle('show');
-        }
-
-        function hideLanguageMenu() {
-            const languageSelector = document.getElementById('languageSelector');
-            if (languageSelector) {
-                languageSelector.classList.remove('show');
-            }
+            
+            // Header texts
+            const headerTitle = document.querySelector('#mainPage .header-title');
+            if (headerTitle) headerTitle.textContent = t.headerTitle;
+            const headerDesc = document.querySelector('#mainPage .header-desc');
+            if (headerDesc) headerDesc.textContent = t.headerDesc;
+            
+            // Search
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput) searchInput.placeholder = t.searchPlaceholder;
+            
+            // Filter tabs
+            const filterTabs = document.querySelectorAll('#courseFilters .filter-tab');
+            const filterTexts = [t.filterAll, t.filterEnrolled, t.filterFavorites, t.filterCompleted];
+            filterTabs.forEach((tab, i) => { if (filterTexts[i]) tab.textContent = filterTexts[i]; });
+            
+            // Stat labels
+            const statLabels = document.querySelectorAll('#quickStats .stat-label');
+            const statTexts = [t.statCompleted, t.statWatched, t.statExams, t.statAvg];
+            statLabels.forEach((label, i) => { if (statTexts[i]) label.textContent = statTexts[i]; });
         }
 
         function handleLanguageChange(e) {
@@ -2498,14 +2640,14 @@
             if (activePage) {
                 const pageId = activePage.id;
                 if (pageId === 'adminPage') renderAdminPage();
+                else if (pageId === 'profilePage') renderProfilePage();
+                else if (pageId === 'notificationsPage') renderNotificationsPage();
+                else if (pageId === 'settingsPage') renderSettingsPage();
+                else if (pageId === 'enrolledPage') renderEnrolledCourses();
+                else if (pageId === 'favoritesPage') renderFavoriteCourses();
+                else if (pageId === 'manageCoursesPage') renderManageCoursesPage();
                 updateBreadcrumb(pageId);
             }
-            
-            // Update static text elements
-            const searchInput = document.getElementById('searchInput');
-            if (searchInput) searchInput.placeholder = lang === 'ar' ? 'ابحث عن كورس...' : 'Search courses...';
-            const userSearchInput = document.getElementById('userSearchInput');
-            if (userSearchInput) userSearchInput.placeholder = lang === 'ar' ? 'ابحث عن مستخدم...' : 'Search users...';
             
             showToast(lang === 'ar' ? 'تم تغيير اللغة إلى العربية' : 'Language changed to English', 'success');
         }
