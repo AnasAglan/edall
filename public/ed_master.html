@@ -4894,7 +4894,17 @@
                     <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">${currentLanguage === 'ar' ? 'إضافة محاضرة جديدة' : 'Add New Lesson'}</div>
                     <input id="lessonTitle" placeholder="${currentLanguage === 'ar' ? 'عنوان المحاضرة' : 'Lesson title'}">
                     <textarea id="lessonContent" rows="3" placeholder="${currentLanguage === 'ar' ? 'محتوى المحاضرة' : 'Lesson content'}"></textarea>
-                    <input id="lessonVideo" placeholder="${currentLanguage === 'ar' ? 'رابط فيديو YouTube (اختياري)' : 'YouTube video URL (optional)'}">
+                    
+                    <div style="font-weight:bold;margin:10px 0 5px;">${currentLanguage === 'ar' ? 'روابط الفيديو:' : 'Video URLs:'}</div>
+                    <div id="lessonVideosContainer">
+                        <div class="video-input-row" style="display:flex;gap:8px;margin-bottom:8px;">
+                            <input class="lesson-video-input" placeholder="${currentLanguage === 'ar' ? 'رابط فيديو YouTube' : 'YouTube video URL'}" style="flex:1;">
+                        </div>
+                    </div>
+                    <button class="btn btn-sm btn-outline" onclick="addVideoInput()" style="margin-bottom:15px;">
+                        <i class="fas fa-plus"></i> ${currentLanguage === 'ar' ? 'إضافة فيديو آخر' : 'Add Another Video'}
+                    </button>
+                    
                     <div style="display:flex;gap:10px;margin-top:20px;">
                         <button class="btn" onclick="saveLesson('${courseId}')">
                             <i class="fas fa-save"></i>
@@ -4910,6 +4920,18 @@
                 console.error('Error adding lesson to course:', error);
                 showToast('حدث خطأ في إضافة المحاضرة', 'error');
             }
+        }
+
+        function addVideoInput() {
+            const container = document.getElementById('lessonVideosContainer');
+            const row = document.createElement('div');
+            row.className = 'video-input-row';
+            row.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;';
+            row.innerHTML = `
+                <input class="lesson-video-input" placeholder="${currentLanguage === 'ar' ? 'رابط فيديو YouTube' : 'YouTube video URL'}" style="flex:1;">
+                <button onclick="this.parentElement.remove()" style="background:var(--danger);color:white;border:none;border-radius:var(--radius-sm);width:36px;height:36px;cursor:pointer;font-size:1rem;">✕</button>
+            `;
+            container.appendChild(row);
         }
 
         function saveLesson(courseId) {
