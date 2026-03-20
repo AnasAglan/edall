@@ -4200,6 +4200,7 @@
                 const timeLimitVal = document.getElementById('examTimeLimit').value.trim();
                 const timeLimit = timeLimitVal ? parseInt(timeLimitVal) : null;
                 const allowRetake = document.getElementById('examAllowRetake').checked;
+                const requiredToProgress = document.getElementById('examRequiredToProgress') ? document.getElementById('examRequiredToProgress').checked : false;
                 
                 const examData = {
                     title: examTitle,
@@ -4212,6 +4213,7 @@
                     passingGrade: passingGrade,
                     timeLimit: timeLimit,
                     allowRetake: allowRetake,
+                    requiredToProgress: requiredToProgress,
                     createdAt: Date.now()
                 };
                 
