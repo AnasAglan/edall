@@ -5140,23 +5140,32 @@
             }
         }
 
-        function trackLessonProgress(courseId, lessonId, action, value) {
+        async function trackLessonProgress(courseId, lessonId, action, value) {
             try {
                 if (!currentUser) return;
                 
                 const tracking = JSON.parse(localStorage.getItem(LS_KEYS.COMPLETION_TRACKING)) || {};
-                if (!tracking[currentUser.id]) {
-                    tracking[currentUser.id] = {};
-                }
-                if (!tracking[currentUser.id][courseId]) {
-                    tracking[currentUser.id][courseId] = {};
-                }
-                if (!tracking[currentUser.id][courseId][lessonId]) {
-                    tracking[currentUser.id][courseId][lessonId] = {};
-                }
+                if (!tracking[currentUser.id]) tracking[currentUser.id] = {};
+                if (!tracking[currentUser.id][courseId]) tracking[currentUser.id][courseId] = {};
+                if (!tracking[currentUser.id][courseId][lessonId]) tracking[currentUser.id][courseId][lessonId] = {};
                 
                 tracking[currentUser.id][courseId][lessonId][action] = value;
                 localStorage.setItem(LS_KEYS.COMPLETION_TRACKING, JSON.stringify(tracking));
+                
+                // Sync to Supabase
+                const updateData = {};
+                if (action === 'videoWatched') updateData.video_watched = value;
+                else if (action === 'pdfOpened') updateData.pdf_opened = value;
+                else if (action === 'examCompleted') updateData.exam_completed = value;
+                
+                if (Object.keys(updateData).length > 0) {
+                    const { data: existing } = await sb.from('lesson_progress').select('id').eq('user_id', currentUser.id).eq('lesson_id', lessonId).single();
+                    if (existing) {
+                        await sb.from('lesson_progress').update(updateData).eq('id', existing.id);
+                    } else {
+                        await sb.from('lesson_progress').insert({ user_id: currentUser.id, lesson_id: lessonId, ...updateData });
+                    }
+                }
                 
                 showToast(currentLanguage === 'ar' ? 'تم تحديث التقدم' : 'Progress updated', 'success');
                 updateQuickStats();
