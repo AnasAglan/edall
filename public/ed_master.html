@@ -6,6 +6,7 @@
     <title>ED MASTER — منصة تعليمية متطورة</title>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <style>
         :root {
             --primary: #fc8019;
@@ -1874,6 +1875,29 @@
     </div>
 
     <script>
+        // Supabase Client
+        const SUPABASE_URL = 'https://iuaddjoofgrirzslzqfy.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml1YWRkam9vZmdyaXJ6c2x6cWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5ODczMjcsImV4cCI6MjA4OTU2MzMyN30.bkMuslyDuH4lkIWhwVoGdTqr_lgM9HMKdo57yj4xT5M';
+        const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // Missing UI Functions
+        function toggleUserMenu() {
+            const menu = document.getElementById('userMenu');
+            if (menu) menu.classList.toggle('show');
+        }
+        function hideUserMenu() {
+            const menu = document.getElementById('userMenu');
+            if (menu) menu.classList.remove('show');
+        }
+        function toggleLanguageMenu() {
+            const sel = document.getElementById('languageSelector');
+            if (sel) sel.classList.toggle('show');
+        }
+        function hideLanguageMenu() {
+            const sel = document.getElementById('languageSelector');
+            if (sel) sel.classList.remove('show');
+        }
+
         // URL Routing
         const pageToRoute = {
             'mainPage': '',
@@ -2046,9 +2070,33 @@
             initializeApp();
         });
 
-        function initializeApp() {
+        async function initializeApp() {
             try {
-                loadData();
+                // Show loading
+                const loadingOverlay = document.getElementById('loadingOverlay');
+                if (loadingOverlay) loadingOverlay.style.display = 'flex';
+
+                // Check existing session
+                const { data: { session } } = await sb.auth.getSession();
+                if (session && session.user) {
+                    await loadCurrentUserFromSupabase(session.user);
+                }
+
+                // Listen for auth changes
+                sb.auth.onAuthStateChange(async (event, session) => {
+                    if (event === 'SIGNED_IN' && session && session.user) {
+                        await loadCurrentUserFromSupabase(session.user);
+                        updateUI();
+                        renderCoursesGrid();
+                        updateQuickStats();
+                    } else if (event === 'SIGNED_OUT') {
+                        currentUser = null;
+                        updateUI();
+                        renderCoursesGrid();
+                    }
+                });
+
+                await loadData();
                 setupEventListeners();
                 setupClickOutsideListener();
                 initializeFloatingBackButton();
@@ -2057,7 +2105,8 @@
                 document.getElementById('yr').textContent = new Date().getFullYear();
                 initializeLanguage();
                 
-                // Handle URL routing on initial load
+                if (loadingOverlay) loadingOverlay.style.display = 'none';
+
                 const params = new URLSearchParams(window.location.search);
                 if (params.has('page') || params.has('id')) {
                     handleURLRoute();
@@ -2067,169 +2116,241 @@
                 }
             } catch (error) {
                 console.error('Error initializing app:', error);
+                const loadingOverlay = document.getElementById('loadingOverlay');
+                if (loadingOverlay) loadingOverlay.style.display = 'none';
                 showToast('حدث خطأ في تهيئة التطبيق', 'error');
             }
         }
 
-        function loadData() {
+        async function loadCurrentUserFromSupabase(authUser) {
             try {
-                const usersData = localStorage.getItem(LS_KEYS.USERS);
-                const coursesData = localStorage.getItem(LS_KEYS.COURSES);
-                const currentUserData = localStorage.getItem(LS_KEYS.CURRENT_USER);
-                const notificationsData = localStorage.getItem(LS_KEYS.NOTIFICATIONS);
+                const { data: profile } = await sb.from('profiles').select('*').eq('id', authUser.id).single();
+                const { data: roles } = await sb.from('user_roles').select('role').eq('user_id', authUser.id);
                 
-                users = usersData ? JSON.parse(usersData) : [];
-                courses = coursesData ? JSON.parse(coursesData) : [];
-                currentUser = currentUserData ? JSON.parse(currentUserData) : null;
-                notifications = notificationsData ? JSON.parse(notificationsData) : [];
-                
-                currentLanguage = localStorage.getItem(LS_KEYS.LANGUAGE) || 'ar';
-                
-                if (users.length === 0) {
-                    initializeDefaultData();
-                } else {
-                    ensureLocalStorageKeys();
-                }
-                
-                // Migrate lesson.exam to lesson.exams array
-                migrateExamsToArray();
-                
-                const darkMode = localStorage.getItem(LS_KEYS.DARK_MODE) !== 'false';
-                applyDarkMode(darkMode);
+                currentUser = {
+                    id: authUser.id,
+                    email: authUser.email,
+                    name: profile ? profile.name : authUser.email,
+                    phone: profile ? profile.phone : null,
+                    avatar_url: profile ? profile.avatar_url : null,
+                    roles: roles && roles.length > 0 ? roles.map(r => r.role) : ['student'],
+                    lastActive: Date.now(),
+                    joined: profile ? new Date(profile.joined_at).getTime() : Date.now()
+                };
+
+                // Update last_active
+                sb.from('profiles').update({ last_active: new Date().toISOString() }).eq('id', authUser.id).then(() => {});
             } catch (error) {
-                console.error('Error loading data:', error);
-                showToast('حدث خطأ في تحميل البيانات', 'error');
-                initializeDefaultData();
+                console.error('Error loading current user:', error);
             }
         }
-        
+
+        async function loadData() {
+            try {
+                // Load courses from Supabase
+                const { data: coursesData } = await sb.from('courses').select('*').order('created_at', { ascending: false });
+                const { data: lessonsData } = await sb.from('lessons').select('*').order('sort_order');
+                const { data: videosData } = await sb.from('lesson_videos').select('*').order('sort_order');
+                const { data: examsData } = await sb.from('exams').select('*');
+                const { data: questionsData } = await sb.from('exam_questions').select('*').order('sort_order');
+
+                // Build nested courses structure
+                courses = (coursesData || []).map(c => {
+                    const cLessons = (lessonsData || []).filter(l => l.course_id === c.id).map(l => {
+                        const lVideos = (videosData || []).filter(v => v.lesson_id === l.id).map(v => v.video_url);
+                        const lExams = (examsData || []).filter(e => e.lesson_id === l.id).map(e => {
+                            const eQuestions = (questionsData || []).filter(q => q.exam_id === e.id).map(q => ({
+                                text: q.text,
+                                type: q.type,
+                                options: q.options || [],
+                                correctOption: q.correct_option
+                            }));
+                            return {
+                                id: e.id,
+                                title: e.title,
+                                questions: eQuestions,
+                                passingGrade: e.passing_grade,
+                                timeLimit: e.time_limit,
+                                allowRetake: e.allow_retake,
+                                requiredToProgress: e.required_to_progress,
+                                createdAt: new Date(e.created_at).getTime()
+                            };
+                        });
+                        return {
+                            id: l.id,
+                            title: l.title,
+                            content: l.content,
+                            videos: lVideos,
+                            exams: lExams,
+                            files: [],
+                            pdfData: null,
+                            pdfName: ''
+                        };
+                    });
+                    return {
+                        id: c.id,
+                        title: c.title,
+                        description: c.description,
+                        image: c.image_url,
+                        createdBy: c.created_by,
+                        lessons: cLessons,
+                        created: new Date(c.created_at).getTime()
+                    };
+                });
+
+                // Load profiles + roles for users array
+                const { data: profilesData } = await sb.from('profiles').select('*');
+                const { data: rolesData } = await sb.from('user_roles').select('*');
+                users = (profilesData || []).map(p => {
+                    const userRoles = (rolesData || []).filter(r => r.user_id === p.id).map(r => r.role);
+                    return {
+                        id: p.id,
+                        email: p.email,
+                        name: p.name,
+                        roles: userRoles.length > 0 ? userRoles : ['student'],
+                        lastActive: p.last_active ? new Date(p.last_active).getTime() : Date.now(),
+                        joined: new Date(p.joined_at).getTime()
+                    };
+                });
+
+                // Load enrollments into localStorage format
+                if (currentUser) {
+                    const { data: enrollData } = await sb.from('enrollments').select('*');
+                    const enrollments = {};
+                    (enrollData || []).forEach(e => {
+                        if (!enrollments[e.user_id]) enrollments[e.user_id] = [];
+                        enrollments[e.user_id].push(e.course_id);
+                    });
+                    localStorage.setItem(LS_KEYS.USER_ENROLLMENTS, JSON.stringify(enrollments));
+
+                    const { data: favData } = await sb.from('favorites').select('*');
+                    const favorites = {};
+                    (favData || []).forEach(f => {
+                        if (!favorites[f.user_id]) favorites[f.user_id] = [];
+                        favorites[f.user_id].push(f.course_id);
+                    });
+                    localStorage.setItem(LS_KEYS.USER_FAVORITES, JSON.stringify(favorites));
+
+                    // Load exam results
+                    const { data: resultsData } = await sb.from('exam_results').select('*');
+                    const examResults = {};
+                    (resultsData || []).forEach(r => {
+                        // Find the exam's lesson and course
+                        let courseId = '', lessonId = '', examIndex = 0;
+                        for (const course of courses) {
+                            for (const lesson of (course.lessons || [])) {
+                                const idx = (lesson.exams || []).findIndex(e => e.id === r.exam_id);
+                                if (idx >= 0) {
+                                    courseId = course.id;
+                                    lessonId = lesson.id;
+                                    examIndex = idx;
+                                    break;
+                                }
+                            }
+                            if (courseId) break;
+                        }
+                        const key = `${r.user_id}_${courseId}_${lessonId}_${examIndex}`;
+                        examResults[key] = {
+                            id: r.id,
+                            userId: r.user_id,
+                            courseId,
+                            lessonId,
+                            examIndex,
+                            examId: r.exam_id,
+                            answers: r.answers || [],
+                            mcqScore: 0,
+                            mcqCorrect: 0,
+                            mcqTotal: 0,
+                            score: r.score,
+                            passed: r.passed,
+                            hasEssay: r.has_essay,
+                            essayGraded: r.essay_graded,
+                            timestamp: new Date(r.submitted_at).getTime()
+                        };
+                        // Reconstruct mcq info from answers
+                        if (Array.isArray(r.answers)) {
+                            let mcqC = 0, mcqT = 0;
+                            r.answers.forEach(a => {
+                                if (a.type === 'multiple') {
+                                    mcqT++;
+                                    if (a.isCorrect) mcqC++;
+                                }
+                            });
+                            examResults[key].mcqCorrect = mcqC;
+                            examResults[key].mcqTotal = mcqT;
+                            examResults[key].mcqScore = mcqT > 0 ? Math.round((mcqC / mcqT) * 100) : 0;
+                        }
+                    });
+                    localStorage.setItem(LS_KEYS.EXAM_RESULTS, JSON.stringify(examResults));
+
+                    // Load lesson progress
+                    const { data: progressData } = await sb.from('lesson_progress').select('*');
+                    const tracking = {};
+                    (progressData || []).forEach(p => {
+                        if (!tracking[p.user_id]) tracking[p.user_id] = {};
+                        // Find course for this lesson
+                        let courseId = '';
+                        for (const course of courses) {
+                            if ((course.lessons || []).some(l => l.id === p.lesson_id)) {
+                                courseId = course.id;
+                                break;
+                            }
+                        }
+                        if (courseId) {
+                            if (!tracking[p.user_id][courseId]) tracking[p.user_id][courseId] = {};
+                            tracking[p.user_id][courseId][p.lesson_id] = {
+                                videoWatched: p.video_watched,
+                                pdfOpened: p.pdf_opened,
+                                examCompleted: p.exam_completed
+                            };
+                        }
+                    });
+                    localStorage.setItem(LS_KEYS.COMPLETION_TRACKING, JSON.stringify(tracking));
+                }
+
+                // Load notifications
+                const { data: notifsData } = await sb.from('notifications').select('*').order('created_at', { ascending: false });
+                notifications = (notifsData || []).map(n => ({
+                    id: n.id,
+                    title: n.title,
+                    message: n.message,
+                    type: n.type,
+                    read: n.read,
+                    timestamp: new Date(n.created_at).getTime(),
+                    userId: n.user_id || 'all'
+                }));
+
+                currentLanguage = localStorage.getItem(LS_KEYS.LANGUAGE) || 'ar';
+                const darkMode = localStorage.getItem(LS_KEYS.DARK_MODE) !== 'false';
+                applyDarkMode(darkMode);
+
+                ensureLocalStorageKeys();
+            } catch (error) {
+                console.error('Error loading data from Supabase:', error);
+                showToast('حدث خطأ في تحميل البيانات', 'error');
+                ensureLocalStorageKeys();
+            }
+        }
+
         function ensureLocalStorageKeys() {
-            if (!localStorage.getItem(LS_KEYS.USER_ENROLLMENTS)) {
-                localStorage.setItem(LS_KEYS.USER_ENROLLMENTS, JSON.stringify({}));
-            }
-            if (!localStorage.getItem(LS_KEYS.USER_FAVORITES)) {
-                localStorage.setItem(LS_KEYS.USER_FAVORITES, JSON.stringify({}));
-            }
-            if (!localStorage.getItem(LS_KEYS.USER_ACTIVITY)) {
-                localStorage.setItem(LS_KEYS.USER_ACTIVITY, JSON.stringify({}));
-            }
-            if (!localStorage.getItem(LS_KEYS.EXAM_RESULTS)) {
-                localStorage.setItem(LS_KEYS.EXAM_RESULTS, JSON.stringify({}));
-            }
-            if (!localStorage.getItem(LS_KEYS.TEACHER_NOTIFICATIONS)) {
-                localStorage.setItem(LS_KEYS.TEACHER_NOTIFICATIONS, JSON.stringify({}));
-            }
-            if (!localStorage.getItem(LS_KEYS.COMPLETION_TRACKING)) {
-                localStorage.setItem(LS_KEYS.COMPLETION_TRACKING, JSON.stringify({}));
-            }
+            if (!localStorage.getItem(LS_KEYS.USER_ENROLLMENTS)) localStorage.setItem(LS_KEYS.USER_ENROLLMENTS, JSON.stringify({}));
+            if (!localStorage.getItem(LS_KEYS.USER_FAVORITES)) localStorage.setItem(LS_KEYS.USER_FAVORITES, JSON.stringify({}));
+            if (!localStorage.getItem(LS_KEYS.USER_ACTIVITY)) localStorage.setItem(LS_KEYS.USER_ACTIVITY, JSON.stringify({}));
+            if (!localStorage.getItem(LS_KEYS.EXAM_RESULTS)) localStorage.setItem(LS_KEYS.EXAM_RESULTS, JSON.stringify({}));
+            if (!localStorage.getItem(LS_KEYS.TEACHER_NOTIFICATIONS)) localStorage.setItem(LS_KEYS.TEACHER_NOTIFICATIONS, JSON.stringify({}));
+            if (!localStorage.getItem(LS_KEYS.COMPLETION_TRACKING)) localStorage.setItem(LS_KEYS.COMPLETION_TRACKING, JSON.stringify({}));
         }
 
         function initializeDefaultData() {
-            try {
-                users = [
-                    {
-                        id: generateId('user'),
-                        email: 'anas@admin',
-                        password: 'anas@admin',
-                        name: 'مدير النظام',
-                        roles: ['admin'],
-                        lastActive: Date.now(),
-                        joined: Date.now()
-                    },
-                    {
-                        id: generateId('user'),
-                        email: 'teacher@ed',
-                        password: 'edteacher',
-                        name: 'مدرس أول',
-                        roles: ['teacher'],
-                        lastActive: Date.now(),
-                        joined: Date.now()
-                    },
-                    {
-                        id: generateId('user'),
-                        email: 'student@ed',
-                        password: 'edstudent',
-                        name: 'طالب واحد',
-                        roles: ['student'],
-                        lastActive: Date.now(),
-                        joined: Date.now()
-                    }
-                ];
-
-                courses = [
-                    {
-                        id: generateId('course'),
-                        title: 'مبادئ البرمجة',
-                        description: 'أساسيات البرمجة مع فيديوهات وPDF.',
-                        image: null,
-                        createdBy: 'teacher@ed',
-                        lessons: [
-                            {
-                                id: generateId('lesson'),
-                                title: 'مقدمة البرمجة',
-                                videos: ["https://www.youtube.com/watch?v=3JluqTojuME"],
-                                files: [],
-                                pdfName: "",
-                                content: 'تعرف على مفاهيم البرمجة.'
-                            }
-                        ],
-                        created: Date.now()
-                    },
-                    {
-                        id: generateId('course'),
-                        title: 'تعلم HTML و CSS',
-                        description: 'دورة متكاملة لتعلم تصميم المواقع الإلكترونية.',
-                        image: null,
-                        createdBy: 'teacher@ed',
-                        lessons: [
-                            {
-                                id: generateId('lesson'),
-                                title: 'مقدمة في HTML',
-                                videos: ["https://www.youtube.com/watch?v=3JluqTojuME"],
-                                files: [],
-                                pdfName: "",
-                                content: 'تعلم أساسيات لغة HTML.'
-                            }
-                        ],
-                        created: Date.now()
-                    }
-                ];
-
-                notifications = [
-                    {
-                        id: generateId('notification'),
-                        title: 'مرحباً بك في ED MASTER',
-                        message: 'نرحب بك في منصتنا التعليمية. يمكنك الآن استكشاف الكورسات المتاحة.',
-                        type: 'info',
-                        read: false,
-                        timestamp: Date.now() - 86400000,
-                        userId: 'all'
-                    }
-                ];
-
-                localStorage.setItem(LS_KEYS.USER_ENROLLMENTS, JSON.stringify({}));
-                localStorage.setItem(LS_KEYS.USER_FAVORITES, JSON.stringify({}));
-                localStorage.setItem(LS_KEYS.USER_ACTIVITY, JSON.stringify({}));
-                localStorage.setItem(LS_KEYS.EXAM_RESULTS, JSON.stringify({}));
-                localStorage.setItem(LS_KEYS.TEACHER_NOTIFICATIONS, JSON.stringify({}));
-
-                saveAllData();
-            } catch (error) {
-                console.error('Error initializing default data:', error);
-                showToast('حدث خطأ في تهيئة البيانات الافتراضية', 'error');
-            }
+            // No longer needed - data comes from Supabase
         }
 
         function saveAllData() {
+            // Only save UI preferences to localStorage
             try {
-                localStorage.setItem(LS_KEYS.USERS, JSON.stringify(users));
-                localStorage.setItem(LS_KEYS.COURSES, JSON.stringify(courses));
-                localStorage.setItem(LS_KEYS.CURRENT_USER, JSON.stringify(currentUser));
-                localStorage.setItem(LS_KEYS.NOTIFICATIONS, JSON.stringify(notifications));
                 localStorage.setItem(LS_KEYS.LANGUAGE, currentLanguage);
             } catch (error) {
-                console.error('Error saving data:', error);
-                showToast('حدث خطأ في حفظ البيانات', 'error');
+                console.error('Error saving preferences:', error);
             }
         }
 
@@ -2844,7 +2965,7 @@
             }
         }
 
-        function handleSignIn() {
+        async function handleSignIn() {
             try {
                 const email = document.getElementById('signInEmail').value.trim();
                 const password = document.getElementById('signInPass').value;
@@ -2854,54 +2975,64 @@
                     return;
                 }
                 
-                const user = users.find(u => u.email === email && u.password === password);
+                const { data, error } = await sb.auth.signInWithPassword({ email, password });
                 
-                if (user) {
-                    currentUser = user;
-                    currentUser.lastActive = Date.now();
-                    saveAllData();
-                    updateUI();
-                    showPage('mainPage');
-                    showToast(currentLanguage === 'ar' ? `مرحباً ${user.name || user.email}` : `Welcome ${user.name || user.email}`, 'success');
-                } else {
+                if (error) {
                     showToast(currentLanguage === 'ar' ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة' : 'Invalid email or password', 'error');
+                    return;
                 }
+                
+                await loadCurrentUserFromSupabase(data.user);
+                await loadData();
+                updateUI();
+                showPage('mainPage');
+                showToast(currentLanguage === 'ar' ? `مرحباً ${currentUser.name || currentUser.email}` : `Welcome ${currentUser.name || currentUser.email}`, 'success');
             } catch (error) {
                 console.error('Error signing in:', error);
                 showToast('حدث خطأ في تسجيل الدخول', 'error');
             }
         }
 
-        function handleSignUp() {
+        async function handleSignUp() {
             try {
                 const name = document.getElementById('signUpName').value.trim();
                 const email = document.getElementById('signUpEmail').value.trim();
                 const password = document.getElementById('signUpPass').value;
-                const role = document.getElementById('signUpRole').value;
                 
                 if (!name || !email || !password) {
                     showToast(currentLanguage === 'ar' ? 'يرجى ملء جميع الحقول' : 'Please fill all fields', 'warning');
                     return;
                 }
-                
-                if (users.find(u => u.email === email)) {
-                    showToast(currentLanguage === 'ar' ? 'البريد الإلكتروني مستخدم بالفعل' : 'Email already exists', 'error');
+
+                if (password.length < 6) {
+                    showToast(currentLanguage === 'ar' ? 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' : 'Password must be at least 6 characters', 'warning');
                     return;
                 }
                 
-                const newUser = {
-                    id: generateId('user'),
-                    email: email,
-                    password: password,
-                    name: name,
-                    roles: [role],
-                    lastActive: Date.now(),
-                    joined: Date.now()
-                };
+                const { data, error } = await sb.auth.signUp({
+                    email,
+                    password,
+                    options: { data: { name } }
+                });
                 
-                users.push(newUser);
-                currentUser = newUser;
-                saveAllData();
+                if (error) {
+                    if (error.message.includes('already registered')) {
+                        showToast(currentLanguage === 'ar' ? 'البريد الإلكتروني مستخدم بالفعل' : 'Email already exists', 'error');
+                    } else {
+                        showToast(error.message, 'error');
+                    }
+                    return;
+                }
+                
+                // Setup profile and role using security definer function
+                await sb.rpc('setup_new_user', {
+                    _user_id: data.user.id,
+                    _name: name,
+                    _email: email
+                });
+                
+                await loadCurrentUserFromSupabase(data.user);
+                await loadData();
                 updateUI();
                 showPage('mainPage');
                 showToast(currentLanguage === 'ar' ? `تم إنشاء حسابك بنجاح، مرحباً ${name}` : `Account created successfully, welcome ${name}`, 'success');
@@ -2911,10 +3042,14 @@
             }
         }
 
-        function handleLogout() {
+        async function handleLogout() {
             try {
+                await sb.auth.signOut();
                 currentUser = null;
-                localStorage.removeItem(LS_KEYS.CURRENT_USER);
+                localStorage.removeItem(LS_KEYS.USER_ENROLLMENTS);
+                localStorage.removeItem(LS_KEYS.USER_FAVORITES);
+                localStorage.removeItem(LS_KEYS.EXAM_RESULTS);
+                localStorage.removeItem(LS_KEYS.COMPLETION_TRACKING);
                 updateUI();
                 showPage('mainPage');
                 showToast(currentLanguage === 'ar' ? 'تم تسجيل الخروج بنجاح' : 'Logged out successfully', 'success');
@@ -3054,7 +3189,7 @@
             }
         }
 
-        function enrollInCourse(courseId) {
+        async function enrollInCourse(courseId) {
             try {
                 if (!currentUser) {
                     showToast('يرجى تسجيل الدخول أولاً', 'error');
@@ -3062,11 +3197,13 @@
                 }
 
                 const enrollments = JSON.parse(localStorage.getItem(LS_KEYS.USER_ENROLLMENTS)) || {};
-                if (!enrollments[currentUser.id]) {
-                    enrollments[currentUser.id] = [];
-                }
+                if (!enrollments[currentUser.id]) enrollments[currentUser.id] = [];
 
                 if (!enrollments[currentUser.id].includes(courseId)) {
+                    // Save to Supabase
+                    const { error } = await sb.from('enrollments').insert({ user_id: currentUser.id, course_id: courseId });
+                    if (error) { showToast('حدث خطأ في الانضمام', 'error'); return; }
+
                     enrollments[currentUser.id].push(courseId);
                     localStorage.setItem(LS_KEYS.USER_ENROLLMENTS, JSON.stringify(enrollments));
                     showToast('تم الانضمام إلى الكورس بنجاح', 'success');
@@ -3074,15 +3211,12 @@
                     
                     const course = courses.find(c => c.id === courseId);
                     if (course) {
-                        const teacher = users.find(u => u.email === course.createdBy);
-                        if (teacher) {
-                            createNotification(
-                                teacher.id,
-                                'طالب جديد',
-                                `الطالب ${currentUser.name} انضم إلى كورس "${course.title}"`,
-                                'enrollment'
-                            );
-                        }
+                        createNotification(
+                            course.createdBy,
+                            'طالب جديد',
+                            `الطالب ${currentUser.name} انضم إلى كورس "${course.title}"`,
+                            'enrollment'
+                        );
                     }
                 } else {
                     showToast('أنت منضم بالفعل إلى هذا الكورس', 'info');
@@ -3093,9 +3227,11 @@
             }
         }
 
-        function unenrollFromCourse(courseId) {
+        async function unenrollFromCourse(courseId) {
             try {
                 if (!currentUser) return;
+
+                await sb.from('enrollments').delete().eq('user_id', currentUser.id).eq('course_id', courseId);
 
                 const enrollments = JSON.parse(localStorage.getItem(LS_KEYS.USER_ENROLLMENTS)) || {};
                 if (enrollments[currentUser.id]) {
@@ -3113,7 +3249,7 @@
             }
         }
 
-        function toggleFavorite(courseId) {
+        async function toggleFavorite(courseId) {
             try {
                 if (!currentUser) {
                     showToast('يرجى تسجيل الدخول أولاً', 'error');
@@ -3121,15 +3257,15 @@
                 }
 
                 const favorites = JSON.parse(localStorage.getItem(LS_KEYS.USER_FAVORITES)) || {};
-                if (!favorites[currentUser.id]) {
-                    favorites[currentUser.id] = [];
-                }
+                if (!favorites[currentUser.id]) favorites[currentUser.id] = [];
 
                 const index = favorites[currentUser.id].indexOf(courseId);
                 if (index > -1) {
+                    await sb.from('favorites').delete().eq('user_id', currentUser.id).eq('course_id', courseId);
                     favorites[currentUser.id].splice(index, 1);
                     showToast('تم إزالة الكورس من المفضلة', 'info');
                 } else {
+                    await sb.from('favorites').insert({ user_id: currentUser.id, course_id: courseId });
                     favorites[currentUser.id].push(courseId);
                     showToast('تم إضافة الكورس إلى المفضلة', 'success');
                 }
@@ -3145,9 +3281,11 @@
             }
         }
 
-        function removeFromFavorites(courseId) {
+        async function removeFromFavorites(courseId) {
             try {
                 if (!currentUser) return;
+
+                await sb.from('favorites').delete().eq('user_id', currentUser.id).eq('course_id', courseId);
 
                 const favorites = JSON.parse(localStorage.getItem(LS_KEYS.USER_FAVORITES)) || {};
                 if (favorites[currentUser.id]) {
@@ -3190,7 +3328,7 @@
         function canUserEditCourse(course) {
             if (!currentUser) return false;
             if (currentUser.roles && currentUser.roles.includes('admin')) return true;
-            if (currentUser.roles && currentUser.roles.includes('teacher') && course.createdBy === currentUser.email) return true;
+            if (currentUser.roles && currentUser.roles.includes('teacher') && course.createdBy === currentUser.id) return true;
             return false;
         }
 
@@ -3621,7 +3759,7 @@
             }
         };
 
-        function createNewCourseFromModal() {
+        async function createNewCourseFromModal() {
             try {
                 const title = document.getElementById('newCourseTitle').value.trim();
                 const desc = document.getElementById('newCourseDesc').value.trim();
@@ -3631,17 +3769,24 @@
                     return;
                 }
                 
-                const newCourse = {
-                    id: generateId('course'),
+                const { data: newCourseData, error } = await sb.from('courses').insert({
+                    title: title,
+                    description: desc,
+                    image_url: courseImageData,
+                    created_by: currentUser.id
+                }).select().single();
+                
+                if (error) { showToast('حدث خطأ في إنشاء الكورس', 'error'); return; }
+                
+                courses.unshift({
+                    id: newCourseData.id,
                     title: title,
                     description: desc,
                     image: courseImageData,
-                    createdBy: currentUser ? currentUser.email : 'anonymous',
+                    createdBy: currentUser.id,
                     lessons: [],
                     created: Date.now()
-                };
-                
-                courses.push(newCourse);
+                });
                 courseImageData = null;
                 saveAllData();
                 closeModal();
@@ -3657,7 +3802,7 @@
             }
         }
 
-        function createNewCourse() {
+        async function createNewCourse() {
             try {
                 const title = document.getElementById('admCourseTitle').value.trim();
                 const desc = document.getElementById('admCourseDesc').value.trim();
@@ -3667,17 +3812,24 @@
                     return;
                 }
                 
-                const newCourse = {
-                    id: generateId('course'),
+                const { data: newCourseData, error } = await sb.from('courses').insert({
+                    title: title,
+                    description: desc,
+                    image_url: courseImageData,
+                    created_by: currentUser.id
+                }).select().single();
+                
+                if (error) { showToast('حدث خطأ في إنشاء الكورس', 'error'); return; }
+                
+                courses.unshift({
+                    id: newCourseData.id,
                     title: title,
                     description: desc,
                     image: courseImageData,
-                    createdBy: currentUser ? currentUser.email : 'anonymous',
+                    createdBy: currentUser.id,
                     lessons: [],
                     created: Date.now()
-                };
-                
-                courses.push(newCourse);
+                });
                 courseImageData = null;
                 
                 document.getElementById('admCourseTitle').value = '';
@@ -3752,27 +3904,25 @@
             }
         };
 
-        function updateCourse(courseId) {
+        async function updateCourse(courseId) {
             try {
                 const course = courses.find(c => c.id === courseId);
-                if (!course) {
-                    showToast(currentLanguage === 'ar' ? 'الكورس غير موجود' : 'Course not found', 'error');
-                    return;
-                }
+                if (!course) { showToast('الكورس غير موجود', 'error'); return; }
                 
                 const title = document.getElementById('editCourseTitle').value.trim();
                 const desc = document.getElementById('editCourseDesc').value.trim();
                 
-                if (!title) {
-                    showToast(currentLanguage === 'ar' ? 'يرجى إدخال عنوان الكورس' : 'Please enter course title', 'warning');
-                    return;
-                }
+                if (!title) { showToast('يرجى إدخال عنوان الكورس', 'warning'); return; }
+                
+                const updateData = { title, description: desc };
+                if (courseImageData) updateData.image_url = courseImageData;
+                
+                const { error } = await sb.from('courses').update(updateData).eq('id', courseId);
+                if (error) { showToast('حدث خطأ في تحديث الكورس', 'error'); return; }
                 
                 course.title = title;
                 course.description = desc;
-                if (courseImageData) {
-                    course.image = courseImageData;
-                }
+                if (courseImageData) course.image = courseImageData;
                 
                 courseImageData = null;
                 saveAllData();
@@ -4074,22 +4224,7 @@
         let examTimeRemaining = 0;
 
         function migrateExamsToArray() {
-            let changed = false;
-            courses.forEach(course => {
-                if (course.lessons) {
-                    course.lessons.forEach(lesson => {
-                        if (lesson.exam && !lesson.exams) {
-                            lesson.exams = [lesson.exam];
-                            delete lesson.exam;
-                            changed = true;
-                        }
-                        if (!lesson.exams) {
-                            lesson.exams = [];
-                        }
-                    });
-                }
-            });
-            if (changed) saveAllData();
+            // No longer needed - data loaded from Supabase already in correct format
         }
 
         function canAccessLesson(courseId, lessonIndex) {
@@ -4292,32 +4427,19 @@
             }
         }
 
-        function saveExam(courseId, lessonId, editIndex) {
+        async function saveExam(courseId, lessonId, editIndex) {
             try {
                 const course = courses.find(c => c.id === courseId);
                 const lesson = course ? course.lessons.find(l => l.id === lessonId) : null;
-                if (!lesson) {
-                    showToast(currentLanguage === 'ar' ? 'المحاضرة غير موجودة' : 'Lesson not found', 'error');
-                    return;
-                }
+                if (!lesson) { showToast('المحاضرة غير موجودة', 'error'); return; }
                 
                 const questions = window._examBuilderQuestions;
-                if (!questions || questions.length === 0) {
-                    showToast(currentLanguage === 'ar' ? 'يرجى إضافة سؤال واحد على الأقل' : 'Please add at least one question', 'warning');
-                    return;
-                }
+                if (!questions || questions.length === 0) { showToast('يرجى إضافة سؤال واحد على الأقل', 'warning'); return; }
                 
                 for (let i = 0; i < questions.length; i++) {
-                    if (!questions[i].text.trim()) {
-                        showToast(currentLanguage === 'ar' ? `يرجى كتابة نص السؤال ${i + 1}` : `Please enter text for question ${i + 1}`, 'warning');
-                        return;
-                    }
+                    if (!questions[i].text.trim()) { showToast(`يرجى كتابة نص السؤال ${i + 1}`, 'warning'); return; }
                     if (questions[i].type === 'multiple') {
-                        const emptyOpts = questions[i].options.filter(o => !o.trim());
-                        if (emptyOpts.length > 0) {
-                            showToast(currentLanguage === 'ar' ? `يرجى ملء جميع خيارات السؤال ${i + 1}` : `Please fill all options for question ${i + 1}`, 'warning');
-                            return;
-                        }
+                        if (questions[i].options.filter(o => !o.trim()).length > 0) { showToast(`يرجى ملء جميع خيارات السؤال ${i + 1}`, 'warning'); return; }
                     }
                 }
                 
@@ -4328,32 +4450,55 @@
                 const allowRetake = document.getElementById('examAllowRetake').checked;
                 const requiredToProgress = document.getElementById('examRequiredToProgress') ? document.getElementById('examRequiredToProgress').checked : false;
                 
-                const examData = {
-                    title: examTitle,
-                    questions: questions.map(q => ({
-                        text: q.text,
-                        type: q.type,
-                        options: q.type === 'multiple' ? q.options : [],
-                        correctOption: q.type === 'multiple' ? q.correctOption : null
-                    })),
-                    passingGrade: passingGrade,
-                    timeLimit: timeLimit,
-                    allowRetake: allowRetake,
-                    requiredToProgress: requiredToProgress,
-                    createdAt: Date.now()
-                };
-                
                 if (!lesson.exams) lesson.exams = [];
                 
-                if (editIndex !== undefined && editIndex !== null) {
-                    lesson.exams[editIndex] = examData;
+                if (editIndex !== undefined && editIndex !== null && lesson.exams[editIndex]) {
+                    // Update existing exam
+                    const existingExam = lesson.exams[editIndex];
+                    await sb.from('exams').update({
+                        title: examTitle, passing_grade: passingGrade, time_limit: timeLimit,
+                        allow_retake: allowRetake, required_to_progress: requiredToProgress
+                    }).eq('id', existingExam.id);
+                    
+                    // Delete old questions and re-insert
+                    await sb.from('exam_questions').delete().eq('exam_id', existingExam.id);
+                    const qInserts = questions.map((q, i) => ({
+                        exam_id: existingExam.id, text: q.text, type: q.type,
+                        options: q.type === 'multiple' ? q.options : null,
+                        correct_option: q.type === 'multiple' ? q.correctOption : null, sort_order: i
+                    }));
+                    await sb.from('exam_questions').insert(qInserts);
+                    
+                    lesson.exams[editIndex] = {
+                        ...existingExam, title: examTitle,
+                        questions: questions.map(q => ({ text: q.text, type: q.type, options: q.type === 'multiple' ? q.options : [], correctOption: q.correctOption })),
+                        passingGrade, timeLimit, allowRetake, requiredToProgress
+                    };
                 } else {
-                    lesson.exams.push(examData);
+                    // Create new exam
+                    const { data: examData, error } = await sb.from('exams').insert({
+                        lesson_id: lessonId, title: examTitle, passing_grade: passingGrade,
+                        time_limit: timeLimit, allow_retake: allowRetake, required_to_progress: requiredToProgress
+                    }).select().single();
+                    
+                    if (error) { showToast('حدث خطأ في حفظ الامتحان', 'error'); return; }
+                    
+                    const qInserts = questions.map((q, i) => ({
+                        exam_id: examData.id, text: q.text, type: q.type,
+                        options: q.type === 'multiple' ? q.options : null,
+                        correct_option: q.type === 'multiple' ? q.correctOption : null, sort_order: i
+                    }));
+                    await sb.from('exam_questions').insert(qInserts);
+                    
+                    lesson.exams.push({
+                        id: examData.id, title: examTitle,
+                        questions: questions.map(q => ({ text: q.text, type: q.type, options: q.type === 'multiple' ? q.options : [], correctOption: q.correctOption })),
+                        passingGrade, timeLimit, allowRetake, requiredToProgress, createdAt: Date.now()
+                    });
                 }
                 
-                saveAllData();
                 closeModal();
-                showToast(currentLanguage === 'ar' ? 'تم حفظ الامتحان بنجاح' : 'Exam saved successfully', 'success');
+                showToast('تم حفظ الامتحان بنجاح', 'success');
                 openLesson(courseId, lessonId);
             } catch (error) {
                 console.error('Error saving exam:', error);
@@ -4440,16 +4585,17 @@
             }
         }
 
-        function deleteExam(courseId, lessonId, examIndex) {
+        async function deleteExam(courseId, lessonId, examIndex) {
             try {
-                if (!confirm(currentLanguage === 'ar' ? 'هل أنت متأكد من حذف الامتحان؟' : 'Are you sure you want to delete this exam?')) return;
+                if (!confirm(currentLanguage === 'ar' ? 'هل أنت متأكد من حذف الامتحان؟' : 'Are you sure?')) return;
                 const course = courses.find(c => c.id === courseId);
                 const lesson = course ? course.lessons.find(l => l.id === lessonId) : null;
-                if (lesson && lesson.exams) {
+                if (lesson && lesson.exams && lesson.exams[examIndex]) {
+                    const examId = lesson.exams[examIndex].id;
+                    if (examId) await sb.from('exams').delete().eq('id', examId);
                     lesson.exams.splice(examIndex, 1);
-                    saveAllData();
                     closeModal();
-                    showToast(currentLanguage === 'ar' ? 'تم حذف الامتحان' : 'Exam deleted', 'success');
+                    showToast('تم حذف الامتحان', 'success');
                     openLesson(courseId, lessonId);
                 }
             } catch (error) {
@@ -4564,7 +4710,7 @@
             closeModal();
         }
 
-        function submitExam(courseId, lessonId, examIndex) {
+        async function submitExam(courseId, lessonId, examIndex) {
             try {
                 if (examTimerInterval) clearInterval(examTimerInterval);
                 
@@ -4994,23 +5140,32 @@
             }
         }
 
-        function trackLessonProgress(courseId, lessonId, action, value) {
+        async function trackLessonProgress(courseId, lessonId, action, value) {
             try {
                 if (!currentUser) return;
                 
                 const tracking = JSON.parse(localStorage.getItem(LS_KEYS.COMPLETION_TRACKING)) || {};
-                if (!tracking[currentUser.id]) {
-                    tracking[currentUser.id] = {};
-                }
-                if (!tracking[currentUser.id][courseId]) {
-                    tracking[currentUser.id][courseId] = {};
-                }
-                if (!tracking[currentUser.id][courseId][lessonId]) {
-                    tracking[currentUser.id][courseId][lessonId] = {};
-                }
+                if (!tracking[currentUser.id]) tracking[currentUser.id] = {};
+                if (!tracking[currentUser.id][courseId]) tracking[currentUser.id][courseId] = {};
+                if (!tracking[currentUser.id][courseId][lessonId]) tracking[currentUser.id][courseId][lessonId] = {};
                 
                 tracking[currentUser.id][courseId][lessonId][action] = value;
                 localStorage.setItem(LS_KEYS.COMPLETION_TRACKING, JSON.stringify(tracking));
+                
+                // Sync to Supabase
+                const updateData = {};
+                if (action === 'videoWatched') updateData.video_watched = value;
+                else if (action === 'pdfOpened') updateData.pdf_opened = value;
+                else if (action === 'examCompleted') updateData.exam_completed = value;
+                
+                if (Object.keys(updateData).length > 0) {
+                    const { data: existing } = await sb.from('lesson_progress').select('id').eq('user_id', currentUser.id).eq('lesson_id', lessonId).single();
+                    if (existing) {
+                        await sb.from('lesson_progress').update(updateData).eq('id', existing.id);
+                    } else {
+                        await sb.from('lesson_progress').insert({ user_id: currentUser.id, lesson_id: lessonId, ...updateData });
+                    }
+                }
                 
                 showToast(currentLanguage === 'ar' ? 'تم تحديث التقدم' : 'Progress updated', 'success');
                 updateQuickStats();
@@ -5275,13 +5430,10 @@
             container.appendChild(row);
         }
 
-        function saveLesson(courseId) {
+        async function saveLesson(courseId) {
             try {
                 const course = courses.find(c => c.id === courseId);
-                if (!course) {
-                    showToast(currentLanguage === 'ar' ? 'الكورس غير موجود' : 'Course not found', 'error');
-                    return;
-                }
+                if (!course) { showToast('الكورس غير موجود', 'error'); return; }
                 
                 const title = document.getElementById('lessonTitle').value.trim();
                 const content = document.getElementById('lessonContent').value.trim();
@@ -5292,28 +5444,42 @@
                     if (val) videos.push(val);
                 });
                 
-                if (!title) {
-                    showToast(currentLanguage === 'ar' ? 'يرجى إدخال عنوان المحاضرة' : 'Please enter lesson title', 'warning');
-                    return;
+                if (!title) { showToast('يرجى إدخال عنوان المحاضرة', 'warning'); return; }
+                
+                const sortOrder = course.lessons ? course.lessons.length : 0;
+                const { data: lessonData, error } = await sb.from('lessons').insert({
+                    course_id: courseId,
+                    title: title,
+                    content: content,
+                    sort_order: sortOrder
+                }).select().single();
+                
+                if (error) { showToast('حدث خطأ في حفظ المحاضرة', 'error'); return; }
+                
+                // Insert videos
+                if (videos.length > 0) {
+                    const videoInserts = videos.map((url, i) => ({
+                        lesson_id: lessonData.id,
+                        video_url: url,
+                        sort_order: i
+                    }));
+                    await sb.from('lesson_videos').insert(videoInserts);
                 }
                 
                 const newLesson = {
-                    id: generateId('lesson'),
+                    id: lessonData.id,
                     title: title,
                     content: content,
                     videos: videos,
+                    exams: [],
                     files: [],
-                    pdfName: "",
-                    created: Date.now()
+                    pdfName: ''
                 };
                 
-                if (!course.lessons) {
-                    course.lessons = [];
-                }
-                
+                if (!course.lessons) course.lessons = [];
                 course.lessons.push(newLesson);
-                saveAllData();
-                showToast(currentLanguage === 'ar' ? 'تم إضافة المحاضرة بنجاح' : 'Lesson added successfully', 'success');
+                
+                showToast('تم إضافة المحاضرة بنجاح', 'success');
                 closeModal();
                 renderAdminPage();
             } catch (error) {
@@ -5322,44 +5488,26 @@
             }
         }
 
-        function deleteCourse(courseId) {
+        async function deleteCourse(courseId) {
             try {
-                if (!confirm(currentLanguage === 'ar' ? 'هل أنت متأكد من حذف هذا الكورس؟ لا يمكن التراجع عن هذا الإجراء.' : 'Are you sure you want to delete this course? This action cannot be undone.')) {
-                    return;
-                }
+                if (!confirm(currentLanguage === 'ar' ? 'هل أنت متأكد من حذف هذا الكورس؟' : 'Are you sure?')) return;
                 
-                const courseIndex = courses.findIndex(c => c.id === courseId);
-                if (courseIndex === -1) {
-                    showToast(currentLanguage === 'ar' ? 'الكورس غير موجود' : 'Course not found', 'error');
-                    return;
-                }
+                const { error } = await sb.from('courses').delete().eq('id', courseId);
+                if (error) { showToast('حدث خطأ في حذف الكورس', 'error'); return; }
                 
+                // Also clean up enrollments and favorites in Supabase (cascading should handle, but also local)
                 const favorites = JSON.parse(localStorage.getItem(LS_KEYS.USER_FAVORITES)) || {};
                 const enrollments = JSON.parse(localStorage.getItem(LS_KEYS.USER_ENROLLMENTS)) || {};
-                
-                for (const userId in favorites) {
-                    favorites[userId] = favorites[userId].filter(id => id !== courseId);
-                }
-                
-                for (const userId in enrollments) {
-                    enrollments[userId] = enrollments[userId].filter(id => id !== courseId);
-                }
-                
+                for (const userId in favorites) favorites[userId] = (favorites[userId] || []).filter(id => id !== courseId);
+                for (const userId in enrollments) enrollments[userId] = (enrollments[userId] || []).filter(id => id !== courseId);
                 localStorage.setItem(LS_KEYS.USER_FAVORITES, JSON.stringify(favorites));
                 localStorage.setItem(LS_KEYS.USER_ENROLLMENTS, JSON.stringify(enrollments));
                 
-                courses.splice(courseIndex, 1);
-                saveAllData();
-                showToast(currentLanguage === 'ar' ? 'تم حذف الكورس بنجاح' : 'Course deleted successfully', 'success');
+                courses = courses.filter(c => c.id !== courseId);
+                showToast('تم حذف الكورس بنجاح', 'success');
                 renderCoursesGrid();
-                
-                if (document.getElementById('manageCoursesPage').classList.contains('active')) {
-                    renderManageCoursesPage();
-                }
-                
-                if (document.getElementById('adminPage').classList.contains('active')) {
-                    renderAdminPage();
-                }
+                if (document.getElementById('manageCoursesPage').classList.contains('active')) renderManageCoursesPage();
+                if (document.getElementById('adminPage').classList.contains('active')) renderAdminPage();
             } catch (error) {
                 console.error('Error deleting course:', error);
                 showToast('حدث خطأ في حذف الكورس', 'error');
@@ -5536,25 +5684,21 @@
             }
         }
 
-        function createNotification(userId, title, message, type = 'info') {
+        async function createNotification(userId, title, message, type = 'info') {
             try {
+                const { data: notifData } = await sb.from('notifications').insert({
+                    user_id: userId === 'all' ? null : userId,
+                    title, message, type, read: false
+                }).select().single();
+                
                 const notification = {
-                    id: generateId('notification'),
-                    title,
-                    message,
-                    type,
-                    read: false,
-                    timestamp: Date.now(),
-                    userId: userId
+                    id: notifData ? notifData.id : generateId('notification'),
+                    title, message, type, read: false,
+                    timestamp: Date.now(), userId: userId
                 };
                 
-                notifications.push(notification);
-                saveAllData();
-                
-                if (currentUser && currentUser.id === userId) {
-                    updateNotificationBadge();
-                }
-                
+                notifications.unshift(notification);
+                if (currentUser && currentUser.id === userId) updateNotificationBadge();
                 return notification;
             } catch (error) {
                 console.error('Error creating notification:', error);
