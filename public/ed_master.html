@@ -4224,22 +4224,7 @@
         let examTimeRemaining = 0;
 
         function migrateExamsToArray() {
-            let changed = false;
-            courses.forEach(course => {
-                if (course.lessons) {
-                    course.lessons.forEach(lesson => {
-                        if (lesson.exam && !lesson.exams) {
-                            lesson.exams = [lesson.exam];
-                            delete lesson.exam;
-                            changed = true;
-                        }
-                        if (!lesson.exams) {
-                            lesson.exams = [];
-                        }
-                    });
-                }
-            });
-            if (changed) saveAllData();
+            // No longer needed - data loaded from Supabase already in correct format
         }
 
         function canAccessLesson(courseId, lessonIndex) {
