@@ -4710,7 +4710,7 @@
             closeModal();
         }
 
-        function submitExam(courseId, lessonId, examIndex) {
+        async function submitExam(courseId, lessonId, examIndex) {
             try {
                 if (examTimerInterval) clearInterval(examTimerInterval);
                 
