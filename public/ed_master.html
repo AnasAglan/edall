@@ -5425,13 +5425,10 @@
             container.appendChild(row);
         }
 
-        function saveLesson(courseId) {
+        async function saveLesson(courseId) {
             try {
                 const course = courses.find(c => c.id === courseId);
-                if (!course) {
-                    showToast(currentLanguage === 'ar' ? 'الكورس غير موجود' : 'Course not found', 'error');
-                    return;
-                }
+                if (!course) { showToast('الكورس غير موجود', 'error'); return; }
                 
                 const title = document.getElementById('lessonTitle').value.trim();
                 const content = document.getElementById('lessonContent').value.trim();
@@ -5442,28 +5439,42 @@
                     if (val) videos.push(val);
                 });
                 
-                if (!title) {
-                    showToast(currentLanguage === 'ar' ? 'يرجى إدخال عنوان المحاضرة' : 'Please enter lesson title', 'warning');
-                    return;
+                if (!title) { showToast('يرجى إدخال عنوان المحاضرة', 'warning'); return; }
+                
+                const sortOrder = course.lessons ? course.lessons.length : 0;
+                const { data: lessonData, error } = await sb.from('lessons').insert({
+                    course_id: courseId,
+                    title: title,
+                    content: content,
+                    sort_order: sortOrder
+                }).select().single();
+                
+                if (error) { showToast('حدث خطأ في حفظ المحاضرة', 'error'); return; }
+                
+                // Insert videos
+                if (videos.length > 0) {
+                    const videoInserts = videos.map((url, i) => ({
+                        lesson_id: lessonData.id,
+                        video_url: url,
+                        sort_order: i
+                    }));
+                    await sb.from('lesson_videos').insert(videoInserts);
                 }
                 
                 const newLesson = {
-                    id: generateId('lesson'),
+                    id: lessonData.id,
                     title: title,
                     content: content,
                     videos: videos,
+                    exams: [],
                     files: [],
-                    pdfName: "",
-                    created: Date.now()
+                    pdfName: ''
                 };
                 
-                if (!course.lessons) {
-                    course.lessons = [];
-                }
-                
+                if (!course.lessons) course.lessons = [];
                 course.lessons.push(newLesson);
-                saveAllData();
-                showToast(currentLanguage === 'ar' ? 'تم إضافة المحاضرة بنجاح' : 'Lesson added successfully', 'success');
+                
+                showToast('تم إضافة المحاضرة بنجاح', 'success');
                 closeModal();
                 renderAdminPage();
             } catch (error) {
