@@ -2145,165 +2145,212 @@
             }
         }
 
-        function loadData() {
+        async function loadData() {
             try {
-                const usersData = localStorage.getItem(LS_KEYS.USERS);
-                const coursesData = localStorage.getItem(LS_KEYS.COURSES);
-                const currentUserData = localStorage.getItem(LS_KEYS.CURRENT_USER);
-                const notificationsData = localStorage.getItem(LS_KEYS.NOTIFICATIONS);
-                
-                users = usersData ? JSON.parse(usersData) : [];
-                courses = coursesData ? JSON.parse(coursesData) : [];
-                currentUser = currentUserData ? JSON.parse(currentUserData) : null;
-                notifications = notificationsData ? JSON.parse(notificationsData) : [];
-                
-                currentLanguage = localStorage.getItem(LS_KEYS.LANGUAGE) || 'ar';
-                
-                if (users.length === 0) {
-                    initializeDefaultData();
-                } else {
-                    ensureLocalStorageKeys();
+                // Load courses from Supabase
+                const { data: coursesData } = await sb.from('courses').select('*').order('created_at', { ascending: false });
+                const { data: lessonsData } = await sb.from('lessons').select('*').order('sort_order');
+                const { data: videosData } = await sb.from('lesson_videos').select('*').order('sort_order');
+                const { data: examsData } = await sb.from('exams').select('*');
+                const { data: questionsData } = await sb.from('exam_questions').select('*').order('sort_order');
+
+                // Build nested courses structure
+                courses = (coursesData || []).map(c => {
+                    const cLessons = (lessonsData || []).filter(l => l.course_id === c.id).map(l => {
+                        const lVideos = (videosData || []).filter(v => v.lesson_id === l.id).map(v => v.video_url);
+                        const lExams = (examsData || []).filter(e => e.lesson_id === l.id).map(e => {
+                            const eQuestions = (questionsData || []).filter(q => q.exam_id === e.id).map(q => ({
+                                text: q.text,
+                                type: q.type,
+                                options: q.options || [],
+                                correctOption: q.correct_option
+                            }));
+                            return {
+                                id: e.id,
+                                title: e.title,
+                                questions: eQuestions,
+                                passingGrade: e.passing_grade,
+                                timeLimit: e.time_limit,
+                                allowRetake: e.allow_retake,
+                                requiredToProgress: e.required_to_progress,
+                                createdAt: new Date(e.created_at).getTime()
+                            };
+                        });
+                        return {
+                            id: l.id,
+                            title: l.title,
+                            content: l.content,
+                            videos: lVideos,
+                            exams: lExams,
+                            files: [],
+                            pdfData: null,
+                            pdfName: ''
+                        };
+                    });
+                    return {
+                        id: c.id,
+                        title: c.title,
+                        description: c.description,
+                        image: c.image_url,
+                        createdBy: c.created_by,
+                        lessons: cLessons,
+                        created: new Date(c.created_at).getTime()
+                    };
+                });
+
+                // Load profiles + roles for users array
+                const { data: profilesData } = await sb.from('profiles').select('*');
+                const { data: rolesData } = await sb.from('user_roles').select('*');
+                users = (profilesData || []).map(p => {
+                    const userRoles = (rolesData || []).filter(r => r.user_id === p.id).map(r => r.role);
+                    return {
+                        id: p.id,
+                        email: p.email,
+                        name: p.name,
+                        roles: userRoles.length > 0 ? userRoles : ['student'],
+                        lastActive: p.last_active ? new Date(p.last_active).getTime() : Date.now(),
+                        joined: new Date(p.joined_at).getTime()
+                    };
+                });
+
+                // Load enrollments into localStorage format
+                if (currentUser) {
+                    const { data: enrollData } = await sb.from('enrollments').select('*');
+                    const enrollments = {};
+                    (enrollData || []).forEach(e => {
+                        if (!enrollments[e.user_id]) enrollments[e.user_id] = [];
+                        enrollments[e.user_id].push(e.course_id);
+                    });
+                    localStorage.setItem(LS_KEYS.USER_ENROLLMENTS, JSON.stringify(enrollments));
+
+                    const { data: favData } = await sb.from('favorites').select('*');
+                    const favorites = {};
+                    (favData || []).forEach(f => {
+                        if (!favorites[f.user_id]) favorites[f.user_id] = [];
+                        favorites[f.user_id].push(f.course_id);
+                    });
+                    localStorage.setItem(LS_KEYS.USER_FAVORITES, JSON.stringify(favorites));
+
+                    // Load exam results
+                    const { data: resultsData } = await sb.from('exam_results').select('*');
+                    const examResults = {};
+                    (resultsData || []).forEach(r => {
+                        // Find the exam's lesson and course
+                        let courseId = '', lessonId = '', examIndex = 0;
+                        for (const course of courses) {
+                            for (const lesson of (course.lessons || [])) {
+                                const idx = (lesson.exams || []).findIndex(e => e.id === r.exam_id);
+                                if (idx >= 0) {
+                                    courseId = course.id;
+                                    lessonId = lesson.id;
+                                    examIndex = idx;
+                                    break;
+                                }
+                            }
+                            if (courseId) break;
+                        }
+                        const key = `${r.user_id}_${courseId}_${lessonId}_${examIndex}`;
+                        examResults[key] = {
+                            id: r.id,
+                            userId: r.user_id,
+                            courseId,
+                            lessonId,
+                            examIndex,
+                            examId: r.exam_id,
+                            answers: r.answers || [],
+                            mcqScore: 0,
+                            mcqCorrect: 0,
+                            mcqTotal: 0,
+                            score: r.score,
+                            passed: r.passed,
+                            hasEssay: r.has_essay,
+                            essayGraded: r.essay_graded,
+                            timestamp: new Date(r.submitted_at).getTime()
+                        };
+                        // Reconstruct mcq info from answers
+                        if (Array.isArray(r.answers)) {
+                            let mcqC = 0, mcqT = 0;
+                            r.answers.forEach(a => {
+                                if (a.type === 'multiple') {
+                                    mcqT++;
+                                    if (a.isCorrect) mcqC++;
+                                }
+                            });
+                            examResults[key].mcqCorrect = mcqC;
+                            examResults[key].mcqTotal = mcqT;
+                            examResults[key].mcqScore = mcqT > 0 ? Math.round((mcqC / mcqT) * 100) : 0;
+                        }
+                    });
+                    localStorage.setItem(LS_KEYS.EXAM_RESULTS, JSON.stringify(examResults));
+
+                    // Load lesson progress
+                    const { data: progressData } = await sb.from('lesson_progress').select('*');
+                    const tracking = {};
+                    (progressData || []).forEach(p => {
+                        if (!tracking[p.user_id]) tracking[p.user_id] = {};
+                        // Find course for this lesson
+                        let courseId = '';
+                        for (const course of courses) {
+                            if ((course.lessons || []).some(l => l.id === p.lesson_id)) {
+                                courseId = course.id;
+                                break;
+                            }
+                        }
+                        if (courseId) {
+                            if (!tracking[p.user_id][courseId]) tracking[p.user_id][courseId] = {};
+                            tracking[p.user_id][courseId][p.lesson_id] = {
+                                videoWatched: p.video_watched,
+                                pdfOpened: p.pdf_opened,
+                                examCompleted: p.exam_completed
+                            };
+                        }
+                    });
+                    localStorage.setItem(LS_KEYS.COMPLETION_TRACKING, JSON.stringify(tracking));
                 }
-                
-                // Migrate lesson.exam to lesson.exams array
-                migrateExamsToArray();
-                
+
+                // Load notifications
+                const { data: notifsData } = await sb.from('notifications').select('*').order('created_at', { ascending: false });
+                notifications = (notifsData || []).map(n => ({
+                    id: n.id,
+                    title: n.title,
+                    message: n.message,
+                    type: n.type,
+                    read: n.read,
+                    timestamp: new Date(n.created_at).getTime(),
+                    userId: n.user_id || 'all'
+                }));
+
+                currentLanguage = localStorage.getItem(LS_KEYS.LANGUAGE) || 'ar';
                 const darkMode = localStorage.getItem(LS_KEYS.DARK_MODE) !== 'false';
                 applyDarkMode(darkMode);
+
+                ensureLocalStorageKeys();
             } catch (error) {
-                console.error('Error loading data:', error);
+                console.error('Error loading data from Supabase:', error);
                 showToast('حدث خطأ في تحميل البيانات', 'error');
-                initializeDefaultData();
+                ensureLocalStorageKeys();
             }
         }
-        
+
         function ensureLocalStorageKeys() {
-            if (!localStorage.getItem(LS_KEYS.USER_ENROLLMENTS)) {
-                localStorage.setItem(LS_KEYS.USER_ENROLLMENTS, JSON.stringify({}));
-            }
-            if (!localStorage.getItem(LS_KEYS.USER_FAVORITES)) {
-                localStorage.setItem(LS_KEYS.USER_FAVORITES, JSON.stringify({}));
-            }
-            if (!localStorage.getItem(LS_KEYS.USER_ACTIVITY)) {
-                localStorage.setItem(LS_KEYS.USER_ACTIVITY, JSON.stringify({}));
-            }
-            if (!localStorage.getItem(LS_KEYS.EXAM_RESULTS)) {
-                localStorage.setItem(LS_KEYS.EXAM_RESULTS, JSON.stringify({}));
-            }
-            if (!localStorage.getItem(LS_KEYS.TEACHER_NOTIFICATIONS)) {
-                localStorage.setItem(LS_KEYS.TEACHER_NOTIFICATIONS, JSON.stringify({}));
-            }
-            if (!localStorage.getItem(LS_KEYS.COMPLETION_TRACKING)) {
-                localStorage.setItem(LS_KEYS.COMPLETION_TRACKING, JSON.stringify({}));
-            }
+            if (!localStorage.getItem(LS_KEYS.USER_ENROLLMENTS)) localStorage.setItem(LS_KEYS.USER_ENROLLMENTS, JSON.stringify({}));
+            if (!localStorage.getItem(LS_KEYS.USER_FAVORITES)) localStorage.setItem(LS_KEYS.USER_FAVORITES, JSON.stringify({}));
+            if (!localStorage.getItem(LS_KEYS.USER_ACTIVITY)) localStorage.setItem(LS_KEYS.USER_ACTIVITY, JSON.stringify({}));
+            if (!localStorage.getItem(LS_KEYS.EXAM_RESULTS)) localStorage.setItem(LS_KEYS.EXAM_RESULTS, JSON.stringify({}));
+            if (!localStorage.getItem(LS_KEYS.TEACHER_NOTIFICATIONS)) localStorage.setItem(LS_KEYS.TEACHER_NOTIFICATIONS, JSON.stringify({}));
+            if (!localStorage.getItem(LS_KEYS.COMPLETION_TRACKING)) localStorage.setItem(LS_KEYS.COMPLETION_TRACKING, JSON.stringify({}));
         }
 
         function initializeDefaultData() {
-            try {
-                users = [
-                    {
-                        id: generateId('user'),
-                        email: 'anas@admin',
-                        password: 'anas@admin',
-                        name: 'مدير النظام',
-                        roles: ['admin'],
-                        lastActive: Date.now(),
-                        joined: Date.now()
-                    },
-                    {
-                        id: generateId('user'),
-                        email: 'teacher@ed',
-                        password: 'edteacher',
-                        name: 'مدرس أول',
-                        roles: ['teacher'],
-                        lastActive: Date.now(),
-                        joined: Date.now()
-                    },
-                    {
-                        id: generateId('user'),
-                        email: 'student@ed',
-                        password: 'edstudent',
-                        name: 'طالب واحد',
-                        roles: ['student'],
-                        lastActive: Date.now(),
-                        joined: Date.now()
-                    }
-                ];
-
-                courses = [
-                    {
-                        id: generateId('course'),
-                        title: 'مبادئ البرمجة',
-                        description: 'أساسيات البرمجة مع فيديوهات وPDF.',
-                        image: null,
-                        createdBy: 'teacher@ed',
-                        lessons: [
-                            {
-                                id: generateId('lesson'),
-                                title: 'مقدمة البرمجة',
-                                videos: ["https://www.youtube.com/watch?v=3JluqTojuME"],
-                                files: [],
-                                pdfName: "",
-                                content: 'تعرف على مفاهيم البرمجة.'
-                            }
-                        ],
-                        created: Date.now()
-                    },
-                    {
-                        id: generateId('course'),
-                        title: 'تعلم HTML و CSS',
-                        description: 'دورة متكاملة لتعلم تصميم المواقع الإلكترونية.',
-                        image: null,
-                        createdBy: 'teacher@ed',
-                        lessons: [
-                            {
-                                id: generateId('lesson'),
-                                title: 'مقدمة في HTML',
-                                videos: ["https://www.youtube.com/watch?v=3JluqTojuME"],
-                                files: [],
-                                pdfName: "",
-                                content: 'تعلم أساسيات لغة HTML.'
-                            }
-                        ],
-                        created: Date.now()
-                    }
-                ];
-
-                notifications = [
-                    {
-                        id: generateId('notification'),
-                        title: 'مرحباً بك في ED MASTER',
-                        message: 'نرحب بك في منصتنا التعليمية. يمكنك الآن استكشاف الكورسات المتاحة.',
-                        type: 'info',
-                        read: false,
-                        timestamp: Date.now() - 86400000,
-                        userId: 'all'
-                    }
-                ];
-
-                localStorage.setItem(LS_KEYS.USER_ENROLLMENTS, JSON.stringify({}));
-                localStorage.setItem(LS_KEYS.USER_FAVORITES, JSON.stringify({}));
-                localStorage.setItem(LS_KEYS.USER_ACTIVITY, JSON.stringify({}));
-                localStorage.setItem(LS_KEYS.EXAM_RESULTS, JSON.stringify({}));
-                localStorage.setItem(LS_KEYS.TEACHER_NOTIFICATIONS, JSON.stringify({}));
-
-                saveAllData();
-            } catch (error) {
-                console.error('Error initializing default data:', error);
-                showToast('حدث خطأ في تهيئة البيانات الافتراضية', 'error');
-            }
+            // No longer needed - data comes from Supabase
         }
 
         function saveAllData() {
+            // Only save UI preferences to localStorage
             try {
-                localStorage.setItem(LS_KEYS.USERS, JSON.stringify(users));
-                localStorage.setItem(LS_KEYS.COURSES, JSON.stringify(courses));
-                localStorage.setItem(LS_KEYS.CURRENT_USER, JSON.stringify(currentUser));
-                localStorage.setItem(LS_KEYS.NOTIFICATIONS, JSON.stringify(notifications));
                 localStorage.setItem(LS_KEYS.LANGUAGE, currentLanguage);
             } catch (error) {
-                console.error('Error saving data:', error);
-                showToast('حدث خطأ في حفظ البيانات', 'error');
+                console.error('Error saving preferences:', error);
             }
         }
 
