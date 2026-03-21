@@ -3904,27 +3904,25 @@
             }
         };
 
-        function updateCourse(courseId) {
+        async function updateCourse(courseId) {
             try {
                 const course = courses.find(c => c.id === courseId);
-                if (!course) {
-                    showToast(currentLanguage === 'ar' ? 'الكورس غير موجود' : 'Course not found', 'error');
-                    return;
-                }
+                if (!course) { showToast('الكورس غير موجود', 'error'); return; }
                 
                 const title = document.getElementById('editCourseTitle').value.trim();
                 const desc = document.getElementById('editCourseDesc').value.trim();
                 
-                if (!title) {
-                    showToast(currentLanguage === 'ar' ? 'يرجى إدخال عنوان الكورس' : 'Please enter course title', 'warning');
-                    return;
-                }
+                if (!title) { showToast('يرجى إدخال عنوان الكورس', 'warning'); return; }
+                
+                const updateData = { title, description: desc };
+                if (courseImageData) updateData.image_url = courseImageData;
+                
+                const { error } = await sb.from('courses').update(updateData).eq('id', courseId);
+                if (error) { showToast('حدث خطأ في تحديث الكورس', 'error'); return; }
                 
                 course.title = title;
                 course.description = desc;
-                if (courseImageData) {
-                    course.image = courseImageData;
-                }
+                if (courseImageData) course.image = courseImageData;
                 
                 courseImageData = null;
                 saveAllData();
