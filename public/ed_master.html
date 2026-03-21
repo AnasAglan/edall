@@ -4427,32 +4427,19 @@
             }
         }
 
-        function saveExam(courseId, lessonId, editIndex) {
+        async function saveExam(courseId, lessonId, editIndex) {
             try {
                 const course = courses.find(c => c.id === courseId);
                 const lesson = course ? course.lessons.find(l => l.id === lessonId) : null;
-                if (!lesson) {
-                    showToast(currentLanguage === 'ar' ? 'المحاضرة غير موجودة' : 'Lesson not found', 'error');
-                    return;
-                }
+                if (!lesson) { showToast('المحاضرة غير موجودة', 'error'); return; }
                 
                 const questions = window._examBuilderQuestions;
-                if (!questions || questions.length === 0) {
-                    showToast(currentLanguage === 'ar' ? 'يرجى إضافة سؤال واحد على الأقل' : 'Please add at least one question', 'warning');
-                    return;
-                }
+                if (!questions || questions.length === 0) { showToast('يرجى إضافة سؤال واحد على الأقل', 'warning'); return; }
                 
                 for (let i = 0; i < questions.length; i++) {
-                    if (!questions[i].text.trim()) {
-                        showToast(currentLanguage === 'ar' ? `يرجى كتابة نص السؤال ${i + 1}` : `Please enter text for question ${i + 1}`, 'warning');
-                        return;
-                    }
+                    if (!questions[i].text.trim()) { showToast(`يرجى كتابة نص السؤال ${i + 1}`, 'warning'); return; }
                     if (questions[i].type === 'multiple') {
-                        const emptyOpts = questions[i].options.filter(o => !o.trim());
-                        if (emptyOpts.length > 0) {
-                            showToast(currentLanguage === 'ar' ? `يرجى ملء جميع خيارات السؤال ${i + 1}` : `Please fill all options for question ${i + 1}`, 'warning');
-                            return;
-                        }
+                        if (questions[i].options.filter(o => !o.trim()).length > 0) { showToast(`يرجى ملء جميع خيارات السؤال ${i + 1}`, 'warning'); return; }
                     }
                 }
                 
@@ -4463,32 +4450,55 @@
                 const allowRetake = document.getElementById('examAllowRetake').checked;
                 const requiredToProgress = document.getElementById('examRequiredToProgress') ? document.getElementById('examRequiredToProgress').checked : false;
                 
-                const examData = {
-                    title: examTitle,
-                    questions: questions.map(q => ({
-                        text: q.text,
-                        type: q.type,
-                        options: q.type === 'multiple' ? q.options : [],
-                        correctOption: q.type === 'multiple' ? q.correctOption : null
-                    })),
-                    passingGrade: passingGrade,
-                    timeLimit: timeLimit,
-                    allowRetake: allowRetake,
-                    requiredToProgress: requiredToProgress,
-                    createdAt: Date.now()
-                };
-                
                 if (!lesson.exams) lesson.exams = [];
                 
-                if (editIndex !== undefined && editIndex !== null) {
-                    lesson.exams[editIndex] = examData;
+                if (editIndex !== undefined && editIndex !== null && lesson.exams[editIndex]) {
+                    // Update existing exam
+                    const existingExam = lesson.exams[editIndex];
+                    await sb.from('exams').update({
+                        title: examTitle, passing_grade: passingGrade, time_limit: timeLimit,
+                        allow_retake: allowRetake, required_to_progress: requiredToProgress
+                    }).eq('id', existingExam.id);
+                    
+                    // Delete old questions and re-insert
+                    await sb.from('exam_questions').delete().eq('exam_id', existingExam.id);
+                    const qInserts = questions.map((q, i) => ({
+                        exam_id: existingExam.id, text: q.text, type: q.type,
+                        options: q.type === 'multiple' ? q.options : null,
+                        correct_option: q.type === 'multiple' ? q.correctOption : null, sort_order: i
+                    }));
+                    await sb.from('exam_questions').insert(qInserts);
+                    
+                    lesson.exams[editIndex] = {
+                        ...existingExam, title: examTitle,
+                        questions: questions.map(q => ({ text: q.text, type: q.type, options: q.type === 'multiple' ? q.options : [], correctOption: q.correctOption })),
+                        passingGrade, timeLimit, allowRetake, requiredToProgress
+                    };
                 } else {
-                    lesson.exams.push(examData);
+                    // Create new exam
+                    const { data: examData, error } = await sb.from('exams').insert({
+                        lesson_id: lessonId, title: examTitle, passing_grade: passingGrade,
+                        time_limit: timeLimit, allow_retake: allowRetake, required_to_progress: requiredToProgress
+                    }).select().single();
+                    
+                    if (error) { showToast('حدث خطأ في حفظ الامتحان', 'error'); return; }
+                    
+                    const qInserts = questions.map((q, i) => ({
+                        exam_id: examData.id, text: q.text, type: q.type,
+                        options: q.type === 'multiple' ? q.options : null,
+                        correct_option: q.type === 'multiple' ? q.correctOption : null, sort_order: i
+                    }));
+                    await sb.from('exam_questions').insert(qInserts);
+                    
+                    lesson.exams.push({
+                        id: examData.id, title: examTitle,
+                        questions: questions.map(q => ({ text: q.text, type: q.type, options: q.type === 'multiple' ? q.options : [], correctOption: q.correctOption })),
+                        passingGrade, timeLimit, allowRetake, requiredToProgress, createdAt: Date.now()
+                    });
                 }
                 
-                saveAllData();
                 closeModal();
-                showToast(currentLanguage === 'ar' ? 'تم حفظ الامتحان بنجاح' : 'Exam saved successfully', 'success');
+                showToast('تم حفظ الامتحان بنجاح', 'success');
                 openLesson(courseId, lessonId);
             } catch (error) {
                 console.error('Error saving exam:', error);
