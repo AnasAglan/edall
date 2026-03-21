@@ -3227,9 +3227,11 @@
             }
         }
 
-        function unenrollFromCourse(courseId) {
+        async function unenrollFromCourse(courseId) {
             try {
                 if (!currentUser) return;
+
+                await sb.from('enrollments').delete().eq('user_id', currentUser.id).eq('course_id', courseId);
 
                 const enrollments = JSON.parse(localStorage.getItem(LS_KEYS.USER_ENROLLMENTS)) || {};
                 if (enrollments[currentUser.id]) {
