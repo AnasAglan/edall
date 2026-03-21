@@ -5684,25 +5684,21 @@
             }
         }
 
-        function createNotification(userId, title, message, type = 'info') {
+        async function createNotification(userId, title, message, type = 'info') {
             try {
+                const { data: notifData } = await sb.from('notifications').insert({
+                    user_id: userId === 'all' ? null : userId,
+                    title, message, type, read: false
+                }).select().single();
+                
                 const notification = {
-                    id: generateId('notification'),
-                    title,
-                    message,
-                    type,
-                    read: false,
-                    timestamp: Date.now(),
-                    userId: userId
+                    id: notifData ? notifData.id : generateId('notification'),
+                    title, message, type, read: false,
+                    timestamp: Date.now(), userId: userId
                 };
                 
-                notifications.push(notification);
-                saveAllData();
-                
-                if (currentUser && currentUser.id === userId) {
-                    updateNotificationBadge();
-                }
-                
+                notifications.unshift(notification);
+                if (currentUser && currentUser.id === userId) updateNotificationBadge();
                 return notification;
             } catch (error) {
                 console.error('Error creating notification:', error);
