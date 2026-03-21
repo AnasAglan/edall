@@ -3325,7 +3325,7 @@
         function canUserEditCourse(course) {
             if (!currentUser) return false;
             if (currentUser.roles && currentUser.roles.includes('admin')) return true;
-            if (currentUser.roles && currentUser.roles.includes('teacher') && course.createdBy === currentUser.email) return true;
+            if (currentUser.roles && currentUser.roles.includes('teacher') && course.createdBy === currentUser.id) return true;
             return false;
         }
 
