@@ -2070,9 +2070,33 @@
             initializeApp();
         });
 
-        function initializeApp() {
+        async function initializeApp() {
             try {
-                loadData();
+                // Show loading
+                const loadingOverlay = document.getElementById('loadingOverlay');
+                if (loadingOverlay) loadingOverlay.style.display = 'flex';
+
+                // Check existing session
+                const { data: { session } } = await sb.auth.getSession();
+                if (session && session.user) {
+                    await loadCurrentUserFromSupabase(session.user);
+                }
+
+                // Listen for auth changes
+                sb.auth.onAuthStateChange(async (event, session) => {
+                    if (event === 'SIGNED_IN' && session && session.user) {
+                        await loadCurrentUserFromSupabase(session.user);
+                        updateUI();
+                        renderCoursesGrid();
+                        updateQuickStats();
+                    } else if (event === 'SIGNED_OUT') {
+                        currentUser = null;
+                        updateUI();
+                        renderCoursesGrid();
+                    }
+                });
+
+                await loadData();
                 setupEventListeners();
                 setupClickOutsideListener();
                 initializeFloatingBackButton();
@@ -2081,7 +2105,8 @@
                 document.getElementById('yr').textContent = new Date().getFullYear();
                 initializeLanguage();
                 
-                // Handle URL routing on initial load
+                if (loadingOverlay) loadingOverlay.style.display = 'none';
+
                 const params = new URLSearchParams(window.location.search);
                 if (params.has('page') || params.has('id')) {
                     handleURLRoute();
@@ -2091,7 +2116,32 @@
                 }
             } catch (error) {
                 console.error('Error initializing app:', error);
+                const loadingOverlay = document.getElementById('loadingOverlay');
+                if (loadingOverlay) loadingOverlay.style.display = 'none';
                 showToast('حدث خطأ في تهيئة التطبيق', 'error');
+            }
+        }
+
+        async function loadCurrentUserFromSupabase(authUser) {
+            try {
+                const { data: profile } = await sb.from('profiles').select('*').eq('id', authUser.id).single();
+                const { data: roles } = await sb.from('user_roles').select('role').eq('user_id', authUser.id);
+                
+                currentUser = {
+                    id: authUser.id,
+                    email: authUser.email,
+                    name: profile ? profile.name : authUser.email,
+                    phone: profile ? profile.phone : null,
+                    avatar_url: profile ? profile.avatar_url : null,
+                    roles: roles && roles.length > 0 ? roles.map(r => r.role) : ['student'],
+                    lastActive: Date.now(),
+                    joined: profile ? new Date(profile.joined_at).getTime() : Date.now()
+                };
+
+                // Update last_active
+                sb.from('profiles').update({ last_active: new Date().toISOString() }).eq('id', authUser.id).then(() => {});
+            } catch (error) {
+                console.error('Error loading current user:', error);
             }
         }
 
