@@ -2965,7 +2965,7 @@
             }
         }
 
-        function handleSignIn() {
+        async function handleSignIn() {
             try {
                 const email = document.getElementById('signInEmail').value.trim();
                 const password = document.getElementById('signInPass').value;
@@ -2975,54 +2975,64 @@
                     return;
                 }
                 
-                const user = users.find(u => u.email === email && u.password === password);
+                const { data, error } = await sb.auth.signInWithPassword({ email, password });
                 
-                if (user) {
-                    currentUser = user;
-                    currentUser.lastActive = Date.now();
-                    saveAllData();
-                    updateUI();
-                    showPage('mainPage');
-                    showToast(currentLanguage === 'ar' ? `مرحباً ${user.name || user.email}` : `Welcome ${user.name || user.email}`, 'success');
-                } else {
+                if (error) {
                     showToast(currentLanguage === 'ar' ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة' : 'Invalid email or password', 'error');
+                    return;
                 }
+                
+                await loadCurrentUserFromSupabase(data.user);
+                await loadData();
+                updateUI();
+                showPage('mainPage');
+                showToast(currentLanguage === 'ar' ? `مرحباً ${currentUser.name || currentUser.email}` : `Welcome ${currentUser.name || currentUser.email}`, 'success');
             } catch (error) {
                 console.error('Error signing in:', error);
                 showToast('حدث خطأ في تسجيل الدخول', 'error');
             }
         }
 
-        function handleSignUp() {
+        async function handleSignUp() {
             try {
                 const name = document.getElementById('signUpName').value.trim();
                 const email = document.getElementById('signUpEmail').value.trim();
                 const password = document.getElementById('signUpPass').value;
-                const role = document.getElementById('signUpRole').value;
                 
                 if (!name || !email || !password) {
                     showToast(currentLanguage === 'ar' ? 'يرجى ملء جميع الحقول' : 'Please fill all fields', 'warning');
                     return;
                 }
-                
-                if (users.find(u => u.email === email)) {
-                    showToast(currentLanguage === 'ar' ? 'البريد الإلكتروني مستخدم بالفعل' : 'Email already exists', 'error');
+
+                if (password.length < 6) {
+                    showToast(currentLanguage === 'ar' ? 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' : 'Password must be at least 6 characters', 'warning');
                     return;
                 }
                 
-                const newUser = {
-                    id: generateId('user'),
-                    email: email,
-                    password: password,
-                    name: name,
-                    roles: [role],
-                    lastActive: Date.now(),
-                    joined: Date.now()
-                };
+                const { data, error } = await sb.auth.signUp({
+                    email,
+                    password,
+                    options: { data: { name } }
+                });
                 
-                users.push(newUser);
-                currentUser = newUser;
-                saveAllData();
+                if (error) {
+                    if (error.message.includes('already registered')) {
+                        showToast(currentLanguage === 'ar' ? 'البريد الإلكتروني مستخدم بالفعل' : 'Email already exists', 'error');
+                    } else {
+                        showToast(error.message, 'error');
+                    }
+                    return;
+                }
+                
+                // Setup profile and role using security definer function
+                await sb.rpc('setup_new_user', {
+                    _user_id: data.user.id,
+                    _name: name,
+                    _email: email
+                });
+                
+                await loadCurrentUserFromSupabase(data.user);
+                await loadData();
                 updateUI();
                 showPage('mainPage');
                 showToast(currentLanguage === 'ar' ? `تم إنشاء حسابك بنجاح، مرحباً ${name}` : `Account created successfully, welcome ${name}`, 'success');
@@ -3032,10 +3042,14 @@
             }
         }
 
-        function handleLogout() {
+        async function handleLogout() {
             try {
+                await sb.auth.signOut();
                 currentUser = null;
-                localStorage.removeItem(LS_KEYS.CURRENT_USER);
+                localStorage.removeItem(LS_KEYS.USER_ENROLLMENTS);
+                localStorage.removeItem(LS_KEYS.USER_FAVORITES);
+                localStorage.removeItem(LS_KEYS.EXAM_RESULTS);
+                localStorage.removeItem(LS_KEYS.COMPLETION_TRACKING);
                 updateUI();
                 showPage('mainPage');
                 showToast(currentLanguage === 'ar' ? 'تم تسجيل الخروج بنجاح' : 'Logged out successfully', 'success');
