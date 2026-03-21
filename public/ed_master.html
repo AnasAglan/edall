@@ -3802,7 +3802,7 @@
             }
         }
 
-        function createNewCourse() {
+        async function createNewCourse() {
             try {
                 const title = document.getElementById('admCourseTitle').value.trim();
                 const desc = document.getElementById('admCourseDesc').value.trim();
@@ -3812,17 +3812,24 @@
                     return;
                 }
                 
-                const newCourse = {
-                    id: generateId('course'),
+                const { data: newCourseData, error } = await sb.from('courses').insert({
+                    title: title,
+                    description: desc,
+                    image_url: courseImageData,
+                    created_by: currentUser.id
+                }).select().single();
+                
+                if (error) { showToast('حدث خطأ في إنشاء الكورس', 'error'); return; }
+                
+                courses.unshift({
+                    id: newCourseData.id,
                     title: title,
                     description: desc,
                     image: courseImageData,
-                    createdBy: currentUser ? currentUser.email : 'anonymous',
+                    createdBy: currentUser.id,
                     lessons: [],
                     created: Date.now()
-                };
-                
-                courses.push(newCourse);
+                });
                 courseImageData = null;
                 
                 document.getElementById('admCourseTitle').value = '';
