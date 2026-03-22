@@ -4758,6 +4758,8 @@
                 const exam = lesson && lesson.exams ? lesson.exams[examIndex] : null;
                 if (!exam || !currentUser) return;
                 
+                showLoading();
+                
                 let mcqCorrect = 0;
                 let mcqTotal = 0;
                 let hasEssay = false;
@@ -4804,14 +4806,32 @@
                 
                 const passed = !hasEssay ? (finalScore >= (exam.passingGrade || 50)) : false;
                 
+                // Save to Supabase
+                const { data: resultData, error: resultError } = await sb.from('exam_results').insert({
+                    user_id: currentUser.id,
+                    exam_id: exam.id,
+                    score: finalScore,
+                    passed: passed,
+                    has_essay: hasEssay,
+                    essay_graded: essayGraded,
+                    answers: answers
+                }).select().single();
+                
+                if (resultError) {
+                    console.error('Error saving exam result to DB:', resultError);
+                }
+                
+                // Also save to localStorage for local state
                 const examResults = JSON.parse(localStorage.getItem(LS_KEYS.EXAM_RESULTS)) || {};
                 const resultKey = `${currentUser.id}_${courseId}_${lessonId}_${examIndex}`;
                 examResults[resultKey] = {
+                    id: resultData ? resultData.id : null,
                     userId: currentUser.id,
                     userName: currentUser.name,
                     courseId: courseId,
                     lessonId: lessonId,
                     examIndex: examIndex,
+                    examId: exam.id,
                     answers: answers,
                     mcqScore: mcqScore,
                     mcqCorrect: mcqCorrect,
@@ -4826,6 +4846,8 @@
                 
                 trackLessonProgress(courseId, lessonId, 'examCompleted', true);
                 trackLessonProgress(courseId, lessonId, 'examScore', finalScore);
+                
+                hideLoading();
                 
                 let resultHTML = `
                     <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">
@@ -4888,19 +4910,18 @@
                 
                 showModal(resultHTML);
                 
+                // Notify the course creator (teacher)
                 if (hasEssay && course.createdBy) {
-                    const teacher = users.find(u => u.email === course.createdBy);
-                    if (teacher) {
-                        createNotification(
-                            teacher.id,
-                            currentLanguage === 'ar' ? 'امتحان يحتاج تصحيح' : 'Exam needs grading',
-                            currentLanguage === 'ar' ? `الطالب ${currentUser.name} أكمل امتحان "${lesson.title}" ويحتاج تصحيح الأسئلة المقالية` : `Student ${currentUser.name} completed exam "${lesson.title}" and needs essay grading`,
-                            'exam'
-                        );
-                    }
+                    createNotification(
+                        course.createdBy,
+                        currentLanguage === 'ar' ? 'امتحان يحتاج تصحيح' : 'Exam needs grading',
+                        currentLanguage === 'ar' ? `الطالب ${currentUser.name} أكمل امتحان "${lesson.title}" ويحتاج تصحيح الأسئلة المقالية` : `Student ${currentUser.name} completed exam "${lesson.title}" and needs essay grading`,
+                        'exam'
+                    );
                 }
                 
             } catch (error) {
+                hideLoading();
                 console.error('Error submitting exam:', error);
                 showToast('حدث خطأ في تسليم الامتحان', 'error');
             }
