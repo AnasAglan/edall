@@ -1,96 +1,102 @@
 
 
-# خطة تطوير منصة ED MASTER
+# خطة إكمال تحديث المنصة
 
-## ملخص
-تحويل المنصة من localStorage إلى قاعدة بيانات Supabase حقيقية، إصلاح اللغة، إضافة خيار "يجب النجاح للمتابعة"، وإضافة روابط URL لكل صفحة.
+## المشاكل المكتشفة
 
----
-
-## المتطلبات
-
-### 1. إصلاح اللغة (لا تطبق على كامل الصفحة)
-المشكلة: `updateLanguageUI` تغير `dir` و `lang` لكنها لا تُعيد عرض النصوص الثابتة في HTML مثل عناوين البطاقات والأزرار والنصوص الثابتة في كورسات المنضمة/المفضلة.
-
-**الحل:**
-- توسيع `updateLanguageUI` لتشمل جميع النصوص الثابتة في HTML (labels, stat labels, filter tabs, breadcrumbs, placeholders, page titles)
-- إضافة `data-i18n` attributes على العناصر الثابتة مع قاموس ترجمة
-- إعادة render لكل الصفحات المرئية عند تغيير اللغة (enrolled, favorites, manage courses, profile, settings, notifications)
-
-### 2. خيار "يجب النجاح للمتابعة" في صفحة إنشاء الامتحان
-**الحل:**
-- إضافة checkbox في `showAddExamModal` و `showEditExamModal`: `<input type="checkbox" id="examRequiredToPass">`
-- حفظ الحقل `requiredToProgress: true/false` مع بيانات الامتحان في `saveExam`
-- في `openLesson`، قبل عرض المحاضرات التالية: فحص إذا كانت المحاضرة السابقة تحتوي على امتحان إجباري ولم ينجح فيه الطالب، نعرض رسالة تحذيرية ونمنع الفتح
-- في `showCourseDetails` عند عرض قائمة المحاضرات: إضافة قفل (lock icon) على المحاضرات المقفلة
-
-### 3. روابط URL لكل صفحة وكورس (باستخدام معاملات URL)
-**الحل:**
-- إضافة نظام routing يعتمد على `URLSearchParams`:
-  - `/ed_master.html` → الصفحة الرئيسية
-  - `/ed_master.html?page=course&id=xxx` → صفحة كورس
-  - `/ed_master.html?page=admin` → لوحة الإدارة (محمية)
-  - `/ed_master.html?page=login` → تسجيل الدخول
-  - `/ed_master.html?page=profile` → الملف الشخصي
-  - `/ed_master.html?page=enrolled` → كورساتي
-  - `/ed_master.html?page=favorites` → المفضلة
-- تعديل `showPage` لاستخدام `history.pushState` لتحديث URL
-- إضافة listener لـ `popstate` للتنقل بزر الرجوع
-- حماية صفحة admin: عند فتح `?page=admin` بدون تسجيل دخول كمدير → إعادة توجيه لتسجيل الدخول
-
-### 4. قاعدة بيانات Supabase (Lovable Cloud)
-**الهيكل:**
-
-```text
-الجداول:
-├── profiles (id, name, email, avatar_url, phone, joined_at)
-├── user_roles (id, user_id FK→auth.users, role ENUM[admin,teacher,student])
-├── courses (id, title, description, image_url, created_by FK→auth.users, created_at)
-├── lessons (id, course_id FK→courses, title, content, sort_order, created_at)
-├── lesson_videos (id, lesson_id FK→lessons, video_url, sort_order)
-├── exams (id, lesson_id FK→lessons, title, passing_grade, time_limit, allow_retake, required_to_progress, created_at)
-├── exam_questions (id, exam_id FK→exams, text, type ENUM[multiple,essay], options JSONB, correct_option INT, sort_order)
-├── exam_results (id, user_id FK→auth.users, exam_id FK→exams, score, passed, has_essay, essay_graded, answers JSONB, submitted_at)
-├── enrollments (id, user_id FK→auth.users, course_id FK→courses, enrolled_at)
-├── favorites (id, user_id FK→auth.users, course_id FK→courses)
-├── lesson_progress (id, user_id FK→auth.users, lesson_id FK→lessons, video_watched, pdf_opened, exam_completed)
-└── notifications (id, user_id, title, message, type, read, created_at)
-```
-
-**RLS Policies:**
-- profiles: users read own, admin reads all
-- courses: everyone reads, teachers/admins insert/update own
-- user_roles: security definer function `has_role()` لتجنب recursion
-- exam_results: users read own, teachers read course students
-- enrollments/favorites: users manage own
-
-**خطوات التنفيذ:**
-1. تفعيل Lovable Cloud
-2. إنشاء migrations للجداول
-3. إنشاء Supabase auth بدل نظام المصادقة الحالي (email/password)
-4. تعديل كل دوال `loadData`/`saveAllData` لتستخدم Supabase client بدل localStorage
-5. إنشاء حساب admin افتراضي
-6. تحويل كل العمليات (CRUD) لتستخدم Supabase queries
-
-**ملاحظة مهمة:** هذا التغيير كبير جداً. سيتم تحويل المنصة بالكامل من ملف HTML واحد مع localStorage إلى تطبيق React + Supabase. الملف `ed_master.html` سيتم تحويله إلى React components مع Supabase backend.
+1. **submitExam و saveEssayGrades** تحفظان في localStorage فقط، لا تحفظان في قاعدة البيانات
+2. **addNewUser** (لوحة الإدارة) تحفظ محلياً فقط ولا تنشئ حساب حقيقي في النظام
+3. **handle_new_user** trigger غير مفعّل - عند التسجيل `setup_new_user` يُستدعى يدوياً لكن أول مستخدم فقط يحصل على admin
+4. **renderManageCoursesPage** تقارن `course.createdBy === currentUser.email` لكن `createdBy` هو UUID وليس email - هذا يمنع المدرس من رؤية كورساته
+5. **لا يوجد loading spinner** عند تسجيل الدخول/الإنشاء
+6. **لا يظهر اسم المدرس** على بطاقة الكورس ولا توجد صفحة مدرس
+7. **لا يوجد دعم PDF** في إضافة المحاضرة
+8. **لا يوجد تعديل محاضرة** - فقط إضافة
+9. **دعم فيديو محدود** - placeholder يقول YouTube فقط، لا يدعم 4shared و Dailymotion
+10. **profiles لا تحتوي على حقل bio** لوصف المدرس
+11. **لا يوجد تعيين أدوار من لوحة الإدارة** بشكل فعّال عبر قاعدة البيانات
 
 ---
 
-## ترتيب التنفيذ
-1. إصلاح اللغة أولاً (أسرع إصلاح)
-2. إضافة خيار "يجب النجاح للمتابعة"
-3. نظام الروابط URL
-4. تفعيل Supabase وإنشاء الجداول
-5. تحويل المصادقة إلى Supabase Auth
-6. تحويل CRUD operations إلى Supabase
-7. حماية لوحة الإدارة
+## خطوات التنفيذ
+
+### 1. تحديث قاعدة البيانات (Migration)
+- إضافة حقل `bio` لجدول `profiles` لوصف المدرس عن نفسه
+- إنشاء storage bucket `lesson-pdfs` لحفظ ملفات PDF
+- إنشاء storage bucket `course-images` لصور الكورسات
+- تفعيل trigger `handle_new_user` على `auth.users` بعد INSERT
+
+### 2. تحديث `submitExam` لحفظ النتائج في DB
+- بعد حساب النتيجة، إدراج سجل في `exam_results` عبر Supabase
+- تخزين `exam_id` الفعلي بدل `examIndex`
+- إزالة الاعتماد على localStorage لنتائج الامتحان
+
+### 3. تحديث `saveEssayGrades` لحفظ التصحيح في DB
+- تحديث سجل `exam_results` في Supabase بالدرجات النهائية
+- تحديث `passed` و `score` و `essay_graded` و `answers` في DB
+
+### 4. إصلاح `addNewUser` في لوحة الإدارة
+- استخدام edge function لإنشاء مستخدمين جدد (لأن signUp من العميل لا يسمح بتحديد الدور)
+- أو: إنشاء الحساب عبر `sb.auth.signUp` ثم تعيين الدور عبر `user_roles` insert (المدير لديه صلاحية)
+
+### 5. إضافة Loading Spinners
+- إضافة spinner/overlay أثناء تسجيل الدخول وإنشاء الحساب
+- إضافة spinner لأي عملية async (إنشاء كورس، حفظ محاضرة، تسليم امتحان)
+
+### 6. عرض اسم المدرس على بطاقة الكورس + صفحة المدرس
+- في `renderCoursesGrid`: إضافة اسم المدرس (من `users` array باستخدام `course.createdBy` UUID)
+- عند الضغط على اسم المدرس: فتح صفحة المدرس (اسم، صورة، bio، كورساته)
+- إضافة صفحة جديدة `teacherProfilePage` في HTML
+
+### 7. إصلاح مقارنة `createdBy`
+- في `renderManageCoursesPage` سطر 3624: تغيير `course.createdBy === currentUser.email` إلى `course.createdBy === currentUser.id`
+- التأكد من أن `createdBy` يُحفظ كـ UUID في كل مكان
+
+### 8. دعم فيديوهات متعددة المنصات
+- تحديث placeholder ليشمل YouTube, Dailymotion, 4shared
+- تحديث `getYouTubeEmbedUrl` لتشمل Dailymotion embed و 4shared player
+- إعادة تسمية الدالة لـ `getVideoEmbedUrl`
+
+### 9. دعم ملفات PDF في المحاضرة
+- إضافة input لرفع ملفات PDF في `addLessonToCourse`
+- حفظ ملفات PDF في Supabase Storage bucket `lesson-pdfs`
+- إنشاء جدول `lesson_files` (id, lesson_id, file_url, file_name, sort_order) لربط الملفات بالمحاضرات
+- عرض ملفات PDF في `openLesson`
+
+### 10. تعديل المحاضرة
+- إضافة زر "تعديل" بجانب كل محاضرة في `showCourseDetails`
+- modal تعديل يحمّل بيانات المحاضرة الحالية (عنوان، محتوى، فيديوهات، ملفات)
+- دالة `updateLesson` تحدّث الدرجة في DB وتحذف/تضيف فيديوهات وملفات
+
+### 11. إضافة حقل bio في صفحة الملف الشخصي
+- textarea في `renderProfilePage` لإضافة/تعديل الوصف الشخصي
+- حفظ `bio` في جدول `profiles`
 
 ---
 
 ## التفاصيل التقنية
 
-- **المصادقة**: Supabase Auth مع email/password (بدل التخزين المحلي لكلمات المرور)
-- **الصور**: يمكن استخدام Supabase Storage لصور الكورسات والأفاتار
-- **الأمان**: RLS على كل الجداول + security definer functions للأدوار
-- **البنية**: تحويل إلى React components بدل ملف HTML واحد (ضروري للتكامل مع Supabase)
+### Migration SQL المطلوب:
+```sql
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS bio text;
+
+CREATE TABLE public.lesson_files (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    lesson_id uuid NOT NULL REFERENCES public.lessons(id) ON DELETE CASCADE,
+    file_url text NOT NULL,
+    file_name text NOT NULL,
+    sort_order integer DEFAULT 0
+);
+ALTER TABLE public.lesson_files ENABLE ROW LEVEL SECURITY;
+-- RLS policies similar to lesson_videos
+```
+
+### Storage Buckets:
+- `lesson-pdfs` - public read, authenticated upload
+- `course-images` - public read, authenticated upload
+
+### ملفات تتأثر:
+- `public/ed_master.html` - التحديث الرئيسي (جميع الدوال المذكورة)
+- Migration SQL جديد
+- لا حاجة لتعديل ملفات React (المنصة تعمل من ed_master.html)
 
