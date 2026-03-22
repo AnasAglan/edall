@@ -5685,6 +5685,13 @@
                             ).join('')}
                         </div>
                     </div>
+                    <div style="margin-bottom:20px;">
+                        <label style="font-weight:bold;display:block;margin-bottom:5px;">${currentLanguage === 'ar' ? 'نبذة عنك' : 'About You'}</label>
+                        <textarea id="profileBio" rows="3" placeholder="${currentLanguage === 'ar' ? 'اكتب نبذة عن نفسك...' : 'Write about yourself...'}" style="width:100%;">${currentUser.bio || ''}</textarea>
+                        <button class="btn btn-sm" onclick="saveProfileBio()" style="margin-top:8px;">
+                            <i class="fas fa-save"></i> ${currentLanguage === 'ar' ? 'حفظ' : 'Save'}
+                        </button>
+                    </div>
                 `;
                 
                 const enrollments = JSON.parse(localStorage.getItem(LS_KEYS.USER_ENROLLMENTS)) || {};
