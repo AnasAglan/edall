@@ -2975,9 +2975,11 @@
                     return;
                 }
                 
+                showLoading();
                 const { data, error } = await sb.auth.signInWithPassword({ email, password });
                 
                 if (error) {
+                    hideLoading();
                     showToast(currentLanguage === 'ar' ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة' : 'Invalid email or password', 'error');
                     return;
                 }
@@ -2985,9 +2987,11 @@
                 await loadCurrentUserFromSupabase(data.user);
                 await loadData();
                 updateUI();
+                hideLoading();
                 showPage('mainPage');
                 showToast(currentLanguage === 'ar' ? `مرحباً ${currentUser.name || currentUser.email}` : `Welcome ${currentUser.name || currentUser.email}`, 'success');
             } catch (error) {
+                hideLoading();
                 console.error('Error signing in:', error);
                 showToast('حدث خطأ في تسجيل الدخول', 'error');
             }
