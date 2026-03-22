@@ -225,6 +225,38 @@ export type Database = {
           },
         ]
       }
+      lesson_files: {
+        Row: {
+          file_name: string
+          file_url: string
+          id: string
+          lesson_id: string
+          sort_order: number | null
+        }
+        Insert: {
+          file_name: string
+          file_url: string
+          id?: string
+          lesson_id: string
+          sort_order?: number | null
+        }
+        Update: {
+          file_name?: string
+          file_url?: string
+          id?: string
+          lesson_id?: string
+          sort_order?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lesson_files_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lesson_progress: {
         Row: {
           exam_completed: boolean
@@ -360,6 +392,7 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          bio: string | null
           email: string
           id: string
           joined_at: string
@@ -369,6 +402,7 @@ export type Database = {
         }
         Insert: {
           avatar_url?: string | null
+          bio?: string | null
           email: string
           id: string
           joined_at?: string
@@ -378,6 +412,7 @@ export type Database = {
         }
         Update: {
           avatar_url?: string | null
+          bio?: string | null
           email?: string
           id?: string
           joined_at?: string

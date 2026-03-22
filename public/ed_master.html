@@ -1881,6 +1881,14 @@
         const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         // Missing UI Functions
+        function showLoading() {
+            const overlay = document.getElementById('loadingOverlay');
+            if (overlay) overlay.style.display = 'flex';
+        }
+        function hideLoading() {
+            const overlay = document.getElementById('loadingOverlay');
+            if (overlay) overlay.style.display = 'none';
+        }
         function toggleUserMenu() {
             const menu = document.getElementById('userMenu');
             if (menu) menu.classList.toggle('show');
@@ -1896,6 +1904,23 @@
         function hideLanguageMenu() {
             const sel = document.getElementById('languageSelector');
             if (sel) sel.classList.remove('show');
+        }
+
+        // Video embed support for YouTube, Dailymotion, 4shared
+        function getVideoEmbedUrl(url) {
+            if (!url) return '';
+            // YouTube
+            const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]+)/);
+            if (ytMatch) return `https://www.youtube.com/embed/${ytMatch[1]}`;
+            // Dailymotion
+            const dmMatch = url.match(/(?:dailymotion\.com\/video\/|dai\.ly\/)([a-zA-Z0-9]+)/);
+            if (dmMatch) return `https://www.dailymotion.com/embed/video/${dmMatch[1]}`;
+            // 4shared
+            if (url.includes('4shared.com')) {
+                return url; // 4shared doesn't have standard embed, use direct link
+            }
+            // Generic - try as iframe src
+            return url;
         }
 
         // URL Routing
@@ -2133,6 +2158,7 @@
                     name: profile ? profile.name : authUser.email,
                     phone: profile ? profile.phone : null,
                     avatar_url: profile ? profile.avatar_url : null,
+                    bio: profile ? profile.bio : null,
                     roles: roles && roles.length > 0 ? roles.map(r => r.role) : ['student'],
                     lastActive: Date.now(),
                     joined: profile ? new Date(profile.joined_at).getTime() : Date.now()
@@ -2975,9 +3001,11 @@
                     return;
                 }
                 
+                showLoading();
                 const { data, error } = await sb.auth.signInWithPassword({ email, password });
                 
                 if (error) {
+                    hideLoading();
                     showToast(currentLanguage === 'ar' ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة' : 'Invalid email or password', 'error');
                     return;
                 }
@@ -2985,9 +3013,11 @@
                 await loadCurrentUserFromSupabase(data.user);
                 await loadData();
                 updateUI();
+                hideLoading();
                 showPage('mainPage');
                 showToast(currentLanguage === 'ar' ? `مرحباً ${currentUser.name || currentUser.email}` : `Welcome ${currentUser.name || currentUser.email}`, 'success');
             } catch (error) {
+                hideLoading();
                 console.error('Error signing in:', error);
                 showToast('حدث خطأ في تسجيل الدخول', 'error');
             }
@@ -2998,6 +3028,7 @@
                 const name = document.getElementById('signUpName').value.trim();
                 const email = document.getElementById('signUpEmail').value.trim();
                 const password = document.getElementById('signUpPass').value;
+                const role = document.getElementById('signUpRole').value;
                 
                 if (!name || !email || !password) {
                     showToast(currentLanguage === 'ar' ? 'يرجى ملء جميع الحقول' : 'Please fill all fields', 'warning');
@@ -3009,6 +3040,7 @@
                     return;
                 }
                 
+                showLoading();
                 const { data, error } = await sb.auth.signUp({
                     email,
                     password,
@@ -3016,6 +3048,7 @@
                 });
                 
                 if (error) {
+                    hideLoading();
                     if (error.message.includes('already registered')) {
                         showToast(currentLanguage === 'ar' ? 'البريد الإلكتروني مستخدم بالفعل' : 'Email already exists', 'error');
                     } else {
@@ -3031,12 +3064,19 @@
                     _email: email
                 });
                 
+                // If role is teacher, update the role (admin can do this, or if first user they're already admin)
+                if (role === 'teacher') {
+                    await sb.from('user_roles').update({ role: 'teacher' }).eq('user_id', data.user.id);
+                }
+                
                 await loadCurrentUserFromSupabase(data.user);
                 await loadData();
                 updateUI();
+                hideLoading();
                 showPage('mainPage');
                 showToast(currentLanguage === 'ar' ? `تم إنشاء حسابك بنجاح، مرحباً ${name}` : `Account created successfully, welcome ${name}`, 'success');
             } catch (error) {
+                hideLoading();
                 console.error('Error signing up:', error);
                 showToast('حدث خطأ في إنشاء الحساب', 'error');
             }
@@ -3405,6 +3445,10 @@
                                 <div class="card-badge">${course.lessons ? course.lessons.length : 0} محاضرة</div>
                             </div>
                             <div class="card-desc">${course.description || 'لا يوجد وصف'}</div>
+                            ${(() => {
+                                const teacher = users.find(u => u.id === course.createdBy);
+                                return teacher ? `<div style="color:var(--text-muted);font-size:0.85rem;margin-bottom:8px;cursor:pointer;" onclick="showTeacherProfile('${course.createdBy}')"><i class="fas fa-chalkboard-teacher"></i> ${currentLanguage === 'ar' ? 'المدرس:' : 'Teacher:'} <span style="color:var(--primary);text-decoration:underline;">${teacher.name}</span></div>` : '';
+                            })()}
                             ${currentUser && currentUser.roles && currentUser.roles.includes('student') ? `
                                 <div class="progress-bar">
                                     <div class="progress-fill" style="width: ${completionStatus.progress}%"></div>
@@ -3621,7 +3665,7 @@
                 let coursesToShow = courses;
                 
                 if (currentUser && currentUser.roles && currentUser.roles.includes('teacher') && !currentUser.roles.includes('admin')) {
-                    coursesToShow = courses.filter(course => course.createdBy === currentUser.email);
+                    coursesToShow = courses.filter(course => course.createdBy === currentUser.id);
                 }
                 
                 if (coursesToShow.length === 0) {
@@ -4086,7 +4130,7 @@
                             ${lesson.videos.map(video => `
                                 <div style="margin:10px 0;">
                                     <div class="video-container">
-                                        <iframe width="100%" height="315" src="${video.replace('watch?v=', 'embed/')}" 
+                                        <iframe width="100%" height="315" src="${getVideoEmbedUrl(video)}" 
                                             frameborder="0" allowfullscreen style="border-radius:var(--radius);"></iframe>
                                     </div>
                                 </div>
@@ -4719,6 +4763,8 @@
                 const exam = lesson && lesson.exams ? lesson.exams[examIndex] : null;
                 if (!exam || !currentUser) return;
                 
+                showLoading();
+                
                 let mcqCorrect = 0;
                 let mcqTotal = 0;
                 let hasEssay = false;
@@ -4765,14 +4811,32 @@
                 
                 const passed = !hasEssay ? (finalScore >= (exam.passingGrade || 50)) : false;
                 
+                // Save to Supabase
+                const { data: resultData, error: resultError } = await sb.from('exam_results').insert({
+                    user_id: currentUser.id,
+                    exam_id: exam.id,
+                    score: finalScore,
+                    passed: passed,
+                    has_essay: hasEssay,
+                    essay_graded: essayGraded,
+                    answers: answers
+                }).select().single();
+                
+                if (resultError) {
+                    console.error('Error saving exam result to DB:', resultError);
+                }
+                
+                // Also save to localStorage for local state
                 const examResults = JSON.parse(localStorage.getItem(LS_KEYS.EXAM_RESULTS)) || {};
                 const resultKey = `${currentUser.id}_${courseId}_${lessonId}_${examIndex}`;
                 examResults[resultKey] = {
+                    id: resultData ? resultData.id : null,
                     userId: currentUser.id,
                     userName: currentUser.name,
                     courseId: courseId,
                     lessonId: lessonId,
                     examIndex: examIndex,
+                    examId: exam.id,
                     answers: answers,
                     mcqScore: mcqScore,
                     mcqCorrect: mcqCorrect,
@@ -4787,6 +4851,8 @@
                 
                 trackLessonProgress(courseId, lessonId, 'examCompleted', true);
                 trackLessonProgress(courseId, lessonId, 'examScore', finalScore);
+                
+                hideLoading();
                 
                 let resultHTML = `
                     <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">
@@ -4849,19 +4915,18 @@
                 
                 showModal(resultHTML);
                 
+                // Notify the course creator (teacher)
                 if (hasEssay && course.createdBy) {
-                    const teacher = users.find(u => u.email === course.createdBy);
-                    if (teacher) {
-                        createNotification(
-                            teacher.id,
-                            currentLanguage === 'ar' ? 'امتحان يحتاج تصحيح' : 'Exam needs grading',
-                            currentLanguage === 'ar' ? `الطالب ${currentUser.name} أكمل امتحان "${lesson.title}" ويحتاج تصحيح الأسئلة المقالية` : `Student ${currentUser.name} completed exam "${lesson.title}" and needs essay grading`,
-                            'exam'
-                        );
-                    }
+                    createNotification(
+                        course.createdBy,
+                        currentLanguage === 'ar' ? 'امتحان يحتاج تصحيح' : 'Exam needs grading',
+                        currentLanguage === 'ar' ? `الطالب ${currentUser.name} أكمل امتحان "${lesson.title}" ويحتاج تصحيح الأسئلة المقالية` : `Student ${currentUser.name} completed exam "${lesson.title}" and needs essay grading`,
+                        'exam'
+                    );
                 }
                 
             } catch (error) {
+                hideLoading();
                 console.error('Error submitting exam:', error);
                 showToast('حدث خطأ في تسليم الامتحان', 'error');
             }
@@ -4988,7 +5053,7 @@
             }
         }
 
-        function saveEssayGrades(resultKey, courseId, lessonId, examIndex) {
+        async function saveEssayGrades(resultKey, courseId, lessonId, examIndex) {
             try {
                 const examResults = JSON.parse(localStorage.getItem(LS_KEYS.EXAM_RESULTS)) || {};
                 const result = examResults[resultKey];
@@ -5024,6 +5089,8 @@
                     return;
                 }
                 
+                showLoading();
+                
                 const totalQuestions = exam.questions.length;
                 const mcqWeight = result.mcqTotal / totalQuestions;
                 const essayWeight = essayTotal / totalQuestions;
@@ -5035,6 +5102,33 @@
                 
                 examResults[resultKey] = result;
                 localStorage.setItem(LS_KEYS.EXAM_RESULTS, JSON.stringify(examResults));
+                
+                // Save to Supabase
+                if (result.id) {
+                    await sb.from('exam_results').update({
+                        score: result.score,
+                        passed: result.passed,
+                        essay_graded: true,
+                        answers: result.answers
+                    }).eq('id', result.id);
+                } else if (result.examId) {
+                    // Try to find the result in DB
+                    const { data: dbResult } = await sb.from('exam_results')
+                        .select('id')
+                        .eq('user_id', result.userId)
+                        .eq('exam_id', result.examId)
+                        .order('submitted_at', { ascending: false })
+                        .limit(1)
+                        .single();
+                    if (dbResult) {
+                        await sb.from('exam_results').update({
+                            score: result.score,
+                            passed: result.passed,
+                            essay_graded: true,
+                            answers: result.answers
+                        }).eq('id', dbResult.id);
+                    }
+                }
                 
                 trackLessonProgress(courseId, lessonId, 'examScore', result.score);
                 
@@ -5050,9 +5144,11 @@
                     );
                 }
                 
+                hideLoading();
                 showToast(currentLanguage === 'ar' ? 'تم حفظ التصحيح بنجاح' : 'Grades saved successfully', 'success');
                 showCorrectionPanel(courseId, lessonId, examIndex);
             } catch (error) {
+                hideLoading();
                 console.error('Error saving essay grades:', error);
                 showToast('حدث خطأ في حفظ التصحيح', 'error');
             }
@@ -5274,7 +5370,7 @@
             }
         }
 
-        function addNewUser() {
+        async function addNewUser() {
             try {
                 const name = document.getElementById('newUserName').value.trim();
                 const email = document.getElementById('newUserEmail').value.trim();
@@ -5291,26 +5387,54 @@
                     return;
                 }
                 
-                const newUser = {
-                    id: generateId('user'),
+                showLoading();
+                
+                // Create real Supabase auth user
+                const { data: signUpData, error: signUpError } = await sb.auth.signUp({
+                    email,
+                    password,
+                    options: { data: { name } }
+                });
+                
+                if (signUpError) {
+                    hideLoading();
+                    showToast(signUpError.message, 'error');
+                    return;
+                }
+                
+                const newUserId = signUpData.user.id;
+                
+                // Setup profile
+                await sb.rpc('setup_new_user', {
+                    _user_id: newUserId,
+                    _name: name,
+                    _email: email
+                });
+                
+                // Set the role (admin has RLS permission to update user_roles)
+                if (role !== 'student') {
+                    await sb.from('user_roles').update({ role: role }).eq('user_id', newUserId);
+                }
+                
+                // Add to local users array
+                users.push({
+                    id: newUserId,
                     email: email,
-                    password: password,
                     name: name,
                     roles: [role],
                     lastActive: Date.now(),
                     joined: Date.now()
-                };
-                
-                users.push(newUser);
-                saveAllData();
+                });
                 
                 document.getElementById('newUserName').value = '';
                 document.getElementById('newUserEmail').value = '';
                 document.getElementById('newUserPass').value = '';
                 
+                hideLoading();
                 showToast(currentLanguage === 'ar' ? 'تم إضافة المستخدم بنجاح' : 'User added successfully', 'success');
                 renderAdminPage();
             } catch (error) {
+                hideLoading();
                 console.error('Error adding user:', error);
                 showToast('حدث خطأ في إضافة المستخدم', 'error');
             }
@@ -5394,7 +5518,7 @@
                     <div style="font-weight:bold;margin:10px 0 5px;">${currentLanguage === 'ar' ? 'روابط الفيديو:' : 'Video URLs:'}</div>
                     <div id="lessonVideosContainer">
                         <div class="video-input-row" style="display:flex;gap:8px;margin-bottom:8px;">
-                            <input class="lesson-video-input" placeholder="${currentLanguage === 'ar' ? 'رابط فيديو YouTube' : 'YouTube video URL'}" style="flex:1;">
+                            <input class="lesson-video-input" placeholder="${currentLanguage === 'ar' ? 'رابط فيديو (YouTube, Dailymotion, 4shared)' : 'Video URL (YouTube, Dailymotion, 4shared)'}" style="flex:1;">
                         </div>
                     </div>
                     <button class="btn btn-sm btn-outline" onclick="addVideoInput()" style="margin-bottom:15px;">
@@ -5424,7 +5548,7 @@
             row.className = 'video-input-row';
             row.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;';
             row.innerHTML = `
-                <input class="lesson-video-input" placeholder="${currentLanguage === 'ar' ? 'رابط فيديو YouTube' : 'YouTube video URL'}" style="flex:1;">
+                <input class="lesson-video-input" placeholder="${currentLanguage === 'ar' ? 'رابط فيديو (YouTube, Dailymotion, 4shared)' : 'Video URL (YouTube, Dailymotion, 4shared)'}" style="flex:1;">
                 <button onclick="this.parentElement.remove()" style="background:var(--danger);color:white;border:none;border-radius:var(--radius-sm);width:36px;height:36px;cursor:pointer;font-size:1rem;">✕</button>
             `;
             container.appendChild(row);
@@ -5561,6 +5685,13 @@
                                 `<span class="badge ${role === 'admin' ? 'badge-primary' : role === 'teacher' ? 'badge-accent' : 'badge-success'}">${role === 'admin' ? (currentLanguage === 'ar' ? 'مدير' : 'Admin') : role === 'teacher' ? (currentLanguage === 'ar' ? 'مدرس' : 'Teacher') : (currentLanguage === 'ar' ? 'طالب' : 'Student')}</span>`
                             ).join('')}
                         </div>
+                    </div>
+                    <div style="margin-bottom:20px;">
+                        <label style="font-weight:bold;display:block;margin-bottom:5px;">${currentLanguage === 'ar' ? 'نبذة عنك' : 'About You'}</label>
+                        <textarea id="profileBio" rows="3" placeholder="${currentLanguage === 'ar' ? 'اكتب نبذة عن نفسك...' : 'Write about yourself...'}" style="width:100%;">${currentUser.bio || ''}</textarea>
+                        <button class="btn btn-sm" onclick="saveProfileBio()" style="margin-top:8px;">
+                            <i class="fas fa-save"></i> ${currentLanguage === 'ar' ? 'حفظ' : 'Save'}
+                        </button>
                     </div>
                 `;
                 
@@ -5773,6 +5904,80 @@
             }
         }
 
+        async function saveProfileBio() {
+            try {
+                if (!currentUser) return;
+                const bio = document.getElementById('profileBio').value.trim();
+                showLoading();
+                await sb.from('profiles').update({ bio }).eq('id', currentUser.id);
+                currentUser.bio = bio;
+                hideLoading();
+                showToast(currentLanguage === 'ar' ? 'تم حفظ النبذة بنجاح' : 'Bio saved successfully', 'success');
+            } catch (error) {
+                hideLoading();
+                console.error('Error saving bio:', error);
+                showToast('حدث خطأ في حفظ النبذة', 'error');
+            }
+        }
+
+        function showTeacherProfile(teacherId) {
+            try {
+                const teacher = users.find(u => u.id === teacherId);
+                if (!teacher) {
+                    showToast(currentLanguage === 'ar' ? 'المدرس غير موجود' : 'Teacher not found', 'error');
+                    return;
+                }
+                
+                const teacherCourses = courses.filter(c => c.createdBy === teacherId);
+                
+                let html = `
+                    <div style="text-align:center;margin-bottom:20px;">
+                        <div style="width:80px;height:80px;border-radius:50%;background:var(--accent);display:inline-flex;align-items:center;justify-content:center;font-size:2rem;color:white;margin-bottom:10px;">
+                            ${teacher.name ? teacher.name.charAt(0).toUpperCase() : '?'}
+                        </div>
+                        <h2>${teacher.name}</h2>
+                        <p style="color:var(--text-muted);">${teacher.email}</p>
+                        <div style="display:flex;gap:10px;justify-content:center;margin-top:10px;">
+                            ${(teacher.roles || ['student']).map(role => 
+                                `<span class="badge ${role === 'admin' ? 'badge-primary' : role === 'teacher' ? 'badge-accent' : 'badge-success'}">${role === 'admin' ? (currentLanguage === 'ar' ? 'مدير' : 'Admin') : role === 'teacher' ? (currentLanguage === 'ar' ? 'مدرس' : 'Teacher') : (currentLanguage === 'ar' ? 'طالب' : 'Student')}</span>`
+                            ).join('')}
+                        </div>
+                    </div>
+                    ${teacher.bio ? `<div style="background:var(--card-light);padding:15px;border-radius:var(--radius);margin-bottom:20px;text-align:center;color:var(--text-muted);font-style:italic;">${teacher.bio}</div>` : ''}
+                    <h3 style="margin-bottom:15px;"><i class="fas fa-book"></i> ${currentLanguage === 'ar' ? 'كورسات المدرس' : 'Teacher Courses'} (${teacherCourses.length})</h3>
+                `;
+                
+                if (teacherCourses.length > 0) {
+                    html += teacherCourses.map(course => `
+                        <div class="list-item" style="margin:8px 0;">
+                            <div>
+                                <strong>${course.title}</strong>
+                                <div style="color:var(--text-muted);font-size:0.9rem;">${course.lessons ? course.lessons.length : 0} ${currentLanguage === 'ar' ? 'محاضرة' : 'lessons'}</div>
+                            </div>
+                            <button class="btn btn-sm" onclick="closeModal(); showCourseDetails('${course.id}');">
+                                <i class="fas fa-eye"></i> ${currentLanguage === 'ar' ? 'عرض' : 'View'}
+                            </button>
+                        </div>
+                    `).join('');
+                } else {
+                    html += `<p style="color:var(--text-muted);text-align:center;">${currentLanguage === 'ar' ? 'لا توجد كورسات' : 'No courses'}</p>`;
+                }
+                
+                html += `
+                    <div style="display:flex;gap:10px;margin-top:20px;">
+                        <button class="btn btn-outline" onclick="closeModal()">
+                            <i class="fas fa-times"></i> ${currentLanguage === 'ar' ? 'إغلاق' : 'Close'}
+                        </button>
+                    </div>
+                `;
+                
+                showModal(html);
+            } catch (error) {
+                console.error('Error showing teacher profile:', error);
+                showToast('حدث خطأ', 'error');
+            }
+        }
+
         // Window exports
         window.showCourseDetails = showCourseDetails;
         window.canAccessLesson = canAccessLesson;
@@ -5825,6 +6030,11 @@
         window.getPendingEssayCount = getPendingEssayCount;
         window.addVideoInput = addVideoInput;
         window.handleURLRoute = handleURLRoute;
+        window.showTeacherProfile = showTeacherProfile;
+        window.saveProfileBio = saveProfileBio;
+        window.showLoading = showLoading;
+        window.hideLoading = hideLoading;
+        window.getVideoEmbedUrl = getVideoEmbedUrl;
 
     </script>
 </body>
