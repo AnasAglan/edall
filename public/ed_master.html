@@ -5543,7 +5543,7 @@
             row.className = 'video-input-row';
             row.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;';
             row.innerHTML = `
-                <input class="lesson-video-input" placeholder="${currentLanguage === 'ar' ? 'رابط فيديو YouTube' : 'YouTube video URL'}" style="flex:1;">
+                <input class="lesson-video-input" placeholder="${currentLanguage === 'ar' ? 'رابط فيديو (YouTube, Dailymotion, 4shared)' : 'Video URL (YouTube, Dailymotion, 4shared)'}" style="flex:1;">
                 <button onclick="this.parentElement.remove()" style="background:var(--danger);color:white;border:none;border-radius:var(--radius-sm);width:36px;height:36px;cursor:pointer;font-size:1rem;">✕</button>
             `;
             container.appendChild(row);
