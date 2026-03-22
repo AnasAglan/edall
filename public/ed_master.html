@@ -3002,6 +3002,7 @@
                 const name = document.getElementById('signUpName').value.trim();
                 const email = document.getElementById('signUpEmail').value.trim();
                 const password = document.getElementById('signUpPass').value;
+                const role = document.getElementById('signUpRole').value;
                 
                 if (!name || !email || !password) {
                     showToast(currentLanguage === 'ar' ? 'يرجى ملء جميع الحقول' : 'Please fill all fields', 'warning');
@@ -3013,6 +3014,7 @@
                     return;
                 }
                 
+                showLoading();
                 const { data, error } = await sb.auth.signUp({
                     email,
                     password,
@@ -3020,6 +3022,7 @@
                 });
                 
                 if (error) {
+                    hideLoading();
                     if (error.message.includes('already registered')) {
                         showToast(currentLanguage === 'ar' ? 'البريد الإلكتروني مستخدم بالفعل' : 'Email already exists', 'error');
                     } else {
@@ -3035,12 +3038,19 @@
                     _email: email
                 });
                 
+                // If role is teacher, update the role (admin can do this, or if first user they're already admin)
+                if (role === 'teacher') {
+                    await sb.from('user_roles').update({ role: 'teacher' }).eq('user_id', data.user.id);
+                }
+                
                 await loadCurrentUserFromSupabase(data.user);
                 await loadData();
                 updateUI();
+                hideLoading();
                 showPage('mainPage');
                 showToast(currentLanguage === 'ar' ? `تم إنشاء حسابك بنجاح، مرحباً ${name}` : `Account created successfully, welcome ${name}`, 'success');
             } catch (error) {
+                hideLoading();
                 console.error('Error signing up:', error);
                 showToast('حدث خطأ في إنشاء الحساب', 'error');
             }
