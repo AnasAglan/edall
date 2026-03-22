@@ -5903,6 +5903,80 @@
             }
         }
 
+        async function saveProfileBio() {
+            try {
+                if (!currentUser) return;
+                const bio = document.getElementById('profileBio').value.trim();
+                showLoading();
+                await sb.from('profiles').update({ bio }).eq('id', currentUser.id);
+                currentUser.bio = bio;
+                hideLoading();
+                showToast(currentLanguage === 'ar' ? 'تم حفظ النبذة بنجاح' : 'Bio saved successfully', 'success');
+            } catch (error) {
+                hideLoading();
+                console.error('Error saving bio:', error);
+                showToast('حدث خطأ في حفظ النبذة', 'error');
+            }
+        }
+
+        function showTeacherProfile(teacherId) {
+            try {
+                const teacher = users.find(u => u.id === teacherId);
+                if (!teacher) {
+                    showToast(currentLanguage === 'ar' ? 'المدرس غير موجود' : 'Teacher not found', 'error');
+                    return;
+                }
+                
+                const teacherCourses = courses.filter(c => c.createdBy === teacherId);
+                
+                let html = `
+                    <div style="text-align:center;margin-bottom:20px;">
+                        <div style="width:80px;height:80px;border-radius:50%;background:var(--accent);display:inline-flex;align-items:center;justify-content:center;font-size:2rem;color:white;margin-bottom:10px;">
+                            ${teacher.name ? teacher.name.charAt(0).toUpperCase() : '?'}
+                        </div>
+                        <h2>${teacher.name}</h2>
+                        <p style="color:var(--text-muted);">${teacher.email}</p>
+                        <div style="display:flex;gap:10px;justify-content:center;margin-top:10px;">
+                            ${(teacher.roles || ['student']).map(role => 
+                                `<span class="badge ${role === 'admin' ? 'badge-primary' : role === 'teacher' ? 'badge-accent' : 'badge-success'}">${role === 'admin' ? (currentLanguage === 'ar' ? 'مدير' : 'Admin') : role === 'teacher' ? (currentLanguage === 'ar' ? 'مدرس' : 'Teacher') : (currentLanguage === 'ar' ? 'طالب' : 'Student')}</span>`
+                            ).join('')}
+                        </div>
+                    </div>
+                    ${teacher.bio ? `<div style="background:var(--card-light);padding:15px;border-radius:var(--radius);margin-bottom:20px;text-align:center;color:var(--text-muted);font-style:italic;">${teacher.bio}</div>` : ''}
+                    <h3 style="margin-bottom:15px;"><i class="fas fa-book"></i> ${currentLanguage === 'ar' ? 'كورسات المدرس' : 'Teacher Courses'} (${teacherCourses.length})</h3>
+                `;
+                
+                if (teacherCourses.length > 0) {
+                    html += teacherCourses.map(course => `
+                        <div class="list-item" style="margin:8px 0;">
+                            <div>
+                                <strong>${course.title}</strong>
+                                <div style="color:var(--text-muted);font-size:0.9rem;">${course.lessons ? course.lessons.length : 0} ${currentLanguage === 'ar' ? 'محاضرة' : 'lessons'}</div>
+                            </div>
+                            <button class="btn btn-sm" onclick="closeModal(); showCourseDetails('${course.id}');">
+                                <i class="fas fa-eye"></i> ${currentLanguage === 'ar' ? 'عرض' : 'View'}
+                            </button>
+                        </div>
+                    `).join('');
+                } else {
+                    html += `<p style="color:var(--text-muted);text-align:center;">${currentLanguage === 'ar' ? 'لا توجد كورسات' : 'No courses'}</p>`;
+                }
+                
+                html += `
+                    <div style="display:flex;gap:10px;margin-top:20px;">
+                        <button class="btn btn-outline" onclick="closeModal()">
+                            <i class="fas fa-times"></i> ${currentLanguage === 'ar' ? 'إغلاق' : 'Close'}
+                        </button>
+                    </div>
+                `;
+                
+                showModal(html);
+            } catch (error) {
+                console.error('Error showing teacher profile:', error);
+                showToast('حدث خطأ', 'error');
+            }
+        }
+
         // Window exports
         window.showCourseDetails = showCourseDetails;
         window.canAccessLesson = canAccessLesson;
