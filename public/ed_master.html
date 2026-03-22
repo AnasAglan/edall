@@ -3660,7 +3660,7 @@
                 let coursesToShow = courses;
                 
                 if (currentUser && currentUser.roles && currentUser.roles.includes('teacher') && !currentUser.roles.includes('admin')) {
-                    coursesToShow = courses.filter(course => course.createdBy === currentUser.email);
+                    coursesToShow = courses.filter(course => course.createdBy === currentUser.id);
                 }
                 
                 if (coursesToShow.length === 0) {
