@@ -1881,6 +1881,14 @@
         const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         // Missing UI Functions
+        function showLoading() {
+            const overlay = document.getElementById('loadingOverlay');
+            if (overlay) overlay.style.display = 'flex';
+        }
+        function hideLoading() {
+            const overlay = document.getElementById('loadingOverlay');
+            if (overlay) overlay.style.display = 'none';
+        }
         function toggleUserMenu() {
             const menu = document.getElementById('userMenu');
             if (menu) menu.classList.toggle('show');
@@ -1896,6 +1904,23 @@
         function hideLanguageMenu() {
             const sel = document.getElementById('languageSelector');
             if (sel) sel.classList.remove('show');
+        }
+
+        // Video embed support for YouTube, Dailymotion, 4shared
+        function getVideoEmbedUrl(url) {
+            if (!url) return '';
+            // YouTube
+            const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]+)/);
+            if (ytMatch) return `https://www.youtube.com/embed/${ytMatch[1]}`;
+            // Dailymotion
+            const dmMatch = url.match(/(?:dailymotion\.com\/video\/|dai\.ly\/)([a-zA-Z0-9]+)/);
+            if (dmMatch) return `https://www.dailymotion.com/embed/video/${dmMatch[1]}`;
+            // 4shared
+            if (url.includes('4shared.com')) {
+                return url; // 4shared doesn't have standard embed, use direct link
+            }
+            // Generic - try as iframe src
+            return url;
         }
 
         // URL Routing
