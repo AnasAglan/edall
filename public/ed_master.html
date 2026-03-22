@@ -3444,6 +3444,10 @@
                                 <div class="card-badge">${course.lessons ? course.lessons.length : 0} محاضرة</div>
                             </div>
                             <div class="card-desc">${course.description || 'لا يوجد وصف'}</div>
+                            ${(() => {
+                                const teacher = users.find(u => u.id === course.createdBy);
+                                return teacher ? `<div style="color:var(--text-muted);font-size:0.85rem;margin-bottom:8px;cursor:pointer;" onclick="showTeacherProfile('${course.createdBy}')"><i class="fas fa-chalkboard-teacher"></i> ${currentLanguage === 'ar' ? 'المدرس:' : 'Teacher:'} <span style="color:var(--primary);text-decoration:underline;">${teacher.name}</span></div>` : '';
+                            })()}
                             ${currentUser && currentUser.roles && currentUser.roles.includes('student') ? `
                                 <div class="progress-bar">
                                     <div class="progress-fill" style="width: ${completionStatus.progress}%"></div>
