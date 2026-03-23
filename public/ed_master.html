@@ -5428,36 +5428,28 @@
                 
                 showLoading();
                 
-                // Create real Supabase auth user
-                const { data: signUpData, error: signUpError } = await sb.auth.signUp({
-                    email,
-                    password,
-                    options: { data: { name } }
+                // Use edge function to create user without losing admin session
+                const { data: { session } } = await sb.auth.getSession();
+                const response = await fetch(`${SUPABASE_URL}/functions/v1/admin-create-user`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${session.access_token}`
+                    },
+                    body: JSON.stringify({ email, password, name, role })
                 });
                 
-                if (signUpError) {
+                const result = await response.json();
+                
+                if (!response.ok || result.error) {
                     hideLoading();
-                    showToast(signUpError.message, 'error');
+                    showToast(result.error || 'حدث خطأ في إضافة المستخدم', 'error');
                     return;
-                }
-                
-                const newUserId = signUpData.user.id;
-                
-                // Setup profile
-                await sb.rpc('setup_new_user', {
-                    _user_id: newUserId,
-                    _name: name,
-                    _email: email
-                });
-                
-                // Set the role (admin has RLS permission to update user_roles)
-                if (role !== 'student') {
-                    await sb.from('user_roles').update({ role: role }).eq('user_id', newUserId);
                 }
                 
                 // Add to local users array
                 users.push({
-                    id: newUserId,
+                    id: result.user.id,
                     email: email,
                     name: name,
                     roles: [role],
