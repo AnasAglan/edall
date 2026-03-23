@@ -5554,6 +5554,16 @@
                         <i class="fas fa-plus"></i> ${currentLanguage === 'ar' ? 'إضافة فيديو آخر' : 'Add Another Video'}
                     </button>
                     
+                    <div style="font-weight:bold;margin:10px 0 5px;"><i class="fas fa-file-pdf"></i> ${currentLanguage === 'ar' ? 'ملفات PDF:' : 'PDF Files:'}</div>
+                    <div class="image-upload-container">
+                        <label class="upload-btn">
+                            <i class="fas fa-file-pdf"></i>
+                            ${currentLanguage === 'ar' ? 'اختر ملفات PDF' : 'Choose PDF files'}
+                            <input type="file" id="lessonPdfFiles" accept=".pdf" multiple style="display:none;">
+                        </label>
+                        <div id="lessonPdfPreview" style="margin-top:8px;"></div>
+                    </div>
+                    
                     <div style="display:flex;gap:10px;margin-top:20px;">
                         <button class="btn" onclick="saveLesson('${courseId}')">
                             <i class="fas fa-save"></i>
@@ -5565,6 +5575,18 @@
                         </button>
                     </div>
                 `);
+                
+                // Setup PDF file preview
+                const pdfInput = document.getElementById('lessonPdfFiles');
+                if (pdfInput) {
+                    pdfInput.addEventListener('change', function(e) {
+                        const preview = document.getElementById('lessonPdfPreview');
+                        preview.innerHTML = '';
+                        Array.from(e.target.files).forEach(f => {
+                            preview.innerHTML += `<div style="padding:5px;color:var(--text-muted);"><i class="fas fa-file-pdf" style="color:var(--danger);"></i> ${f.name}</div>`;
+                        });
+                    });
+                }
             } catch (error) {
                 console.error('Error adding lesson to course:', error);
                 showToast('حدث خطأ في إضافة المحاضرة', 'error');
