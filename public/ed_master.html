@@ -3783,13 +3783,11 @@
             try {
                 const enrollments = JSON.parse(localStorage.getItem(LS_KEYS.USER_ENROLLMENTS)) || {};
                 let count = 0;
-                
                 for (const userId in enrollments) {
-                    if (enrollments[userId].includes(courseId)) {
+                    if (Array.isArray(enrollments[userId]) && enrollments[userId].includes(courseId)) {
                         count++;
                     }
                 }
-                
                 return count;
             } catch (error) {
                 console.error('Error getting enrolled students count:', error);
