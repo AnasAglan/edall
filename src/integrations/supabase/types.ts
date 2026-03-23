@@ -453,10 +453,20 @@ export type Database = {
         }
         Returns: boolean
       }
-      setup_new_user: {
-        Args: { _email: string; _name: string; _user_id: string }
-        Returns: undefined
-      }
+      setup_new_user:
+        | {
+            Args: { _email: string; _name: string; _user_id: string }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              _email: string
+              _name: string
+              _requested_role?: string
+              _user_id: string
+            }
+            Returns: undefined
+          }
     }
     Enums: {
       app_role: "admin" | "teacher" | "student"
