@@ -5156,7 +5156,7 @@
                         .eq('exam_id', result.examId)
                         .order('submitted_at', { ascending: false })
                         .limit(1)
-                        .single();
+                        .maybeSingle();
                     if (dbResult) {
                         await sb.from('exam_results').update({
                             score: result.score,
