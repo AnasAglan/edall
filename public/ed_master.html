@@ -3850,6 +3850,7 @@
                     return;
                 }
                 
+                showLoading();
                 const { data: newCourseData, error } = await sb.from('courses').insert({
                     title: title,
                     description: desc,
@@ -3857,7 +3858,7 @@
                     created_by: currentUser.id
                 }).select().single();
                 
-                if (error) { showToast('حدث خطأ في إنشاء الكورس', 'error'); return; }
+                if (error) { hideLoading(); showToast('حدث خطأ في إنشاء الكورس', 'error'); return; }
                 
                 courses.unshift({
                     id: newCourseData.id,
@@ -3869,8 +3870,8 @@
                     created: Date.now()
                 });
                 courseImageData = null;
-                saveAllData();
                 closeModal();
+                hideLoading();
                 showToast(currentLanguage === 'ar' ? 'تم إنشاء الكورس بنجاح' : 'Course created successfully', 'success');
                 renderCoursesGrid();
                 
@@ -3878,6 +3879,7 @@
                     renderManageCoursesPage();
                 }
             } catch (error) {
+                hideLoading();
                 console.error('Error creating course from modal:', error);
                 showToast('حدث خطأ في إنشاء الكورس', 'error');
             }
