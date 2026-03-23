@@ -2208,17 +2208,38 @@
 
         async function loadData() {
             try {
-                // Load courses from Supabase
-                const { data: coursesData } = await sb.from('courses').select('*').order('created_at', { ascending: false });
-                const { data: lessonsData } = await sb.from('lessons').select('*').order('sort_order');
-                const { data: videosData } = await sb.from('lesson_videos').select('*').order('sort_order');
-                const { data: examsData } = await sb.from('exams').select('*');
-                const { data: questionsData } = await sb.from('exam_questions').select('*').order('sort_order');
+                // Parallel load all data from Supabase for better performance
+                const [
+                    { data: coursesData },
+                    { data: lessonsData },
+                    { data: videosData },
+                    { data: filesData },
+                    { data: examsData },
+                    { data: questionsData },
+                    { data: profilesData },
+                    { data: rolesData },
+                    { data: notifsData }
+                ] = await Promise.all([
+                    sb.from('courses').select('*').order('created_at', { ascending: false }),
+                    sb.from('lessons').select('*').order('sort_order'),
+                    sb.from('lesson_videos').select('*').order('sort_order'),
+                    sb.from('lesson_files').select('*').order('sort_order'),
+                    sb.from('exams').select('*'),
+                    sb.from('exam_questions').select('*').order('sort_order'),
+                    sb.from('profiles').select('*'),
+                    sb.from('user_roles').select('*'),
+                    sb.from('notifications').select('*').order('created_at', { ascending: false })
+                ]);
 
                 // Build nested courses structure
                 courses = (coursesData || []).map(c => {
                     const cLessons = (lessonsData || []).filter(l => l.course_id === c.id).map(l => {
                         const lVideos = (videosData || []).filter(v => v.lesson_id === l.id).map(v => v.video_url);
+                        const lFiles = (filesData || []).filter(f => f.lesson_id === l.id).map(f => ({
+                            id: f.id,
+                            name: f.file_name,
+                            url: f.file_url
+                        }));
                         const lExams = (examsData || []).filter(e => e.lesson_id === l.id).map(e => {
                             const eQuestions = (questionsData || []).filter(q => q.exam_id === e.id).map(q => ({
                                 text: q.text,
@@ -2243,7 +2264,7 @@
                             content: l.content,
                             videos: lVideos,
                             exams: lExams,
-                            files: [],
+                            files: lFiles,
                             pdfData: null,
                             pdfName: ''
                         };
@@ -2259,9 +2280,7 @@
                     };
                 });
 
-                // Load profiles + roles for users array
-                const { data: profilesData } = await sb.from('profiles').select('*');
-                const { data: rolesData } = await sb.from('user_roles').select('*');
+                // Build users array from profiles + roles
                 users = (profilesData || []).map(p => {
                     const userRoles = (rolesData || []).filter(r => r.user_id === p.id).map(r => r.role);
                     return {
@@ -2277,9 +2296,21 @@
                     };
                 });
 
-                // Load enrollments into localStorage format
+                // Load user-specific data (enrollments, favorites, results, progress) in parallel
                 if (currentUser) {
-                    const { data: enrollData } = await sb.from('enrollments').select('*');
+                    const [
+                        { data: enrollData },
+                        { data: favData },
+                        { data: resultsData },
+                        { data: progressData }
+                    ] = await Promise.all([
+                        sb.from('enrollments').select('*'),
+                        sb.from('favorites').select('*'),
+                        sb.from('exam_results').select('*'),
+                        sb.from('lesson_progress').select('*')
+                    ]);
+
+                    // Enrollments
                     const enrollments = {};
                     (enrollData || []).forEach(e => {
                         if (!enrollments[e.user_id]) enrollments[e.user_id] = [];
@@ -2287,7 +2318,7 @@
                     });
                     localStorage.setItem(LS_KEYS.USER_ENROLLMENTS, JSON.stringify(enrollments));
 
-                    const { data: favData } = await sb.from('favorites').select('*');
+                    // Favorites
                     const favorites = {};
                     (favData || []).forEach(f => {
                         if (!favorites[f.user_id]) favorites[f.user_id] = [];
@@ -2295,11 +2326,9 @@
                     });
                     localStorage.setItem(LS_KEYS.USER_FAVORITES, JSON.stringify(favorites));
 
-                    // Load exam results
-                    const { data: resultsData } = await sb.from('exam_results').select('*');
+                    // Exam results
                     const examResults = {};
                     (resultsData || []).forEach(r => {
-                        // Find the exam's lesson and course
                         let courseId = '', lessonId = '', examIndex = 0;
                         for (const course of courses) {
                             for (const lesson of (course.lessons || [])) {
@@ -2315,30 +2344,17 @@
                         }
                         const key = `${r.user_id}_${courseId}_${lessonId}_${examIndex}`;
                         examResults[key] = {
-                            id: r.id,
-                            userId: r.user_id,
-                            courseId,
-                            lessonId,
-                            examIndex,
-                            examId: r.exam_id,
-                            answers: r.answers || [],
-                            mcqScore: 0,
-                            mcqCorrect: 0,
-                            mcqTotal: 0,
-                            score: r.score,
-                            passed: r.passed,
-                            hasEssay: r.has_essay,
-                            essayGraded: r.essay_graded,
+                            id: r.id, userId: r.user_id, courseId, lessonId, examIndex,
+                            examId: r.exam_id, answers: r.answers || [],
+                            mcqScore: 0, mcqCorrect: 0, mcqTotal: 0,
+                            score: r.score, passed: r.passed,
+                            hasEssay: r.has_essay, essayGraded: r.essay_graded,
                             timestamp: new Date(r.submitted_at).getTime()
                         };
-                        // Reconstruct mcq info from answers
                         if (Array.isArray(r.answers)) {
                             let mcqC = 0, mcqT = 0;
                             r.answers.forEach(a => {
-                                if (a.type === 'multiple') {
-                                    mcqT++;
-                                    if (a.isCorrect) mcqC++;
-                                }
+                                if (a.type === 'multiple') { mcqT++; if (a.isCorrect) mcqC++; }
                             });
                             examResults[key].mcqCorrect = mcqC;
                             examResults[key].mcqTotal = mcqT;
@@ -2347,12 +2363,10 @@
                     });
                     localStorage.setItem(LS_KEYS.EXAM_RESULTS, JSON.stringify(examResults));
 
-                    // Load lesson progress
-                    const { data: progressData } = await sb.from('lesson_progress').select('*');
+                    // Lesson progress
                     const tracking = {};
                     (progressData || []).forEach(p => {
                         if (!tracking[p.user_id]) tracking[p.user_id] = {};
-                        // Find course for this lesson
                         let courseId = '';
                         for (const course of courses) {
                             if ((course.lessons || []).some(l => l.id === p.lesson_id)) {
@@ -2372,14 +2386,10 @@
                     localStorage.setItem(LS_KEYS.COMPLETION_TRACKING, JSON.stringify(tracking));
                 }
 
-                // Load notifications
-                const { data: notifsData } = await sb.from('notifications').select('*').order('created_at', { ascending: false });
+                // Notifications
                 notifications = (notifsData || []).map(n => ({
-                    id: n.id,
-                    title: n.title,
-                    message: n.message,
-                    type: n.type,
-                    read: n.read,
+                    id: n.id, title: n.title, message: n.message,
+                    type: n.type, read: n.read,
                     timestamp: new Date(n.created_at).getTime(),
                     userId: n.user_id || 'all'
                 }));
