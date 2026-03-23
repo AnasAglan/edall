@@ -4182,16 +4182,16 @@
                 if (lesson.files && lesson.files.length > 0) {
                     modalContent += `
                         <div style="margin-bottom:20px;">
-                            <h4>${currentLanguage === 'ar' ? 'ملفات المحاضرة' : 'Lesson Files'}</h4>
+                            <h4><i class="fas fa-file-pdf"></i> ${currentLanguage === 'ar' ? 'ملفات المحاضرة' : 'Lesson Files'}</h4>
                             ${lesson.files.map(file => `
                                 <div class="list-item" style="margin:5px 0;">
                                     <div>
-                                        <i class="fas fa-file"></i>
+                                        <i class="fas fa-file-pdf" style="color:var(--danger);"></i>
                                         <span>${file.name || (currentLanguage === 'ar' ? 'ملف' : 'File')}</span>
                                     </div>
-                                    <button class="btn btn-sm" onclick="trackLessonProgress('${courseId}', '${lessonId}', 'fileOpened', true)">
-                                        <i class="fas fa-download"></i> ${currentLanguage === 'ar' ? 'فتح' : 'Open'}
-                                    </button>
+                                    <a href="${file.url}" target="_blank" class="btn btn-sm" onclick="trackLessonProgress('${courseId}', '${lessonId}', 'pdfOpened', true)">
+                                        <i class="fas fa-external-link-alt"></i> ${currentLanguage === 'ar' ? 'فتح' : 'Open'}
+                                    </a>
                                 </div>
                             `).join('')}
                         </div>
