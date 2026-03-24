@@ -3864,25 +3864,33 @@
                 }
                 
                 showLoading();
+                
+                let imageUrl = null;
+                if (courseImageFile) {
+                    const filePath = `${currentUser.id}/${Date.now()}_${courseImageFile.name}`;
+                    imageUrl = await uploadImageToStorage('course-images', filePath, courseImageFile);
+                }
+                
                 const { data: newCourseData, error } = await sb.from('courses').insert({
                     title: title,
                     description: desc,
-                    image_url: courseImageData,
+                    image_url: imageUrl,
                     created_by: currentUser.id
                 }).select().single();
                 
-                if (error) { hideLoading(); showToast('حدث خطأ في إنشاء الكورس', 'error'); return; }
+                if (error) { hideLoading(); console.error('Course insert error:', error); showToast('حدث خطأ في إنشاء الكورس: ' + error.message, 'error'); return; }
                 
                 courses.unshift({
                     id: newCourseData.id,
                     title: title,
                     description: desc,
-                    image: courseImageData,
+                    image: imageUrl,
                     createdBy: currentUser.id,
                     lessons: [],
                     created: Date.now()
                 });
                 courseImageData = null;
+                courseImageFile = null;
                 closeModal();
                 hideLoading();
                 showToast(currentLanguage === 'ar' ? 'تم إنشاء الكورس بنجاح' : 'Course created successfully', 'success');
