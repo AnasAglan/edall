@@ -6055,6 +6055,32 @@
             }
         }
 
+        async function uploadAvatar(event) {
+            try {
+                const file = event.target.files[0];
+                if (!file || !currentUser) return;
+                
+                showLoading();
+                const filePath = `${currentUser.id}/${Date.now()}_${file.name}`;
+                const avatarUrl = await uploadImageToStorage('avatars', filePath, file);
+                
+                const { error } = await sb.from('profiles').update({ avatar_url: avatarUrl }).eq('id', currentUser.id);
+                if (error) { hideLoading(); console.error('Avatar update error:', error); showToast('حدث خطأ في تحديث الصورة', 'error'); return; }
+                
+                currentUser.avatar_url = avatarUrl;
+                const userInList = users.find(u => u.id === currentUser.id);
+                if (userInList) userInList.avatar_url = avatarUrl;
+                
+                hideLoading();
+                showToast(currentLanguage === 'ar' ? 'تم تحديث الصورة بنجاح' : 'Avatar updated successfully', 'success');
+                renderProfilePage();
+            } catch (error) {
+                hideLoading();
+                console.error('Error uploading avatar:', error);
+                showToast('حدث خطأ في رفع الصورة', 'error');
+            }
+        }
+
         function showTeacherProfile(teacherId) {
             try {
                 const teacher = users.find(u => u.id === teacherId);
@@ -6065,11 +6091,15 @@
                 
                 const teacherCourses = courses.filter(c => c.createdBy === teacherId);
                 
+                const teacherAvatarHtml = teacher.avatar_url
+                    ? `<img src="${teacher.avatar_url}" alt="${teacher.name}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid var(--accent);margin-bottom:10px;">`
+                    : `<div style="width:80px;height:80px;border-radius:50%;background:var(--accent);display:inline-flex;align-items:center;justify-content:center;font-size:2rem;color:white;margin-bottom:10px;">
+                        ${teacher.name ? teacher.name.charAt(0).toUpperCase() : '?'}
+                    </div>`;
+                
                 let html = `
                     <div style="text-align:center;margin-bottom:20px;">
-                        <div style="width:80px;height:80px;border-radius:50%;background:var(--accent);display:inline-flex;align-items:center;justify-content:center;font-size:2rem;color:white;margin-bottom:10px;">
-                            ${teacher.name ? teacher.name.charAt(0).toUpperCase() : '?'}
-                        </div>
+                        ${teacherAvatarHtml}
                         <h2>${teacher.name}</h2>
                         <p style="color:var(--text-muted);">${teacher.email}</p>
                         <div style="display:flex;gap:10px;justify-content:center;margin-top:10px;">
