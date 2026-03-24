@@ -2090,6 +2090,17 @@
         let currentFilter = 'all';
         let pageHistory = ['mainPage'];
         let courseImageData = null;
+        let courseImageFile = null;
+
+        async function uploadImageToStorage(bucket, filePath, file) {
+            const { data, error } = await sb.storage.from(bucket).upload(filePath, file, {
+                contentType: file.type,
+                upsert: true
+            });
+            if (error) throw error;
+            const { data: urlData } = sb.storage.from(bucket).getPublicUrl(filePath);
+            return urlData.publicUrl;
+        }
 
         function normalizeRequestedRole(role) {
             return role === 'teacher' ? 'teacher' : 'student';
@@ -2949,6 +2960,7 @@
         function handleCourseImageUpload(e) {
             const file = e.target.files[0];
             if (file) {
+                courseImageFile = file;
                 const reader = new FileReader();
                 reader.onload = function(event) {
                     courseImageData = event.target.result;
@@ -3829,6 +3841,7 @@
         window.handleNewCourseImageUpload = function(e) {
             const file = e.target.files[0];
             if (file) {
+                courseImageFile = file;
                 const reader = new FileReader();
                 reader.onload = function(event) {
                     courseImageData = event.target.result;
@@ -3851,25 +3864,33 @@
                 }
                 
                 showLoading();
+                
+                let imageUrl = null;
+                if (courseImageFile) {
+                    const filePath = `${currentUser.id}/${Date.now()}_${courseImageFile.name}`;
+                    imageUrl = await uploadImageToStorage('course-images', filePath, courseImageFile);
+                }
+                
                 const { data: newCourseData, error } = await sb.from('courses').insert({
                     title: title,
                     description: desc,
-                    image_url: courseImageData,
+                    image_url: imageUrl,
                     created_by: currentUser.id
                 }).select().single();
                 
-                if (error) { hideLoading(); showToast('حدث خطأ في إنشاء الكورس', 'error'); return; }
+                if (error) { hideLoading(); console.error('Course insert error:', error); showToast('حدث خطأ في إنشاء الكورس: ' + error.message, 'error'); return; }
                 
                 courses.unshift({
                     id: newCourseData.id,
                     title: title,
                     description: desc,
-                    image: courseImageData,
+                    image: imageUrl,
                     createdBy: currentUser.id,
                     lessons: [],
                     created: Date.now()
                 });
                 courseImageData = null;
+                courseImageFile = null;
                 closeModal();
                 hideLoading();
                 showToast(currentLanguage === 'ar' ? 'تم إنشاء الكورس بنجاح' : 'Course created successfully', 'success');
@@ -3895,25 +3916,34 @@
                     return;
                 }
                 
+                showLoading();
+                
+                let imageUrl = null;
+                if (courseImageFile) {
+                    const filePath = `${currentUser.id}/${Date.now()}_${courseImageFile.name}`;
+                    imageUrl = await uploadImageToStorage('course-images', filePath, courseImageFile);
+                }
+                
                 const { data: newCourseData, error } = await sb.from('courses').insert({
                     title: title,
                     description: desc,
-                    image_url: courseImageData,
+                    image_url: imageUrl,
                     created_by: currentUser.id
                 }).select().single();
                 
-                if (error) { showToast('حدث خطأ في إنشاء الكورس', 'error'); return; }
+                if (error) { hideLoading(); console.error('Course insert error:', error); showToast('حدث خطأ في إنشاء الكورس: ' + error.message, 'error'); return; }
                 
                 courses.unshift({
                     id: newCourseData.id,
                     title: title,
                     description: desc,
-                    image: courseImageData,
+                    image: imageUrl,
                     createdBy: currentUser.id,
                     lessons: [],
                     created: Date.now()
                 });
                 courseImageData = null;
+                courseImageFile = null;
                 
                 document.getElementById('admCourseTitle').value = '';
                 document.getElementById('admCourseDesc').value = '';
@@ -3921,11 +3951,12 @@
                 preview.innerHTML = '';
                 preview.style.display = 'none';
                 
-                saveAllData();
+                hideLoading();
                 showToast(currentLanguage === 'ar' ? 'تم إنشاء الكورس بنجاح' : 'Course created successfully', 'success');
                 renderAdminPage();
                 renderCoursesGrid();
             } catch (error) {
+                hideLoading();
                 console.error('Error creating course:', error);
                 showToast('حدث خطأ في إنشاء الكورس', 'error');
             }
@@ -3976,6 +4007,7 @@
         window.handleEditCourseImageUpload = function(e) {
             const file = e.target.files[0];
             if (file) {
+                courseImageFile = file;
                 const reader = new FileReader();
                 reader.onload = function(event) {
                     courseImageData = event.target.result;
@@ -3997,19 +4029,26 @@
                 
                 if (!title) { showToast('يرجى إدخال عنوان الكورس', 'warning'); return; }
                 
+                showLoading();
+                
                 const updateData = { title, description: desc };
-                if (courseImageData) updateData.image_url = courseImageData;
+                if (courseImageFile) {
+                    const filePath = `${currentUser.id}/${Date.now()}_${courseImageFile.name}`;
+                    const imageUrl = await uploadImageToStorage('course-images', filePath, courseImageFile);
+                    updateData.image_url = imageUrl;
+                }
                 
                 const { error } = await sb.from('courses').update(updateData).eq('id', courseId);
-                if (error) { showToast('حدث خطأ في تحديث الكورس', 'error'); return; }
+                if (error) { hideLoading(); console.error('Course update error:', error); showToast('حدث خطأ في تحديث الكورس: ' + error.message, 'error'); return; }
                 
                 course.title = title;
                 course.description = desc;
-                if (courseImageData) course.image = courseImageData;
+                if (updateData.image_url) course.image = updateData.image_url;
                 
                 courseImageData = null;
-                saveAllData();
+                courseImageFile = null;
                 closeModal();
+                hideLoading();
                 showToast(currentLanguage === 'ar' ? 'تم تحديث الكورس بنجاح' : 'Course updated successfully', 'success');
                 renderCoursesGrid();
                 
@@ -4021,6 +4060,7 @@
                     renderAdminPage();
                 }
             } catch (error) {
+                hideLoading();
                 console.error('Error updating course:', error);
                 showToast('حدث خطأ في تحديث الكورس', 'error');
             }
@@ -5633,7 +5673,7 @@
                     sort_order: sortOrder
                 }).select().single();
                 
-                if (error) { hideLoading(); showToast('حدث خطأ في حفظ المحاضرة', 'error'); return; }
+                if (error) { hideLoading(); console.error('Lesson insert error:', error); showToast('حدث خطأ في حفظ المحاضرة: ' + error.message, 'error'); return; }
                 
                 // Insert videos
                 if (videos.length > 0) {
@@ -5760,10 +5800,18 @@
                 const profileInfo = document.getElementById('profileInfo');
                 const myCoursesList = document.getElementById('myCoursesList');
                 
+                const avatarHtml = currentUser.avatar_url 
+                    ? `<img src="${currentUser.avatar_url}" alt="Avatar" style="width:100px;height:100px;border-radius:50%;object-fit:cover;border:3px solid var(--primary);margin-bottom:10px;cursor:pointer;" onclick="document.getElementById('avatarUploadInput').click()">`
+                    : `<div style="width:100px;height:100px;border-radius:50%;background:var(--primary);display:inline-flex;align-items:center;justify-content:center;font-size:2.5rem;color:white;margin-bottom:10px;cursor:pointer;border:3px solid var(--primary-light);" onclick="document.getElementById('avatarUploadInput').click()">
+                        ${currentUser.name ? currentUser.name.charAt(0).toUpperCase() : currentUser.email.charAt(0).toUpperCase()}
+                    </div>`;
+                
                 profileInfo.innerHTML = `
                     <div style="text-align: center; margin-bottom: 20px;">
-                        <div style="width: 80px; height: 80px; border-radius: 50%; background: var(--primary); display: inline-flex; align-items: center; justify-content: center; font-size: 2rem; color: white; margin-bottom: 10px;">
-                            ${currentUser.name ? currentUser.name.charAt(0).toUpperCase() : currentUser.email.charAt(0).toUpperCase()}
+                        ${avatarHtml}
+                        <input type="file" id="avatarUploadInput" accept="image/*" style="display:none;" onchange="uploadAvatar(event)">
+                        <div style="color:var(--text-muted);font-size:0.8rem;margin-bottom:8px;">
+                            <i class="fas fa-camera"></i> ${currentLanguage === 'ar' ? 'اضغط على الصورة لتغييرها' : 'Click image to change'}
                         </div>
                         <h3>${currentUser.name || currentUser.email}</h3>
                         <p style="color: var(--text-muted);">${currentUser.email}</p>
@@ -6007,6 +6055,32 @@
             }
         }
 
+        async function uploadAvatar(event) {
+            try {
+                const file = event.target.files[0];
+                if (!file || !currentUser) return;
+                
+                showLoading();
+                const filePath = `${currentUser.id}/${Date.now()}_${file.name}`;
+                const avatarUrl = await uploadImageToStorage('avatars', filePath, file);
+                
+                const { error } = await sb.from('profiles').update({ avatar_url: avatarUrl }).eq('id', currentUser.id);
+                if (error) { hideLoading(); console.error('Avatar update error:', error); showToast('حدث خطأ في تحديث الصورة', 'error'); return; }
+                
+                currentUser.avatar_url = avatarUrl;
+                const userInList = users.find(u => u.id === currentUser.id);
+                if (userInList) userInList.avatar_url = avatarUrl;
+                
+                hideLoading();
+                showToast(currentLanguage === 'ar' ? 'تم تحديث الصورة بنجاح' : 'Avatar updated successfully', 'success');
+                renderProfilePage();
+            } catch (error) {
+                hideLoading();
+                console.error('Error uploading avatar:', error);
+                showToast('حدث خطأ في رفع الصورة', 'error');
+            }
+        }
+
         function showTeacherProfile(teacherId) {
             try {
                 const teacher = users.find(u => u.id === teacherId);
@@ -6017,11 +6091,15 @@
                 
                 const teacherCourses = courses.filter(c => c.createdBy === teacherId);
                 
+                const teacherAvatarHtml = teacher.avatar_url
+                    ? `<img src="${teacher.avatar_url}" alt="${teacher.name}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid var(--accent);margin-bottom:10px;">`
+                    : `<div style="width:80px;height:80px;border-radius:50%;background:var(--accent);display:inline-flex;align-items:center;justify-content:center;font-size:2rem;color:white;margin-bottom:10px;">
+                        ${teacher.name ? teacher.name.charAt(0).toUpperCase() : '?'}
+                    </div>`;
+                
                 let html = `
                     <div style="text-align:center;margin-bottom:20px;">
-                        <div style="width:80px;height:80px;border-radius:50%;background:var(--accent);display:inline-flex;align-items:center;justify-content:center;font-size:2rem;color:white;margin-bottom:10px;">
-                            ${teacher.name ? teacher.name.charAt(0).toUpperCase() : '?'}
-                        </div>
+                        ${teacherAvatarHtml}
                         <h2>${teacher.name}</h2>
                         <p style="color:var(--text-muted);">${teacher.email}</p>
                         <div style="display:flex;gap:10px;justify-content:center;margin-top:10px;">
@@ -6119,6 +6197,7 @@
         window.handleURLRoute = handleURLRoute;
         window.showTeacherProfile = showTeacherProfile;
         window.saveProfileBio = saveProfileBio;
+        window.uploadAvatar = uploadAvatar;
         window.showLoading = showLoading;
         window.hideLoading = hideLoading;
         window.getVideoEmbedUrl = getVideoEmbedUrl;
