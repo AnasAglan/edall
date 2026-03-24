@@ -4029,19 +4029,26 @@
                 
                 if (!title) { showToast('يرجى إدخال عنوان الكورس', 'warning'); return; }
                 
+                showLoading();
+                
                 const updateData = { title, description: desc };
-                if (courseImageData) updateData.image_url = courseImageData;
+                if (courseImageFile) {
+                    const filePath = `${currentUser.id}/${Date.now()}_${courseImageFile.name}`;
+                    const imageUrl = await uploadImageToStorage('course-images', filePath, courseImageFile);
+                    updateData.image_url = imageUrl;
+                }
                 
                 const { error } = await sb.from('courses').update(updateData).eq('id', courseId);
-                if (error) { showToast('حدث خطأ في تحديث الكورس', 'error'); return; }
+                if (error) { hideLoading(); console.error('Course update error:', error); showToast('حدث خطأ في تحديث الكورس: ' + error.message, 'error'); return; }
                 
                 course.title = title;
                 course.description = desc;
-                if (courseImageData) course.image = courseImageData;
+                if (updateData.image_url) course.image = updateData.image_url;
                 
                 courseImageData = null;
-                saveAllData();
+                courseImageFile = null;
                 closeModal();
+                hideLoading();
                 showToast(currentLanguage === 'ar' ? 'تم تحديث الكورس بنجاح' : 'Course updated successfully', 'success');
                 renderCoursesGrid();
                 
@@ -4053,6 +4060,7 @@
                     renderAdminPage();
                 }
             } catch (error) {
+                hideLoading();
                 console.error('Error updating course:', error);
                 showToast('حدث خطأ في تحديث الكورس', 'error');
             }
