@@ -2960,6 +2960,7 @@
         function handleCourseImageUpload(e) {
             const file = e.target.files[0];
             if (file) {
+                courseImageFile = file;
                 const reader = new FileReader();
                 reader.onload = function(event) {
                     courseImageData = event.target.result;
