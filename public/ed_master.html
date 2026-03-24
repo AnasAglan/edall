@@ -5800,10 +5800,18 @@
                 const profileInfo = document.getElementById('profileInfo');
                 const myCoursesList = document.getElementById('myCoursesList');
                 
+                const avatarHtml = currentUser.avatar_url 
+                    ? `<img src="${currentUser.avatar_url}" alt="Avatar" style="width:100px;height:100px;border-radius:50%;object-fit:cover;border:3px solid var(--primary);margin-bottom:10px;cursor:pointer;" onclick="document.getElementById('avatarUploadInput').click()">`
+                    : `<div style="width:100px;height:100px;border-radius:50%;background:var(--primary);display:inline-flex;align-items:center;justify-content:center;font-size:2.5rem;color:white;margin-bottom:10px;cursor:pointer;border:3px solid var(--primary-light);" onclick="document.getElementById('avatarUploadInput').click()">
+                        ${currentUser.name ? currentUser.name.charAt(0).toUpperCase() : currentUser.email.charAt(0).toUpperCase()}
+                    </div>`;
+                
                 profileInfo.innerHTML = `
                     <div style="text-align: center; margin-bottom: 20px;">
-                        <div style="width: 80px; height: 80px; border-radius: 50%; background: var(--primary); display: inline-flex; align-items: center; justify-content: center; font-size: 2rem; color: white; margin-bottom: 10px;">
-                            ${currentUser.name ? currentUser.name.charAt(0).toUpperCase() : currentUser.email.charAt(0).toUpperCase()}
+                        ${avatarHtml}
+                        <input type="file" id="avatarUploadInput" accept="image/*" style="display:none;" onchange="uploadAvatar(event)">
+                        <div style="color:var(--text-muted);font-size:0.8rem;margin-bottom:8px;">
+                            <i class="fas fa-camera"></i> ${currentLanguage === 'ar' ? 'اضغط على الصورة لتغييرها' : 'Click image to change'}
                         </div>
                         <h3>${currentUser.name || currentUser.email}</h3>
                         <p style="color: var(--text-muted);">${currentUser.email}</p>
