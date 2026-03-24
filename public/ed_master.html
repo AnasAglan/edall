@@ -2092,6 +2092,16 @@
         let courseImageData = null;
         let courseImageFile = null;
 
+        async function uploadImageToStorage(bucket, filePath, file) {
+            const { data, error } = await sb.storage.from(bucket).upload(filePath, file, {
+                contentType: file.type,
+                upsert: true
+            });
+            if (error) throw error;
+            const { data: urlData } = sb.storage.from(bucket).getPublicUrl(filePath);
+            return urlData.publicUrl;
+        }
+
         function normalizeRequestedRole(role) {
             return role === 'teacher' ? 'teacher' : 'student';
         }
