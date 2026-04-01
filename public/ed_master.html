@@ -4249,12 +4249,18 @@
             }
         }
 
-        function showCourseDetails(courseId) {
+        async function showCourseDetails(courseId) {
             try {
-                const course = courses.find(c => c.id === courseId);
+                let course = courses.find(c => c.id === courseId);
                 if (!course) {
                     showToast(currentLanguage === 'ar' ? 'الكورس غير موجود' : 'Course not found', 'error');
                     return;
+                }
+                // Lazy load course details if not loaded
+                if (course.lessons === null) {
+                    showModal('<div style="text-align:center;padding:40px;"><div class="loading-spinner" style="margin:0 auto;"></div><p style="margin-top:15px;color:var(--text-muted);">' + (currentLanguage === 'ar' ? 'جاري تحميل تفاصيل الكورس...' : 'Loading course details...') + '</p></div>');
+                    await loadCourseDetails(courseId);
+                    course = courses.find(c => c.id === courseId);
                 }
                 
                 // Update URL with course ID
