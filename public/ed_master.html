@@ -2270,78 +2270,32 @@
         }
 
         async function loadData() {
+            if (_dataLoading) return;
+            _dataLoading = true;
             try {
-                // Parallel load all data from Supabase for better performance
+                // Load only latest 5 courses + profiles + roles + notifications (fast initial load)
                 const [
                     { data: coursesData },
-                    { data: lessonsData },
-                    { data: videosData },
-                    { data: filesData },
-                    { data: examsData },
-                    { data: questionsData },
                     { data: profilesData },
                     { data: rolesData },
                     { data: notifsData }
                 ] = await Promise.all([
-                    sb.from('courses').select('*').order('created_at', { ascending: false }),
-                    sb.from('lessons').select('*').order('sort_order'),
-                    sb.from('lesson_videos').select('*').order('sort_order'),
-                    sb.from('lesson_files').select('*').order('sort_order'),
-                    sb.from('exams').select('*'),
-                    sb.from('exam_questions').select('*').order('sort_order'),
+                    sb.from('courses').select('*').order('created_at', { ascending: false }).limit(5),
                     sb.from('profiles').select('*'),
                     sb.from('user_roles').select('*'),
-                    sb.from('notifications').select('*').order('created_at', { ascending: false })
+                    sb.from('notifications').select('*').order('created_at', { ascending: false }).limit(50)
                 ]);
 
-                // Build nested courses structure
-                courses = (coursesData || []).map(c => {
-                    const cLessons = (lessonsData || []).filter(l => l.course_id === c.id).map(l => {
-                        const lVideos = (videosData || []).filter(v => v.lesson_id === l.id).map(v => v.video_url);
-                        const lFiles = (filesData || []).filter(f => f.lesson_id === l.id).map(f => ({
-                            id: f.id,
-                            name: f.file_name,
-                            url: f.file_url
-                        }));
-                        const lExams = (examsData || []).filter(e => e.lesson_id === l.id).map(e => {
-                            const eQuestions = (questionsData || []).filter(q => q.exam_id === e.id).map(q => ({
-                                text: q.text,
-                                type: q.type,
-                                options: q.options || [],
-                                correctOption: q.correct_option
-                            }));
-                            return {
-                                id: e.id,
-                                title: e.title,
-                                questions: eQuestions,
-                                passingGrade: e.passing_grade,
-                                timeLimit: e.time_limit,
-                                allowRetake: e.allow_retake,
-                                requiredToProgress: e.required_to_progress,
-                                createdAt: new Date(e.created_at).getTime()
-                            };
-                        });
-                        return {
-                            id: l.id,
-                            title: l.title,
-                            content: l.content,
-                            videos: lVideos,
-                            exams: lExams,
-                            files: lFiles,
-                            pdfData: null,
-                            pdfName: ''
-                        };
-                    });
-                    return {
-                        id: c.id,
-                        title: c.title,
-                        description: c.description,
-                        image: c.image_url,
-                        createdBy: c.created_by,
-                        lessons: cLessons,
-                        created: new Date(c.created_at).getTime()
-                    };
-                });
+                // Build courses WITHOUT lessons (lazy loaded on demand)
+                courses = (coursesData || []).map(c => ({
+                    id: c.id,
+                    title: c.title,
+                    description: c.description,
+                    image: c.image_url,
+                    createdBy: c.created_by,
+                    lessons: null, // null = not loaded yet
+                    created: new Date(c.created_at).getTime()
+                }));
 
                 // Build users array from profiles + roles
                 users = (profilesData || []).map(p => {
@@ -2353,13 +2307,14 @@
                         phone: p.phone,
                         avatar_url: p.avatar_url,
                         bio: p.bio,
+                        banned: p.banned || false,
                         roles: userRoles.length > 0 ? userRoles : ['student'],
                         lastActive: p.last_active ? new Date(p.last_active).getTime() : Date.now(),
                         joined: new Date(p.joined_at).getTime()
                     };
                 });
 
-                // Load user-specific data (enrollments, favorites, results, progress) in parallel
+                // Load user-specific data in parallel
                 if (currentUser) {
                     const [
                         { data: enrollData },
@@ -2373,7 +2328,6 @@
                         sb.from('lesson_progress').select('*')
                     ]);
 
-                    // Enrollments
                     const enrollments = {};
                     (enrollData || []).forEach(e => {
                         if (!enrollments[e.user_id]) enrollments[e.user_id] = [];
@@ -2381,7 +2335,6 @@
                     });
                     localStorage.setItem(LS_KEYS.USER_ENROLLMENTS, JSON.stringify(enrollments));
 
-                    // Favorites
                     const favorites = {};
                     (favData || []).forEach(f => {
                         if (!favorites[f.user_id]) favorites[f.user_id] = [];
@@ -2389,67 +2342,15 @@
                     });
                     localStorage.setItem(LS_KEYS.USER_FAVORITES, JSON.stringify(favorites));
 
-                    // Exam results
-                    const examResults = {};
-                    (resultsData || []).forEach(r => {
-                        let courseId = '', lessonId = '', examIndex = 0;
-                        for (const course of courses) {
-                            for (const lesson of (course.lessons || [])) {
-                                const idx = (lesson.exams || []).findIndex(e => e.id === r.exam_id);
-                                if (idx >= 0) {
-                                    courseId = course.id;
-                                    lessonId = lesson.id;
-                                    examIndex = idx;
-                                    break;
-                                }
-                            }
-                            if (courseId) break;
-                        }
-                        const key = `${r.user_id}_${courseId}_${lessonId}_${examIndex}`;
-                        examResults[key] = {
-                            id: r.id, userId: r.user_id, courseId, lessonId, examIndex,
-                            examId: r.exam_id, answers: r.answers || [],
-                            mcqScore: 0, mcqCorrect: 0, mcqTotal: 0,
-                            score: r.score, passed: r.passed,
-                            hasEssay: r.has_essay, essayGraded: r.essay_graded,
-                            timestamp: new Date(r.submitted_at).getTime()
-                        };
-                        if (Array.isArray(r.answers)) {
-                            let mcqC = 0, mcqT = 0;
-                            r.answers.forEach(a => {
-                                if (a.type === 'multiple') { mcqT++; if (a.isCorrect) mcqC++; }
-                            });
-                            examResults[key].mcqCorrect = mcqC;
-                            examResults[key].mcqTotal = mcqT;
-                            examResults[key].mcqScore = mcqT > 0 ? Math.round((mcqC / mcqT) * 100) : 0;
-                        }
-                    });
-                    localStorage.setItem(LS_KEYS.EXAM_RESULTS, JSON.stringify(examResults));
+                    // Store raw results for later use when courses are loaded
+                    localStorage.setItem('_rawExamResults', JSON.stringify(resultsData || []));
+                    localStorage.setItem('_rawProgress', JSON.stringify(progressData || []));
 
-                    // Lesson progress
-                    const tracking = {};
-                    (progressData || []).forEach(p => {
-                        if (!tracking[p.user_id]) tracking[p.user_id] = {};
-                        let courseId = '';
-                        for (const course of courses) {
-                            if ((course.lessons || []).some(l => l.id === p.lesson_id)) {
-                                courseId = course.id;
-                                break;
-                            }
-                        }
-                        if (courseId) {
-                            if (!tracking[p.user_id][courseId]) tracking[p.user_id][courseId] = {};
-                            tracking[p.user_id][courseId][p.lesson_id] = {
-                                videoWatched: p.video_watched,
-                                pdfOpened: p.pdf_opened,
-                                examCompleted: p.exam_completed
-                            };
-                        }
-                    });
-                    localStorage.setItem(LS_KEYS.COMPLETION_TRACKING, JSON.stringify(tracking));
+                    // Build exam results (will be rebuilt when course details load)
+                    localStorage.setItem(LS_KEYS.EXAM_RESULTS, JSON.stringify({}));
+                    localStorage.setItem(LS_KEYS.COMPLETION_TRACKING, JSON.stringify({}));
                 }
 
-                // Notifications
                 notifications = (notifsData || []).map(n => ({
                     id: n.id, title: n.title, message: n.message,
                     type: n.type, read: n.read,
@@ -2462,10 +2363,197 @@
                 applyDarkMode(darkMode);
 
                 ensureLocalStorageKeys();
+                _dataLoaded = true;
             } catch (error) {
                 console.error('Error loading data from Supabase:', error);
                 showToast('حدث خطأ في تحميل البيانات', 'error');
                 ensureLocalStorageKeys();
+            } finally {
+                _dataLoading = false;
+            }
+        }
+
+        // Lazy load course details (lessons, videos, exams, files)
+        async function loadCourseDetails(courseId) {
+            const course = courses.find(c => c.id === courseId);
+            if (!course) return null;
+            if (course.lessons !== null) return course; // already loaded
+
+            try {
+                const [
+                    { data: lessonsData },
+                    { data: videosData },
+                    { data: filesData },
+                    { data: examsData },
+                    { data: questionsData }
+                ] = await Promise.all([
+                    sb.from('lessons').select('*').eq('course_id', courseId).order('sort_order'),
+                    sb.from('lesson_videos').select('*, lessons!inner(course_id)').eq('lessons.course_id', courseId).order('sort_order'),
+                    sb.from('lesson_files').select('*, lessons!inner(course_id)').eq('lessons.course_id', courseId).order('sort_order'),
+                    sb.from('exams').select('*, lessons!inner(course_id)').eq('lessons.course_id', courseId),
+                    sb.from('exam_questions').select('*, exams!inner(lesson_id, lessons!inner(course_id))').order('sort_order')
+                ]);
+
+                // Fallback: if the join query fails, fetch all and filter
+                const allVideos = videosData || [];
+                const allFiles = filesData || [];
+                const allExams = examsData || [];
+                
+                // For questions, we need to filter by exam IDs
+                const examIds = allExams.map(e => e.id);
+                let allQuestions = questionsData || [];
+                if (allQuestions.length === 0 && examIds.length > 0) {
+                    const { data: qData } = await sb.from('exam_questions').select('*').in('exam_id', examIds).order('sort_order');
+                    allQuestions = qData || [];
+                }
+
+                course.lessons = (lessonsData || []).map(l => {
+                    const lVideos = allVideos.filter(v => v.lesson_id === l.id).map(v => v.video_url);
+                    const lFiles = allFiles.filter(f => f.lesson_id === l.id).map(f => ({
+                        id: f.id, name: f.file_name, url: f.file_url
+                    }));
+                    const lExams = allExams.filter(e => e.lesson_id === l.id).map(e => {
+                        const eQuestions = allQuestions.filter(q => q.exam_id === e.id).map(q => ({
+                            text: q.text, type: q.type, options: q.options || [], correctOption: q.correct_option
+                        }));
+                        return {
+                            id: e.id, title: e.title, questions: eQuestions,
+                            passingGrade: e.passing_grade, timeLimit: e.time_limit,
+                            allowRetake: e.allow_retake, requiredToProgress: e.required_to_progress,
+                            createdAt: new Date(e.created_at).getTime()
+                        };
+                    });
+                    return {
+                        id: l.id, title: l.title, content: l.content,
+                        videos: lVideos, exams: lExams, files: lFiles,
+                        pdfData: null, pdfName: ''
+                    };
+                });
+
+                // Rebuild exam results and progress for this course
+                rebuildCourseResultsAndProgress(courseId);
+
+                return course;
+            } catch (error) {
+                console.error('Error loading course details:', error);
+                // Fallback: simple fetch
+                try {
+                    const { data: lessonsData } = await sb.from('lessons').select('*').eq('course_id', courseId).order('sort_order');
+                    const lessonIds = (lessonsData || []).map(l => l.id);
+                    
+                    let allVideos = [], allFiles = [], allExams = [], allQuestions = [];
+                    if (lessonIds.length > 0) {
+                        const [vRes, fRes, eRes] = await Promise.all([
+                            sb.from('lesson_videos').select('*').in('lesson_id', lessonIds).order('sort_order'),
+                            sb.from('lesson_files').select('*').in('lesson_id', lessonIds).order('sort_order'),
+                            sb.from('exams').select('*').in('lesson_id', lessonIds)
+                        ]);
+                        allVideos = vRes.data || [];
+                        allFiles = fRes.data || [];
+                        allExams = eRes.data || [];
+                        
+                        const examIds = allExams.map(e => e.id);
+                        if (examIds.length > 0) {
+                            const { data: qData } = await sb.from('exam_questions').select('*').in('exam_id', examIds).order('sort_order');
+                            allQuestions = qData || [];
+                        }
+                    }
+
+                    course.lessons = (lessonsData || []).map(l => {
+                        const lVideos = allVideos.filter(v => v.lesson_id === l.id).map(v => v.video_url);
+                        const lFiles = allFiles.filter(f => f.lesson_id === l.id).map(f => ({
+                            id: f.id, name: f.file_name, url: f.file_url
+                        }));
+                        const lExams = allExams.filter(e => e.lesson_id === l.id).map(e => {
+                            const eQuestions = allQuestions.filter(q => q.exam_id === e.id).map(q => ({
+                                text: q.text, type: q.type, options: q.options || [], correctOption: q.correct_option
+                            }));
+                            return {
+                                id: e.id, title: e.title, questions: eQuestions,
+                                passingGrade: e.passing_grade, timeLimit: e.time_limit,
+                                allowRetake: e.allow_retake, requiredToProgress: e.required_to_progress,
+                                createdAt: new Date(e.created_at).getTime()
+                            };
+                        });
+                        return {
+                            id: l.id, title: l.title, content: l.content,
+                            videos: lVideos, exams: lExams, files: lFiles,
+                            pdfData: null, pdfName: ''
+                        };
+                    });
+                    rebuildCourseResultsAndProgress(courseId);
+                    return course;
+                } catch (err2) {
+                    console.error('Fallback course load also failed:', err2);
+                    course.lessons = [];
+                    return course;
+                }
+            }
+        }
+
+        function rebuildCourseResultsAndProgress(courseId) {
+            try {
+                const course = courses.find(c => c.id === courseId);
+                if (!course || !course.lessons || !currentUser) return;
+
+                const rawResults = JSON.parse(localStorage.getItem('_rawExamResults') || '[]');
+                const rawProgress = JSON.parse(localStorage.getItem('_rawProgress') || '[]');
+
+                const examResults = JSON.parse(localStorage.getItem(LS_KEYS.EXAM_RESULTS) || '{}');
+                rawResults.forEach(r => {
+                    for (const lesson of (course.lessons || [])) {
+                        const idx = (lesson.exams || []).findIndex(e => e.id === r.exam_id);
+                        if (idx >= 0) {
+                            const key = `${r.user_id}_${courseId}_${lesson.id}_${idx}`;
+                            examResults[key] = {
+                                id: r.id, userId: r.user_id, courseId, lessonId: lesson.id, examIndex: idx,
+                                examId: r.exam_id, answers: r.answers || [],
+                                mcqScore: 0, mcqCorrect: 0, mcqTotal: 0,
+                                score: r.score, passed: r.passed,
+                                hasEssay: r.has_essay, essayGraded: r.essay_graded,
+                                timestamp: new Date(r.submitted_at).getTime()
+                            };
+                            if (Array.isArray(r.answers)) {
+                                let mcqC = 0, mcqT = 0;
+                                r.answers.forEach(a => { if (a.type === 'multiple') { mcqT++; if (a.isCorrect) mcqC++; } });
+                                examResults[key].mcqCorrect = mcqC;
+                                examResults[key].mcqTotal = mcqT;
+                                examResults[key].mcqScore = mcqT > 0 ? Math.round((mcqC / mcqT) * 100) : 0;
+                            }
+                            break;
+                        }
+                    }
+                });
+                localStorage.setItem(LS_KEYS.EXAM_RESULTS, JSON.stringify(examResults));
+
+                const tracking = JSON.parse(localStorage.getItem(LS_KEYS.COMPLETION_TRACKING) || '{}');
+                rawProgress.forEach(p => {
+                    if ((course.lessons || []).some(l => l.id === p.lesson_id)) {
+                        if (!tracking[p.user_id]) tracking[p.user_id] = {};
+                        if (!tracking[p.user_id][courseId]) tracking[p.user_id][courseId] = {};
+                        tracking[p.user_id][courseId][p.lesson_id] = {
+                            videoWatched: p.video_watched, pdfOpened: p.pdf_opened, examCompleted: p.exam_completed
+                        };
+                    }
+                });
+                localStorage.setItem(LS_KEYS.COMPLETION_TRACKING, JSON.stringify(tracking));
+            } catch (e) {
+                console.error('Error rebuilding results:', e);
+            }
+        }
+
+        // Search courses from DB
+        async function searchCoursesFromDB(term) {
+            try {
+                const { data } = await sb.from('courses').select('*').ilike('title', `%${term}%`).order('created_at', { ascending: false }).limit(20);
+                return (data || []).map(c => ({
+                    id: c.id, title: c.title, description: c.description,
+                    image: c.image_url, createdBy: c.created_by,
+                    lessons: null, created: new Date(c.created_at).getTime()
+                }));
+            } catch (e) {
+                console.error('Search error:', e);
+                return [];
             }
         }
 
@@ -2477,6 +2565,7 @@
             if (!localStorage.getItem(LS_KEYS.TEACHER_NOTIFICATIONS)) localStorage.setItem(LS_KEYS.TEACHER_NOTIFICATIONS, JSON.stringify({}));
             if (!localStorage.getItem(LS_KEYS.COMPLETION_TRACKING)) localStorage.setItem(LS_KEYS.COMPLETION_TRACKING, JSON.stringify({}));
         }
+
 
         function initializeDefaultData() {
             // No longer needed - data comes from Supabase
