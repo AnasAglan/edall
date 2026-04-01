@@ -1889,6 +1889,38 @@
             const overlay = document.getElementById('loadingOverlay');
             if (overlay) overlay.style.display = 'none';
         }
+        // Inline loading - shows spinner inside a specific element
+        function showInlineLoading(elementId) {
+            const el = document.getElementById(elementId);
+            if (!el) return;
+            el._prevHTML = el.innerHTML;
+            el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;padding:40px;"><div class="loading-spinner" style="width:40px;height:40px;"></div></div>';
+        }
+        function hideInlineLoading(elementId) {
+            const el = document.getElementById(elementId);
+            if (!el) return;
+            if (el._prevHTML !== undefined) {
+                el.innerHTML = el._prevHTML;
+                delete el._prevHTML;
+            }
+        }
+        // Show inline spinner on a button
+        function showBtnLoading(btn) {
+            if (!btn) return;
+            btn._prevHTML = btn.innerHTML;
+            btn._prevDisabled = btn.disabled;
+            btn.disabled = true;
+            btn.innerHTML = '<div class="loading-spinner" style="width:20px;height:20px;border-width:2px;"></div>';
+        }
+        function hideBtnLoading(btn) {
+            if (!btn) return;
+            if (btn._prevHTML !== undefined) {
+                btn.innerHTML = btn._prevHTML;
+                btn.disabled = btn._prevDisabled || false;
+                delete btn._prevHTML;
+                delete btn._prevDisabled;
+            }
+        }
         function toggleUserMenu() {
             const menu = document.getElementById('userMenu');
             if (menu) menu.classList.toggle('show');
@@ -1905,6 +1937,10 @@
             const sel = document.getElementById('languageSelector');
             if (sel) sel.classList.remove('show');
         }
+
+        let _dataLoaded = false;
+        let _dataLoading = false;
+        let _searchDebounceTimer = null;
 
         // Video embed support for YouTube, Dailymotion, 4shared
         function getVideoEmbedUrl(url) {
