@@ -3115,7 +3115,37 @@
 
         function handleSearch(e) {
             const searchTerm = e.target.value.trim();
-            renderCoursesGrid(searchTerm);
+            if (!searchTerm) {
+                // Show default 5 courses
+                renderCoursesGrid();
+                // Remove search dropdown if any
+                const existingDropdown = document.getElementById('searchResultsDropdown');
+                if (existingDropdown) existingDropdown.remove();
+                return;
+            }
+            // Debounce DB search
+            if (_searchDebounceTimer) clearTimeout(_searchDebounceTimer);
+            _searchDebounceTimer = setTimeout(async () => {
+                showInlineLoading('coursesGrid');
+                const results = await searchCoursesFromDB(searchTerm);
+                // Merge search results into courses array (avoid duplicates)
+                results.forEach(r => {
+                    if (!courses.find(c => c.id === r.id)) {
+                        courses.push(r);
+                    }
+                });
+                // Show search results
+                const grid = document.getElementById('coursesGrid');
+                if (results.length === 0) {
+                    grid.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);grid-column:1/-1;"><i class="fas fa-search" style="font-size:3rem;margin-bottom:16px;"></i><h3>' + (currentLanguage === 'ar' ? 'لم يتم العثور على نتائج' : 'No results found') + '</h3></div>';
+                } else {
+                    // Render just the search results
+                    const origCourses = courses;
+                    courses = results;
+                    renderCoursesGrid();
+                    courses = origCourses;
+                }
+            }, 300);
         }
 
         function handleUserSearch(e) {
