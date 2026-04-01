@@ -2086,12 +2086,7 @@
                         </div>
                     </div>
                 `;
-                
-                document.getElementById('modalBackground').addEventListener('click', function(e) {
-                    if (e.target === this) {
-                        closeModal();
-                    }
-                });
+                // Modal only closes via X button or Close button - NOT by clicking outside
             } catch (error) {
                 console.error('Error showing modal:', error);
                 showToast('حدث خطأ في فتح النافذة', 'error');
