@@ -1,102 +1,122 @@
 
 
-# خطة إكمال تحديث المنصة
+# خطة إصلاح وتحسين منصة ED MASTER
 
-## المشاكل المكتشفة
+## ملخص التغييرات
+إصلاح مشاكل التحميل البطيء، إضافة أزرار تعديل/حذف المحاضرات، منع إغلاق النوافذ عند الضغط خارجها، إضافة تعطيل الحسابات، تحميل 5 كورسات فقط مبدئياً، وإصلاح التحميل الموضعي.
 
-1. **submitExam و saveEssayGrades** تحفظان في localStorage فقط، لا تحفظان في قاعدة البيانات
-2. **addNewUser** (لوحة الإدارة) تحفظ محلياً فقط ولا تنشئ حساب حقيقي في النظام
-3. **handle_new_user** trigger غير مفعّل - عند التسجيل `setup_new_user` يُستدعى يدوياً لكن أول مستخدم فقط يحصل على admin
-4. **renderManageCoursesPage** تقارن `course.createdBy === currentUser.email` لكن `createdBy` هو UUID وليس email - هذا يمنع المدرس من رؤية كورساته
-5. **لا يوجد loading spinner** عند تسجيل الدخول/الإنشاء
-6. **لا يظهر اسم المدرس** على بطاقة الكورس ولا توجد صفحة مدرس
-7. **لا يوجد دعم PDF** في إضافة المحاضرة
-8. **لا يوجد تعديل محاضرة** - فقط إضافة
-9. **دعم فيديو محدود** - placeholder يقول YouTube فقط، لا يدعم 4shared و Dailymotion
-10. **profiles لا تحتوي على حقل bio** لوصف المدرس
-11. **لا يوجد تعيين أدوار من لوحة الإدارة** بشكل فعّال عبر قاعدة البيانات
+---
+
+## المشاكل المكتشفة والحلول
+
+### 1. التحميل البطيء عند فتح الموقع
+- **السبب**: `loadData()` تحمّل *جميع* الكورسات والمحاضرات والفيديوهات والامتحانات مرة واحدة عند فتح الموقع.
+- **الحل**: تحميل أحدث 5 كورسات فقط مع بيانات الملف الشخصي والأدوار. باقي الكورسات تظهر فقط عندما يبحث المستخدم. عند فتح كورس معين، يتم تحميل محاضراته وامتحاناته من DB في تلك اللحظة (lazy loading).
+
+### 2. التحميل يظهر على الصفحة بالكامل
+- **السبب**: `showLoading()` تعرض overlay يغطي الشاشة كاملة.
+- **الحل**: إنشاء دالة `showInlineLoading(containerId)` و `hideInlineLoading(containerId)` تعرض spinner صغير داخل العنصر المحدد فقط (مثل مكان الكورسات أو زر الحفظ)، واستخدام التحميل الكامل فقط لتسجيل الدخول/الخروج.
+
+### 3. النوافذ (Modals) تغلق عند الضغط خارجها
+- **السبب**: `showModal()` تضيف event listener على `modalBackground` يغلق عند `e.target === this`.
+- **الحل**: إزالة هذا الـ listener. النافذة تغلق فقط عند الضغط على زر الإغلاق (×) أو زر "إغلاق".
+
+### 4. لا يوجد زر تعديل/حذف المحاضرة
+- **الحل**: في `showCourseDetails()` و `openLesson()`، إضافة أزرار "تعديل" و"حذف" بجانب كل محاضرة للمدرس صاحب الكورس والمدير فقط (`canUserEditCourse`).
+- دالة `editLesson(courseId, lessonId)` تفتح modal بنفس شكل `addLessonToCourse` لكن مملوءة بالبيانات الحالية.
+- دالة `deleteLesson(courseId, lessonId)` تحذف المحاضرة من DB.
+- دالة `updateLessonInDB(courseId, lessonId)` تحدّث العنوان والمحتوى والفيديوهات والملفات.
+
+### 5. إضافة زر تعطيل الحساب في لوحة الإدارة
+- **Migration**: إضافة عمود `banned boolean DEFAULT false` لجدول `profiles`.
+- في `renderUserList()`: إضافة زر "تعطيل/تفعيل" بجانب كل مستخدم (ما عدا حساب الأدمن الحالي).
+- حذف زر "مسح الحساب" من بجانب حساب الأدمن.
+- عند تسجيل الدخول (`handleSignIn` و `onAuthStateChange`): بعد تحميل بيانات المستخدم، فحص `banned`. إذا `true`: تسجيل خروج فوري + عرض رسالة "تم حظر حسابك".
+
+### 6. التحميل البطيء عند حفظ محاضرة بفيديو/PDF
+- **السبب**: `showLoading()` تغطي الشاشة كاملة أثناء الرفع.
+- **الحل**: استخدام `showInlineLoading` على زر الحفظ أو منطقة المحاضرة بدلاً من الـ overlay الكامل.
+
+### 7. التحميل البطيء عند إعادة تحميل الصفحة
+- **السبب**: `onAuthStateChange` تستدعي `loadData()` بالكامل مرة أخرى، و`initializeApp` أيضاً.
+- **الحل**: منع الاستدعاء المزدوج لـ `loadData` عبر flag `dataLoaded`، وتحميل الكورسات بـ `.limit(5)` مبدئياً.
+
+### 8. البحث يعرض الكورسات المحمّلة فقط
+- **الحل**: عند الكتابة في شريط البحث، عمل `sb.from('courses').select('*').ilike('title', '%search%').limit(20)` من DB مباشرة مع debounce 300ms، وعرض النتائج في dropdown أسفل شريط البحث.
 
 ---
 
 ## خطوات التنفيذ
 
-### 1. تحديث قاعدة البيانات (Migration)
-- إضافة حقل `bio` لجدول `profiles` لوصف المدرس عن نفسه
-- إنشاء storage bucket `lesson-pdfs` لحفظ ملفات PDF
-- إنشاء storage bucket `course-images` لصور الكورسات
-- تفعيل trigger `handle_new_user` على `auth.users` بعد INSERT
+### الخطوة 1: Migration - إضافة عمود banned
+```sql
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS banned boolean DEFAULT false;
+```
 
-### 2. تحديث `submitExam` لحفظ النتائج في DB
-- بعد حساب النتيجة، إدراج سجل في `exam_results` عبر Supabase
-- تخزين `exam_id` الفعلي بدل `examIndex`
-- إزالة الاعتماد على localStorage لنتائج الامتحان
+### الخطوة 2: تحديث ed_master.html
 
-### 3. تحديث `saveEssayGrades` لحفظ التصحيح في DB
-- تحديث سجل `exam_results` في Supabase بالدرجات النهائية
-- تحديث `passed` و `score` و `essay_graded` و `answers` في DB
+#### 2a. نظام التحميل الموضعي
+- إنشاء `showInlineLoading(elementId)` و `hideInlineLoading(elementId)` تضع spinner داخل عنصر محدد.
+- استبدال `showLoading()`/`hideLoading()` في `saveLesson`, `createNewCourseFromModal`, `updateCourse`, `saveExam` بالنسخة الموضعية.
+- إبقاء التحميل الكامل فقط لـ `handleSignIn` و `handleSignUp` و `initializeApp`.
 
-### 4. إصلاح `addNewUser` في لوحة الإدارة
-- استخدام edge function لإنشاء مستخدمين جدد (لأن signUp من العميل لا يسمح بتحديد الدور)
-- أو: إنشاء الحساب عبر `sb.auth.signUp` ثم تعيين الدور عبر `user_roles` insert (المدير لديه صلاحية)
+#### 2b. التحميل الكسول (Lazy Loading)
+- تعديل `loadData()`: تحميل أحدث 5 كورسات فقط (`.limit(5)`), بدون محاضرات/فيديوهات/امتحانات.
+- إنشاء `loadCourseDetails(courseId)`: عند فتح كورس، تحميل محاضراته وفيديوهاته وملفاته وامتحاناته من DB وتحديث الـ cache المحلي.
+- تعديل `showCourseDetails()` و `openLesson()` لاستدعاء `loadCourseDetails` أولاً.
+- تعديل `renderCoursesGrid()` لعرض الكورسات المحمّلة فقط.
 
-### 5. إضافة Loading Spinners
-- إضافة spinner/overlay أثناء تسجيل الدخول وإنشاء الحساب
-- إضافة spinner لأي عملية async (إنشاء كورس، حفظ محاضرة، تسليم امتحان)
+#### 2c. البحث الحيّ من DB
+- تعديل `handleSearch()`: استخدام debounce + استعلام DB مباشر.
+- عرض نتائج البحث في dropdown أسفل شريط البحث.
+- عند الضغط على نتيجة: فتح صفحة الكورس.
 
-### 6. عرض اسم المدرس على بطاقة الكورس + صفحة المدرس
-- في `renderCoursesGrid`: إضافة اسم المدرس (من `users` array باستخدام `course.createdBy` UUID)
-- عند الضغط على اسم المدرس: فتح صفحة المدرس (اسم، صورة، bio، كورساته)
-- إضافة صفحة جديدة `teacherProfilePage` في HTML
+#### 2d. إزالة إغلاق Modal عند الضغط خارجها
+- في `showModal()`: إزالة الـ event listener على `modalBackground`.
 
-### 7. إصلاح مقارنة `createdBy`
-- في `renderManageCoursesPage` سطر 3624: تغيير `course.createdBy === currentUser.email` إلى `course.createdBy === currentUser.id`
-- التأكد من أن `createdBy` يُحفظ كـ UUID في كل مكان
+#### 2e. أزرار تعديل/حذف المحاضرة
+- في `showCourseDetails()`: إضافة أزرار "تعديل" و "حذف" بجانب كل محاضرة (فقط إذا `canUserEditCourse`).
+- دالة `editLesson(courseId, lessonId)`: modal تعديل المحاضرة.
+- دالة `updateLessonInDB(courseId, lessonId)`: تحديث في DB (lessons + lesson_videos + lesson_files).
+- دالة `deleteLesson(courseId, lessonId)`: حذف من DB + تحديث المحلي.
 
-### 8. دعم فيديوهات متعددة المنصات
-- تحديث placeholder ليشمل YouTube, Dailymotion, 4shared
-- تحديث `getYouTubeEmbedUrl` لتشمل Dailymotion embed و 4shared player
-- إعادة تسمية الدالة لـ `getVideoEmbedUrl`
-
-### 9. دعم ملفات PDF في المحاضرة
-- إضافة input لرفع ملفات PDF في `addLessonToCourse`
-- حفظ ملفات PDF في Supabase Storage bucket `lesson-pdfs`
-- إنشاء جدول `lesson_files` (id, lesson_id, file_url, file_name, sort_order) لربط الملفات بالمحاضرات
-- عرض ملفات PDF في `openLesson`
-
-### 10. تعديل المحاضرة
-- إضافة زر "تعديل" بجانب كل محاضرة في `showCourseDetails`
-- modal تعديل يحمّل بيانات المحاضرة الحالية (عنوان، محتوى، فيديوهات، ملفات)
-- دالة `updateLesson` تحدّث الدرجة في DB وتحذف/تضيف فيديوهات وملفات
-
-### 11. إضافة حقل bio في صفحة الملف الشخصي
-- textarea في `renderProfilePage` لإضافة/تعديل الوصف الشخصي
-- حفظ `bio` في جدول `profiles`
+#### 2f. تعطيل الحسابات
+- في `renderUserList()`: إضافة زر "تعطيل" لكل مستخدم (ما عدا الأدمن الحالي).
+- دالة `toggleBanUser(userId)`: تحديث `banned` في `profiles`.
+- إخفاء زر "حذف" من بجانب حساب الأدمن.
+- في `handleSignIn` و `onAuthStateChange`: فحص `banned` بعد تحميل الملف الشخصي. إذا محظور: `sb.auth.signOut()` + رسالة "تم حظر حسابك".
 
 ---
 
 ## التفاصيل التقنية
 
-### Migration SQL المطلوب:
+### Migration SQL:
 ```sql
-ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS bio text;
-
-CREATE TABLE public.lesson_files (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    lesson_id uuid NOT NULL REFERENCES public.lessons(id) ON DELETE CASCADE,
-    file_url text NOT NULL,
-    file_name text NOT NULL,
-    sort_order integer DEFAULT 0
-);
-ALTER TABLE public.lesson_files ENABLE ROW LEVEL SECURITY;
--- RLS policies similar to lesson_videos
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS banned boolean DEFAULT false;
 ```
 
-### Storage Buckets:
-- `lesson-pdfs` - public read, authenticated upload
-- `course-images` - public read, authenticated upload
-
 ### ملفات تتأثر:
-- `public/ed_master.html` - التحديث الرئيسي (جميع الدوال المذكورة)
-- Migration SQL جديد
-- لا حاجة لتعديل ملفات React (المنصة تعمل من ed_master.html)
+- `public/ed_master.html` - جميع التغييرات
+- Migration SQL جديد واحد
+
+### الدوال الجديدة:
+- `showInlineLoading(elementId)` / `hideInlineLoading(elementId)`
+- `loadCourseDetails(courseId)` - تحميل كسول لتفاصيل الكورس
+- `editLesson(courseId, lessonId)` - modal تعديل المحاضرة
+- `updateLessonInDB(courseId, lessonId)` - حفظ التعديلات
+- `deleteLesson(courseId, lessonId)` - حذف المحاضرة
+- `toggleBanUser(userId)` - تعطيل/تفعيل الحساب
+- `searchCoursesFromDB(term)` - بحث حيّ من DB
+
+### الدوال المعدّلة:
+- `loadData()` - تحميل 5 كورسات فقط بدون محاضرات
+- `showModal()` - إزالة إغلاق عند الضغط خارج النافذة
+- `showCourseDetails()` - lazy load + أزرار تعديل/حذف
+- `openLesson()` - lazy load
+- `handleSearch()` - بحث من DB
+- `renderUserList()` - أزرار تعطيل + إخفاء حذف الأدمن
+- `handleSignIn()` - فحص الحظر
+- `saveLesson()` - تحميل موضعي
+- `createNewCourseFromModal()` - تحميل موضعي
+- `initializeApp()` - منع التحميل المزدوج
 
