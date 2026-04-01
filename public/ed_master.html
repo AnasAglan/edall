@@ -3243,6 +3243,18 @@
                 
                 await ensureUserAccountRecord(data.user);
                 await loadCurrentUserFromSupabase(data.user);
+                
+                // Check if user is banned
+                if (currentUser && currentUser.banned) {
+                    await sb.auth.signOut();
+                    currentUser = null;
+                    hideLoading();
+                    updateUI();
+                    showToast(currentLanguage === 'ar' ? 'تم حظر حسابك. تواصل مع الإدارة.' : 'Your account has been blocked.', 'error');
+                    return;
+                }
+                
+                _dataLoaded = false;
                 await loadData();
                 updateUI();
                 hideLoading();
