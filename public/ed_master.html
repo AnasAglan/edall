@@ -4311,10 +4311,11 @@
                         const lessonTracking = completionStatus.details[lesson.id] || {};
                         const lessonProgress = calculateLessonProgress(lessonTracking);
                         const isLocked = !canAccessLesson(courseId, index);
+                        const canEdit = canUserEditCourse(course);
                         
                         modalContent += `
                             <div class="list-item" style="margin:10px 0;${isLocked ? 'opacity:0.6;' : ''}">
-                                <div>
+                                <div style="flex:1;">
                                     <strong>
                                         ${isLocked ? '<i class="fas fa-lock lock-icon"></i>' : ''}
                                         ${currentLanguage === 'ar' ? 'المحاضرة' : 'Lesson'} ${index + 1}: ${lesson.title}
@@ -4330,9 +4331,19 @@
                                         ${currentLanguage === 'ar' ? 'التقدم:' : 'Progress:'} ${lessonProgress}%
                                     </div>
                                 </div>
-                                <button class="btn btn-sm" onclick="openLesson('${courseId}', '${lesson.id}')" ${isLocked ? 'disabled' : ''}>
-                                    <i class="fas ${isLocked ? 'fa-lock' : 'fa-play'}"></i> ${isLocked ? (currentLanguage === 'ar' ? 'مقفل' : 'Locked') : (currentLanguage === 'ar' ? 'فتح' : 'Open')}
-                                </button>
+                                <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                                    <button class="btn btn-sm" onclick="openLesson('${courseId}', '${lesson.id}')" ${isLocked ? 'disabled' : ''}>
+                                        <i class="fas ${isLocked ? 'fa-lock' : 'fa-play'}"></i> ${isLocked ? (currentLanguage === 'ar' ? 'مقفل' : 'Locked') : (currentLanguage === 'ar' ? 'فتح' : 'Open')}
+                                    </button>
+                                    ${canEdit ? `
+                                        <button class="btn btn-sm" style="background:var(--warning);" onclick="editLesson('${courseId}', '${lesson.id}')">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-danger" onclick="deleteLesson('${courseId}', '${lesson.id}')">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    ` : ''}
+                                </div>
                             </div>
                         `;
                     });
