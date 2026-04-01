@@ -5614,7 +5614,7 @@
             }
         }
 
-        function renderUserList(searchTerm = '') {
+         function renderUserList(searchTerm = '') {
             try {
                 const usersList = document.getElementById('usersList');
                 let usersToShow = users;
@@ -5626,24 +5626,33 @@
                     );
                 }
                 
-                usersList.innerHTML = usersToShow.map(user => `
-                    <div class="list-item">
+                usersList.innerHTML = usersToShow.map(user => {
+                    const isAdmin = user.roles && user.roles.includes('admin');
+                    const isBanned = user.banned;
+                    return `
+                    <div class="list-item" ${isBanned ? 'style="opacity:0.6;border-right:4px solid var(--danger);"' : ''}>
                         <div>
                             <strong>${user.name || user.email}</strong>
+                            ${isBanned ? '<span class="badge" style="background:var(--danger);color:white;margin-right:8px;">محظور</span>' : ''}
                             <div style="color: var(--text-muted); font-size: 0.9rem;">
                                 ${user.email} | ${user.roles ? user.roles.join(', ') : 'student'}
                             </div>
                         </div>
-                        <div style="display: flex; gap: 8px;">
+                        <div style="display: flex; gap: 8px; flex-wrap:wrap;">
                             <button class="btn btn-sm view-user-btn" data-user-id="${user.id}">
                                 <i class="fas fa-eye"></i>
                             </button>
-                            <button class="btn btn-sm btn-danger delete-user-btn" data-user-id="${user.id}">
-                                <i class="fas fa-trash"></i>
+                            <button class="btn btn-sm ${isBanned ? 'btn-success' : ''}" style="${!isBanned ? 'background:var(--warning);' : ''}" onclick="toggleBanUser('${user.id}')">
+                                <i class="fas ${isBanned ? 'fa-unlock' : 'fa-ban'}"></i>
                             </button>
+                            ${!isAdmin ? `
+                                <button class="btn btn-sm btn-danger delete-user-btn" data-user-id="${user.id}">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            ` : ''}
                         </div>
                     </div>
-                `).join('');
+                `}).join('');
             } catch (error) {
                 console.error('Error rendering user list:', error);
             }
