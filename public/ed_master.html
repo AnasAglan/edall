@@ -4078,7 +4078,7 @@
                     created_by: currentUser.id
                 }).select().single();
                 
-                if (error) { hideLoading(); console.error('Course insert error:', error); showToast('حدث خطأ في إنشاء الكورس: ' + error.message, 'error'); return; }
+                if (error) { hideBtnLoading(createBtn); console.error('Course insert error:', error); showToast('حدث خطأ في إنشاء الكورس: ' + error.message, 'error'); return; }
                 
                 courses.unshift({
                     id: newCourseData.id,
