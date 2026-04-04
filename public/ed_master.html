@@ -2390,21 +2390,29 @@
                     sb.from('lessons').select('*').eq('course_id', courseId).order('sort_order'),
                     sb.from('lesson_videos').select('*, lessons!inner(course_id)').eq('lessons.course_id', courseId).order('sort_order'),
                     sb.from('lesson_files').select('*, lessons!inner(course_id)').eq('lessons.course_id', courseId).order('sort_order'),
-                    sb.from('exams').select('*, lessons!inner(course_id)').eq('lessons.course_id', courseId),
-                    sb.from('exam_questions').select('*, exams!inner(lesson_id, lessons!inner(course_id))').order('sort_order')
+                    sb.from('exams').select('*, lessons!inner(course_id)').eq('lessons.course_id', courseId)
                 ]);
 
-                // Fallback: if the join query fails, fetch all and filter
                 const allVideos = videosData || [];
                 const allFiles = filesData || [];
                 const allExams = examsData || [];
                 
-                // For questions, we need to filter by exam IDs
+                // For questions: use direct query for owners/admins, safe RPC for students
                 const examIds = allExams.map(e => e.id);
-                let allQuestions = questionsData || [];
-                if (allQuestions.length === 0 && examIds.length > 0) {
-                    const { data: qData } = await sb.from('exam_questions').select('*').in('exam_id', examIds).order('sort_order');
-                    allQuestions = qData || [];
+                let allQuestions = [];
+                const isOwnerOrAdmin = canUserEditCourse(course);
+                if (examIds.length > 0) {
+                    if (isOwnerOrAdmin) {
+                        // Owners/admins can see correct_option directly
+                        const { data: qData } = await sb.from('exam_questions').select('*').in('exam_id', examIds).order('sort_order');
+                        allQuestions = qData || [];
+                    } else {
+                        // Students use safe RPC (no correct_option)
+                        for (const eid of examIds) {
+                            const { data: qData } = await sb.rpc('get_exam_questions_safe', { _exam_id: eid });
+                            if (qData) allQuestions.push(...qData);
+                        }
+                    }
                 }
 
                 course.lessons = (lessonsData || []).map(l => {
@@ -2454,8 +2462,16 @@
                         
                         const examIds = allExams.map(e => e.id);
                         if (examIds.length > 0) {
-                            const { data: qData } = await sb.from('exam_questions').select('*').in('exam_id', examIds).order('sort_order');
-                            allQuestions = qData || [];
+                            const isOwnerOrAdmin = canUserEditCourse(course);
+                            if (isOwnerOrAdmin) {
+                                const { data: qData } = await sb.from('exam_questions').select('*').in('exam_id', examIds).order('sort_order');
+                                allQuestions = qData || [];
+                            } else {
+                                for (const eid of examIds) {
+                                    const { data: qData } = await sb.rpc('get_exam_questions_safe', { _exam_id: eid });
+                                    if (qData) allQuestions.push(...qData);
+                                }
+                            }
                         }
                     }
 
@@ -5044,40 +5060,48 @@
                 
                 showLoading();
                 
-                let mcqCorrect = 0;
-                let mcqTotal = 0;
-                let hasEssay = false;
-                const answers = [];
-                
+                // Collect raw answers from the form
+                const rawAnswers = [];
                 exam.questions.forEach((question, index) => {
                     if (question.type === 'multiple') {
-                        mcqTotal++;
                         const selected = document.querySelector(`input[name="question_${index}"]:checked`);
                         const selectedValue = selected ? parseInt(selected.value) : -1;
-                        const isCorrect = selectedValue === question.correctOption;
-                        if (isCorrect) mcqCorrect++;
-                        answers.push({
+                        rawAnswers.push({
                             questionIndex: index,
                             type: 'multiple',
-                            selectedOption: selectedValue,
-                            isCorrect: isCorrect
+                            selectedOption: selectedValue
                         });
                     } else {
-                        hasEssay = true;
                         const essayInput = document.getElementById(`essay_${index}`);
                         const essayText = essayInput ? essayInput.value.trim() : '';
-                        answers.push({
+                        rawAnswers.push({
                             questionIndex: index,
                             type: 'essay',
-                            answer: essayText,
-                            grade: null,
-                            graded: false
+                            answer: essayText
                         });
                     }
                 });
                 
+                // Use server-side grading RPC
+                const { data: gradeResult, error: gradeError } = await sb.rpc('grade_exam_submission', {
+                    _exam_id: exam.id,
+                    _answers: rawAnswers
+                });
+                
+                if (gradeError) {
+                    console.error('Server grading error:', gradeError);
+                    hideLoading();
+                    showToast(currentLanguage === 'ar' ? 'حدث خطأ أثناء تصحيح الامتحان' : 'Error grading exam', 'error');
+                    return;
+                }
+                
+                const mcqCorrect = gradeResult.mcqCorrect;
+                const mcqTotal = gradeResult.mcqTotal;
+                const hasEssay = gradeResult.hasEssay;
+                const answers = gradeResult.gradedAnswers;
+                const totalQuestions = gradeResult.totalQuestions;
+                
                 const mcqScore = mcqTotal > 0 ? Math.round((mcqCorrect / mcqTotal) * 100) : 0;
-                const totalQuestions = exam.questions.length;
                 const mcqWeight = mcqTotal / totalQuestions;
                 
                 let finalScore = mcqScore;

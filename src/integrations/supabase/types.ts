@@ -448,7 +448,22 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_exam_questions_safe: {
+        Args: { _exam_id: string }
+        Returns: {
+          exam_id: string
+          id: string
+          options: Json
+          sort_order: number
+          text: string
+          type: Database["public"]["Enums"]["question_type"]
+        }[]
+      }
       get_user_role: { Args: { _user_id: string }; Returns: string }
+      grade_exam_submission: {
+        Args: { _answers: Json; _exam_id: string }
+        Returns: Json
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
