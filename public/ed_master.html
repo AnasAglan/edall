@@ -2390,21 +2390,29 @@
                     sb.from('lessons').select('*').eq('course_id', courseId).order('sort_order'),
                     sb.from('lesson_videos').select('*, lessons!inner(course_id)').eq('lessons.course_id', courseId).order('sort_order'),
                     sb.from('lesson_files').select('*, lessons!inner(course_id)').eq('lessons.course_id', courseId).order('sort_order'),
-                    sb.from('exams').select('*, lessons!inner(course_id)').eq('lessons.course_id', courseId),
-                    sb.from('exam_questions').select('*, exams!inner(lesson_id, lessons!inner(course_id))').order('sort_order')
+                    sb.from('exams').select('*, lessons!inner(course_id)').eq('lessons.course_id', courseId)
                 ]);
 
-                // Fallback: if the join query fails, fetch all and filter
                 const allVideos = videosData || [];
                 const allFiles = filesData || [];
                 const allExams = examsData || [];
                 
-                // For questions, we need to filter by exam IDs
+                // For questions: use direct query for owners/admins, safe RPC for students
                 const examIds = allExams.map(e => e.id);
-                let allQuestions = questionsData || [];
-                if (allQuestions.length === 0 && examIds.length > 0) {
-                    const { data: qData } = await sb.from('exam_questions').select('*').in('exam_id', examIds).order('sort_order');
-                    allQuestions = qData || [];
+                let allQuestions = [];
+                const isOwnerOrAdmin = canUserEditCourse(course);
+                if (examIds.length > 0) {
+                    if (isOwnerOrAdmin) {
+                        // Owners/admins can see correct_option directly
+                        const { data: qData } = await sb.from('exam_questions').select('*').in('exam_id', examIds).order('sort_order');
+                        allQuestions = qData || [];
+                    } else {
+                        // Students use safe RPC (no correct_option)
+                        for (const eid of examIds) {
+                            const { data: qData } = await sb.rpc('get_exam_questions_safe', { _exam_id: eid });
+                            if (qData) allQuestions.push(...qData);
+                        }
+                    }
                 }
 
                 course.lessons = (lessonsData || []).map(l => {
