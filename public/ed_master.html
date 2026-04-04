@@ -5968,7 +5968,7 @@
                 if (document.getElementById('manageCoursesPage').classList.contains('active')) renderManageCoursesPage();
                 if (document.getElementById('adminPage').classList.contains('active')) renderAdminPage();
             } catch (error) {
-                hideLoading();
+                hideBtnLoading(document.querySelector('#modalHost .btn'));
                 console.error('Error saving lesson:', error);
                 showToast('حدث خطأ في حفظ المحاضرة', 'error');
             }
