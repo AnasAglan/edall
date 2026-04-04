@@ -5060,40 +5060,48 @@
                 
                 showLoading();
                 
-                let mcqCorrect = 0;
-                let mcqTotal = 0;
-                let hasEssay = false;
-                const answers = [];
-                
+                // Collect raw answers from the form
+                const rawAnswers = [];
                 exam.questions.forEach((question, index) => {
                     if (question.type === 'multiple') {
-                        mcqTotal++;
                         const selected = document.querySelector(`input[name="question_${index}"]:checked`);
                         const selectedValue = selected ? parseInt(selected.value) : -1;
-                        const isCorrect = selectedValue === question.correctOption;
-                        if (isCorrect) mcqCorrect++;
-                        answers.push({
+                        rawAnswers.push({
                             questionIndex: index,
                             type: 'multiple',
-                            selectedOption: selectedValue,
-                            isCorrect: isCorrect
+                            selectedOption: selectedValue
                         });
                     } else {
-                        hasEssay = true;
                         const essayInput = document.getElementById(`essay_${index}`);
                         const essayText = essayInput ? essayInput.value.trim() : '';
-                        answers.push({
+                        rawAnswers.push({
                             questionIndex: index,
                             type: 'essay',
-                            answer: essayText,
-                            grade: null,
-                            graded: false
+                            answer: essayText
                         });
                     }
                 });
                 
+                // Use server-side grading RPC
+                const { data: gradeResult, error: gradeError } = await sb.rpc('grade_exam_submission', {
+                    _exam_id: exam.id,
+                    _answers: rawAnswers
+                });
+                
+                if (gradeError) {
+                    console.error('Server grading error:', gradeError);
+                    hideLoading();
+                    showToast(currentLanguage === 'ar' ? 'حدث خطأ أثناء تصحيح الامتحان' : 'Error grading exam', 'error');
+                    return;
+                }
+                
+                const mcqCorrect = gradeResult.mcqCorrect;
+                const mcqTotal = gradeResult.mcqTotal;
+                const hasEssay = gradeResult.hasEssay;
+                const answers = gradeResult.gradedAnswers;
+                const totalQuestions = gradeResult.totalQuestions;
+                
                 const mcqScore = mcqTotal > 0 ? Math.round((mcqCorrect / mcqTotal) * 100) : 0;
-                const totalQuestions = exam.questions.length;
                 const mcqWeight = mcqTotal / totalQuestions;
                 
                 let finalScore = mcqScore;
