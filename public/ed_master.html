@@ -2380,22 +2380,22 @@
             if (course.lessons !== null) return course; // already loaded
 
             try {
-                const [
-                    { data: lessonsData },
-                    { data: videosData },
-                    { data: filesData },
-                    { data: examsData },
-                    { data: questionsData }
-                ] = await Promise.all([
-                    sb.from('lessons').select('*').eq('course_id', courseId).order('sort_order'),
-                    sb.from('lesson_videos').select('*, lessons!inner(course_id)').eq('lessons.course_id', courseId).order('sort_order'),
-                    sb.from('lesson_files').select('*, lessons!inner(course_id)').eq('lessons.course_id', courseId).order('sort_order'),
-                    sb.from('exams').select('*, lessons!inner(course_id)').eq('lessons.course_id', courseId)
-                ]);
+                const { data: lessonsData } = await sb.from('lessons').select('*').eq('course_id', courseId).order('sort_order');
+                const lessonIds = (lessonsData || []).map(l => l.id);
+                
+                let allVideos = [], allFiles = [], allExams = [];
+                if (lessonIds.length > 0) {
+                    const [vRes, fRes, eRes] = await Promise.all([
+                        sb.from('lesson_videos').select('*').in('lesson_id', lessonIds).order('sort_order'),
+                        sb.from('lesson_files').select('*').in('lesson_id', lessonIds).order('sort_order'),
+                        sb.from('exams').select('*').in('lesson_id', lessonIds)
+                    ]);
+                    allVideos = vRes.data || [];
+                    allFiles = fRes.data || [];
+                    allExams = eRes.data || [];
+                }
 
-                const allVideos = videosData || [];
-                const allFiles = filesData || [];
-                const allExams = examsData || [];
+
                 
                 // For questions: use direct query for owners/admins, safe RPC for students
                 const examIds = allExams.map(e => e.id);
@@ -2444,67 +2444,10 @@
                 return course;
             } catch (error) {
                 console.error('Error loading course details:', error);
-                // Fallback: simple fetch
-                try {
-                    const { data: lessonsData } = await sb.from('lessons').select('*').eq('course_id', courseId).order('sort_order');
-                    const lessonIds = (lessonsData || []).map(l => l.id);
-                    
-                    let allVideos = [], allFiles = [], allExams = [], allQuestions = [];
-                    if (lessonIds.length > 0) {
-                        const [vRes, fRes, eRes] = await Promise.all([
-                            sb.from('lesson_videos').select('*').in('lesson_id', lessonIds).order('sort_order'),
-                            sb.from('lesson_files').select('*').in('lesson_id', lessonIds).order('sort_order'),
-                            sb.from('exams').select('*').in('lesson_id', lessonIds)
-                        ]);
-                        allVideos = vRes.data || [];
-                        allFiles = fRes.data || [];
-                        allExams = eRes.data || [];
-                        
-                        const examIds = allExams.map(e => e.id);
-                        if (examIds.length > 0) {
-                            const isOwnerOrAdmin = canUserEditCourse(course);
-                            if (isOwnerOrAdmin) {
-                                const { data: qData } = await sb.from('exam_questions').select('*').in('exam_id', examIds).order('sort_order');
-                                allQuestions = qData || [];
-                            } else {
-                                for (const eid of examIds) {
-                                    const { data: qData } = await sb.rpc('get_exam_questions_safe', { _exam_id: eid });
-                                    if (qData) allQuestions.push(...qData);
-                                }
-                            }
-                        }
-                    }
-
-                    course.lessons = (lessonsData || []).map(l => {
-                        const lVideos = allVideos.filter(v => v.lesson_id === l.id).map(v => v.video_url);
-                        const lFiles = allFiles.filter(f => f.lesson_id === l.id).map(f => ({
-                            id: f.id, name: f.file_name, url: f.file_url
-                        }));
-                        const lExams = allExams.filter(e => e.lesson_id === l.id).map(e => {
-                            const eQuestions = allQuestions.filter(q => q.exam_id === e.id).map(q => ({
-                                text: q.text, type: q.type, options: q.options || [], correctOption: q.correct_option
-                            }));
-                            return {
-                                id: e.id, title: e.title, questions: eQuestions,
-                                passingGrade: e.passing_grade, timeLimit: e.time_limit,
-                                allowRetake: e.allow_retake, requiredToProgress: e.required_to_progress,
-                                createdAt: new Date(e.created_at).getTime()
-                            };
-                        });
-                        return {
-                            id: l.id, title: l.title, content: l.content,
-                            videos: lVideos, exams: lExams, files: lFiles,
-                            pdfData: null, pdfName: ''
-                        };
-                    });
-                    rebuildCourseResultsAndProgress(courseId);
-                    return course;
-                } catch (err2) {
-                    console.error('Fallback course load also failed:', err2);
-                    course.lessons = [];
-                    return course;
-                }
+                course.lessons = [];
+                return course;
             }
+        }
         }
 
         function rebuildCourseResultsAndProgress(courseId) {
@@ -4062,7 +4005,8 @@
                     return;
                 }
                 
-                showLoading();
+                const createBtn = event ? event.target.closest('.btn') : document.querySelector('#modalHost .btn');
+                showBtnLoading(createBtn);
                 
                 let imageUrl = null;
                 if (courseImageFile) {
@@ -4077,7 +4021,7 @@
                     created_by: currentUser.id
                 }).select().single();
                 
-                if (error) { hideLoading(); console.error('Course insert error:', error); showToast('حدث خطأ في إنشاء الكورس: ' + error.message, 'error'); return; }
+                if (error) { hideBtnLoading(createBtn); console.error('Course insert error:', error); showToast('حدث خطأ في إنشاء الكورس: ' + error.message, 'error'); return; }
                 
                 courses.unshift({
                     id: newCourseData.id,
@@ -4090,8 +4034,8 @@
                 });
                 courseImageData = null;
                 courseImageFile = null;
+                hideBtnLoading(createBtn);
                 closeModal();
-                hideLoading();
                 showToast(currentLanguage === 'ar' ? 'تم إنشاء الكورس بنجاح' : 'Course created successfully', 'success');
                 renderCoursesGrid();
                 
@@ -4099,7 +4043,7 @@
                     renderManageCoursesPage();
                 }
             } catch (error) {
-                hideLoading();
+                hideBtnLoading(document.querySelector('#modalHost .btn'));
                 console.error('Error creating course from modal:', error);
                 showToast('حدث خطأ في إنشاء الكورس', 'error');
             }
@@ -5896,7 +5840,9 @@
                 
                 if (!title) { showToast('يرجى إدخال عنوان المحاضرة', 'warning'); return; }
                 
-                showLoading();
+                // Use btn loading instead of full page
+                const saveBtn = document.querySelector('#modalHost .btn');
+                showBtnLoading(saveBtn);
                 
                 const sortOrder = course.lessons ? course.lessons.length : 0;
                 const { data: lessonData, error } = await sb.from('lessons').insert({
@@ -5906,7 +5852,7 @@
                     sort_order: sortOrder
                 }).select().single();
                 
-                if (error) { hideLoading(); console.error('Lesson insert error:', error); showToast('حدث خطأ في حفظ المحاضرة: ' + error.message, 'error'); return; }
+                if (error) { hideBtnLoading(saveBtn); console.error('Lesson insert error:', error); showToast('حدث خطأ في حفظ المحاضرة: ' + error.message, 'error'); return; }
                 
                 // Insert videos
                 if (videos.length > 0) {
@@ -5959,14 +5905,14 @@
                 if (!course.lessons) course.lessons = [];
                 course.lessons.push(newLesson);
                 
-                hideLoading();
+                hideBtnLoading(saveBtn);
                 showToast('تم إضافة المحاضرة بنجاح', 'success');
                 closeModal();
                 renderCoursesGrid();
                 if (document.getElementById('manageCoursesPage').classList.contains('active')) renderManageCoursesPage();
                 if (document.getElementById('adminPage').classList.contains('active')) renderAdminPage();
             } catch (error) {
-                hideLoading();
+                hideBtnLoading(document.querySelector('#modalHost .btn'));
                 console.error('Error saving lesson:', error);
                 showToast('حدث خطأ في حفظ المحاضرة', 'error');
             }
@@ -6376,6 +6322,194 @@
             }
         }
 
+        // === Missing functions: editLesson, deleteLesson, toggleBanUser, updateLessonInDB ===
+
+        async function editLesson(courseId, lessonId) {
+            try {
+                const course = courses.find(c => c.id === courseId);
+                if (!course || !course.lessons) return;
+                const lesson = course.lessons.find(l => l.id === lessonId);
+                if (!lesson) { showToast('المحاضرة غير موجودة', 'error'); return; }
+
+                showModal(`
+                    <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">${currentLanguage === 'ar' ? 'تعديل المحاضرة' : 'Edit Lesson'}</div>
+                    <input id="editLessonTitle" value="${lesson.title}" placeholder="${currentLanguage === 'ar' ? 'عنوان المحاضرة' : 'Lesson title'}">
+                    <textarea id="editLessonContent" rows="3" placeholder="${currentLanguage === 'ar' ? 'محتوى المحاضرة' : 'Lesson content'}">${lesson.content || ''}</textarea>
+                    
+                    <div style="font-weight:bold;margin:10px 0 5px;">${currentLanguage === 'ar' ? 'روابط الفيديو:' : 'Video URLs:'}</div>
+                    <div id="editLessonVideosContainer">
+                        ${(lesson.videos && lesson.videos.length > 0) ? lesson.videos.map(v => `
+                            <div class="video-input-row" style="display:flex;gap:8px;margin-bottom:8px;">
+                                <input class="edit-lesson-video-input" value="${v}" placeholder="${currentLanguage === 'ar' ? 'رابط فيديو' : 'Video URL'}" style="flex:1;">
+                                <button onclick="this.parentElement.remove()" style="background:var(--danger);color:white;border:none;border-radius:var(--radius-sm);width:36px;height:36px;cursor:pointer;font-size:1rem;">✕</button>
+                            </div>
+                        `).join('') : `
+                            <div class="video-input-row" style="display:flex;gap:8px;margin-bottom:8px;">
+                                <input class="edit-lesson-video-input" placeholder="${currentLanguage === 'ar' ? 'رابط فيديو' : 'Video URL'}" style="flex:1;">
+                            </div>
+                        `}
+                    </div>
+                    <button class="btn btn-sm btn-outline" onclick="(function(){
+                        const c = document.getElementById('editLessonVideosContainer');
+                        const r = document.createElement('div');
+                        r.className='video-input-row';r.style.cssText='display:flex;gap:8px;margin-bottom:8px;';
+                        r.innerHTML='<input class=\\'edit-lesson-video-input\\' placeholder=\\'رابط فيديو\\' style=\\'flex:1;\\'><button onclick=\\'this.parentElement.remove()\\' style=\\'background:var(--danger);color:white;border:none;border-radius:var(--radius-sm);width:36px;height:36px;cursor:pointer;font-size:1rem;\\'>✕</button>';
+                        c.appendChild(r);
+                    })()" style="margin-bottom:15px;">
+                        <i class="fas fa-plus"></i> ${currentLanguage === 'ar' ? 'إضافة فيديو آخر' : 'Add Another Video'}
+                    </button>
+                    
+                    <div style="font-weight:bold;margin:10px 0 5px;"><i class="fas fa-file-pdf"></i> ${currentLanguage === 'ar' ? 'ملفات PDF جديدة:' : 'New PDF Files:'}</div>
+                    <div class="image-upload-container">
+                        <label class="upload-btn">
+                            <i class="fas fa-file-pdf"></i>
+                            ${currentLanguage === 'ar' ? 'اختر ملفات PDF' : 'Choose PDF files'}
+                            <input type="file" id="editLessonPdfFiles" accept=".pdf" multiple style="display:none;">
+                        </label>
+                        <div id="editLessonPdfPreview" style="margin-top:8px;"></div>
+                    </div>
+                    ${lesson.files && lesson.files.length > 0 ? `
+                        <div style="margin-top:10px;">
+                            <strong>${currentLanguage === 'ar' ? 'الملفات الحالية:' : 'Current files:'}</strong>
+                            ${lesson.files.map(f => `<div style="padding:4px;color:var(--text-muted);"><i class="fas fa-file-pdf" style="color:var(--danger);"></i> ${f.name}</div>`).join('')}
+                        </div>
+                    ` : ''}
+                    
+                    <div style="display:flex;gap:10px;margin-top:20px;">
+                        <button class="btn" id="updateLessonBtn" onclick="updateLessonInDB('${courseId}', '${lessonId}')">
+                            <i class="fas fa-save"></i> ${currentLanguage === 'ar' ? 'حفظ التعديلات' : 'Save Changes'}
+                        </button>
+                        <button class="btn btn-outline" onclick="closeModal()">
+                            <i class="fas fa-times"></i> ${currentLanguage === 'ar' ? 'إلغاء' : 'Cancel'}
+                        </button>
+                    </div>
+                `);
+
+                const pdfInput = document.getElementById('editLessonPdfFiles');
+                if (pdfInput) {
+                    pdfInput.addEventListener('change', function(e) {
+                        const preview = document.getElementById('editLessonPdfPreview');
+                        preview.innerHTML = '';
+                        Array.from(e.target.files).forEach(f => {
+                            preview.innerHTML += `<div style="padding:5px;color:var(--text-muted);"><i class="fas fa-file-pdf" style="color:var(--danger);"></i> ${f.name}</div>`;
+                        });
+                    });
+                }
+            } catch (error) {
+                console.error('Error editing lesson:', error);
+                showToast('حدث خطأ', 'error');
+            }
+        }
+
+        async function updateLessonInDB(courseId, lessonId) {
+            try {
+                const title = document.getElementById('editLessonTitle').value.trim();
+                const content = document.getElementById('editLessonContent').value.trim();
+                if (!title) { showToast('يرجى إدخال عنوان المحاضرة', 'warning'); return; }
+
+                const btn = document.getElementById('updateLessonBtn');
+                showBtnLoading(btn);
+
+                const { error } = await sb.from('lessons').update({ title, content }).eq('id', lessonId);
+                if (error) { hideBtnLoading(btn); showToast('خطأ: ' + error.message, 'error'); return; }
+
+                // Update videos
+                const videoInputs = document.querySelectorAll('.edit-lesson-video-input');
+                const newVideos = [];
+                videoInputs.forEach(input => { const v = input.value.trim(); if (v) newVideos.push(v); });
+
+                await sb.from('lesson_videos').delete().eq('lesson_id', lessonId);
+                if (newVideos.length > 0) {
+                    await sb.from('lesson_videos').insert(newVideos.map((url, i) => ({
+                        lesson_id: lessonId, video_url: url, sort_order: i
+                    })));
+                }
+
+                // Upload new PDFs
+                const pdfInput = document.getElementById('editLessonPdfFiles');
+                const newFiles = [];
+                if (pdfInput && pdfInput.files && pdfInput.files.length > 0) {
+                    for (let i = 0; i < pdfInput.files.length; i++) {
+                        const file = pdfInput.files[i];
+                        const filePath = `${courseId}/${lessonId}/${Date.now()}_${file.name}`;
+                        const { data: uploadData, error: uploadError } = await sb.storage
+                            .from('lesson-pdfs').upload(filePath, file, { contentType: 'application/pdf' });
+                        if (!uploadError && uploadData) {
+                            const { data: urlData } = sb.storage.from('lesson-pdfs').getPublicUrl(filePath);
+                            await sb.from('lesson_files').insert({
+                                lesson_id: lessonId, file_url: urlData.publicUrl, file_name: file.name, sort_order: i
+                            });
+                            newFiles.push({ name: file.name, url: urlData.publicUrl });
+                        }
+                    }
+                }
+
+                // Update local cache
+                const course = courses.find(c => c.id === courseId);
+                if (course && course.lessons) {
+                    const lesson = course.lessons.find(l => l.id === lessonId);
+                    if (lesson) {
+                        lesson.title = title;
+                        lesson.content = content;
+                        lesson.videos = newVideos;
+                        if (newFiles.length > 0) {
+                            lesson.files = [...(lesson.files || []), ...newFiles];
+                        }
+                    }
+                }
+
+                hideBtnLoading(btn);
+                showToast(currentLanguage === 'ar' ? 'تم تعديل المحاضرة بنجاح' : 'Lesson updated', 'success');
+                closeModal();
+                showCourseDetails(courseId);
+            } catch (error) {
+                hideBtnLoading(document.getElementById('updateLessonBtn'));
+                console.error('Error updating lesson:', error);
+                showToast('حدث خطأ في تعديل المحاضرة', 'error');
+            }
+        }
+
+        async function deleteLesson(courseId, lessonId) {
+            if (!confirm(currentLanguage === 'ar' ? 'هل أنت متأكد من حذف هذه المحاضرة؟' : 'Delete this lesson?')) return;
+            try {
+                const { error } = await sb.from('lessons').delete().eq('id', lessonId);
+                if (error) { showToast('خطأ: ' + error.message, 'error'); return; }
+
+                const course = courses.find(c => c.id === courseId);
+                if (course && course.lessons) {
+                    course.lessons = course.lessons.filter(l => l.id !== lessonId);
+                }
+                showToast(currentLanguage === 'ar' ? 'تم حذف المحاضرة' : 'Lesson deleted', 'success');
+                showCourseDetails(courseId);
+            } catch (error) {
+                console.error('Error deleting lesson:', error);
+                showToast('حدث خطأ في حذف المحاضرة', 'error');
+            }
+        }
+
+        async function toggleBanUser(userId) {
+            try {
+                const user = users.find(u => u.id === userId);
+                if (!user) { showToast('المستخدم غير موجود', 'error'); return; }
+                
+                const newBanned = !user.banned;
+                const { error } = await sb.from('profiles').update({ banned: newBanned }).eq('id', userId);
+                if (error) { showToast('خطأ: ' + error.message, 'error'); return; }
+                
+                user.banned = newBanned;
+                showToast(
+                    newBanned 
+                        ? (currentLanguage === 'ar' ? 'تم حظر الحساب' : 'Account banned') 
+                        : (currentLanguage === 'ar' ? 'تم تفعيل الحساب' : 'Account activated'), 
+                    'success'
+                );
+                renderUserList();
+            } catch (error) {
+                console.error('Error toggling ban:', error);
+                showToast('حدث خطأ', 'error');
+            }
+        }
+
         // Window exports
         window.showCourseDetails = showCourseDetails;
         window.canAccessLesson = canAccessLesson;
@@ -6434,6 +6568,10 @@
         window.showLoading = showLoading;
         window.hideLoading = hideLoading;
         window.getVideoEmbedUrl = getVideoEmbedUrl;
+        window.editLesson = editLesson;
+        window.deleteLesson = deleteLesson;
+        window.updateLessonInDB = updateLessonInDB;
+        window.toggleBanUser = toggleBanUser;
 
     </script>
 </body>
