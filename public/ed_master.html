@@ -4100,7 +4100,7 @@
                     renderManageCoursesPage();
                 }
             } catch (error) {
-                hideLoading();
+                hideBtnLoading(document.querySelector('#modalHost .btn'));
                 console.error('Error creating course from modal:', error);
                 showToast('حدث خطأ في إنشاء الكورس', 'error');
             }
