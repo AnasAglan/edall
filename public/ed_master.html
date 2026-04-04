@@ -2380,18 +2380,20 @@
             if (course.lessons !== null) return course; // already loaded
 
             try {
-                const [
-                    { data: lessonsData },
-                    { data: videosData },
-                    { data: filesData },
-                    { data: examsData },
-                    { data: questionsData }
-                ] = await Promise.all([
-                    sb.from('lessons').select('*').eq('course_id', courseId).order('sort_order'),
-                    sb.from('lesson_videos').select('*, lessons!inner(course_id)').eq('lessons.course_id', courseId).order('sort_order'),
-                    sb.from('lesson_files').select('*, lessons!inner(course_id)').eq('lessons.course_id', courseId).order('sort_order'),
-                    sb.from('exams').select('*, lessons!inner(course_id)').eq('lessons.course_id', courseId)
-                ]);
+                const { data: lessonsData } = await sb.from('lessons').select('*').eq('course_id', courseId).order('sort_order');
+                const lessonIds = (lessonsData || []).map(l => l.id);
+                
+                let allVideos = [], allFiles = [], allExams = [];
+                if (lessonIds.length > 0) {
+                    const [vRes, fRes, eRes] = await Promise.all([
+                        sb.from('lesson_videos').select('*').in('lesson_id', lessonIds).order('sort_order'),
+                        sb.from('lesson_files').select('*').in('lesson_id', lessonIds).order('sort_order'),
+                        sb.from('exams').select('*').in('lesson_id', lessonIds)
+                    ]);
+                    allVideos = vRes.data || [];
+                    allFiles = fRes.data || [];
+                    allExams = eRes.data || [];
+                }
 
                 const allVideos = videosData || [];
                 const allFiles = filesData || [];
