@@ -5908,7 +5908,7 @@
                     sort_order: sortOrder
                 }).select().single();
                 
-                if (error) { hideLoading(); console.error('Lesson insert error:', error); showToast('حدث خطأ في حفظ المحاضرة: ' + error.message, 'error'); return; }
+                if (error) { hideBtnLoading(saveBtn); console.error('Lesson insert error:', error); showToast('حدث خطأ في حفظ المحاضرة: ' + error.message, 'error'); return; }
                 
                 // Insert videos
                 if (videos.length > 0) {
