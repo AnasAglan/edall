@@ -5961,7 +5961,7 @@
                 if (!course.lessons) course.lessons = [];
                 course.lessons.push(newLesson);
                 
-                hideLoading();
+                hideBtnLoading(saveBtn);
                 showToast('تم إضافة المحاضرة بنجاح', 'success');
                 closeModal();
                 renderCoursesGrid();
