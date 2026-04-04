@@ -4091,8 +4091,8 @@
                 });
                 courseImageData = null;
                 courseImageFile = null;
+                hideBtnLoading(createBtn);
                 closeModal();
-                hideLoading();
                 showToast(currentLanguage === 'ar' ? 'تم إنشاء الكورس بنجاح' : 'Course created successfully', 'success');
                 renderCoursesGrid();
                 
