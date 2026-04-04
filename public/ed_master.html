@@ -2395,9 +2395,9 @@
                     allExams = eRes.data || [];
                 }
 
-                const allVideos = videosData || [];
-                const allFiles = filesData || [];
-                const allExams = examsData || [];
+                const allVideos2 = allVideos;
+                const allFiles2 = allFiles;
+                const allExams2 = allExams;
                 
                 // For questions: use direct query for owners/admins, safe RPC for students
                 const examIds = allExams.map(e => e.id);
