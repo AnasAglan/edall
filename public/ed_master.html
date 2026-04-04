@@ -5896,7 +5896,9 @@
                 
                 if (!title) { showToast('يرجى إدخال عنوان المحاضرة', 'warning'); return; }
                 
-                showLoading();
+                // Use btn loading instead of full page
+                const saveBtn = document.querySelector('#modalHost .btn');
+                showBtnLoading(saveBtn);
                 
                 const sortOrder = course.lessons ? course.lessons.length : 0;
                 const { data: lessonData, error } = await sb.from('lessons').insert({
