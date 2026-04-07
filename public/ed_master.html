@@ -1921,6 +1921,137 @@
                 delete btn._prevDisabled;
             }
         }
+
+        function withRequestTimeout(promise, timeoutMs, timeoutMessage) {
+            let timeoutId;
+            return Promise.race([
+                promise,
+                new Promise((_, reject) => {
+                    timeoutId = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+                })
+            ]).finally(() => clearTimeout(timeoutId));
+        }
+
+        function sanitizeStorageFileName(fileName) {
+            const safeName = (fileName || 'file.pdf')
+                .replace(/[\\/]+/g, '_')
+                .replace(/\s+/g, '_')
+                .replace(/[^\p{L}\p{N}._-]+/gu, '_')
+                .replace(/_+/g, '_')
+                .replace(/^_+|_+$/g, '');
+            return safeName || `file_${Date.now()}.pdf`;
+        }
+
+        function getFilledInputValues(selector) {
+            return Array.from(document.querySelectorAll(selector))
+                .map(input => input.value.trim())
+                .filter(Boolean);
+        }
+
+        async function persistLessonVideos(lessonId, videos, replaceExisting = false) {
+            const normalizedVideos = (videos || []).map((url, index) => ({
+                lesson_id: lessonId,
+                video_url: url,
+                sort_order: index
+            }));
+
+            if (replaceExisting) {
+                const { error: deleteError } = await withRequestTimeout(
+                    sb.from('lesson_videos').delete().eq('lesson_id', lessonId),
+                    15000,
+                    currentLanguage === 'ar' ? 'انتهت مهلة تحديث روابط الفيديو' : 'Timed out while updating lesson videos'
+                );
+                if (deleteError) throw new Error(deleteError.message);
+            }
+
+            if (normalizedVideos.length === 0) return;
+
+            const { error: videoError } = await withRequestTimeout(
+                sb.from('lesson_videos').insert(normalizedVideos),
+                15000,
+                currentLanguage === 'ar' ? 'انتهت مهلة حفظ روابط الفيديو' : 'Timed out while saving lesson videos'
+            );
+
+            if (videoError) throw new Error(videoError.message);
+        }
+
+        async function uploadLessonPdfFiles(courseId, lessonId, fileList, uploadedPaths = []) {
+            const files = Array.from(fileList || []);
+            const lessonFiles = [];
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                if (!file) continue;
+
+                const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+                if (!isPdf) {
+                    throw new Error(currentLanguage === 'ar' ? `الملف ${file.name} ليس PDF صالحًا` : `${file.name} is not a valid PDF file`);
+                }
+
+                const safeFileName = sanitizeStorageFileName(file.name);
+                const filePath = `${courseId}/${lessonId}/${Date.now()}_${safeFileName}`;
+
+                const { error: uploadError } = await withRequestTimeout(
+                    sb.storage.from('lesson-pdfs').upload(filePath, file, {
+                        contentType: file.type || 'application/pdf',
+                        upsert: false
+                    }),
+                    25000,
+                    currentLanguage === 'ar' ? `انتهت مهلة رفع الملف: ${file.name}` : `Timed out uploading ${file.name}`
+                );
+
+                if (uploadError) throw new Error(uploadError.message);
+
+                uploadedPaths.push(filePath);
+                const { data: urlData } = sb.storage.from('lesson-pdfs').getPublicUrl(filePath);
+
+                const { error: fileError } = await withRequestTimeout(
+                    sb.from('lesson_files').insert({
+                        lesson_id: lessonId,
+                        file_url: urlData.publicUrl,
+                        file_name: file.name,
+                        sort_order: i
+                    }),
+                    15000,
+                    currentLanguage === 'ar' ? `انتهت مهلة حفظ الملف: ${file.name}` : `Timed out while saving ${file.name}`
+                );
+
+                if (fileError) throw new Error(fileError.message);
+
+                lessonFiles.push({ id: null, name: file.name, url: urlData.publicUrl });
+            }
+
+            return lessonFiles;
+        }
+
+        async function rollbackCreatedLesson(lessonId, uploadedPaths = []) {
+            try {
+                if (uploadedPaths.length > 0) {
+                    await sb.storage.from('lesson-pdfs').remove(uploadedPaths);
+                }
+            } catch (cleanupError) {
+                console.error('Error removing uploaded lesson files during rollback:', cleanupError);
+            }
+
+            try {
+                await sb.from('lesson_files').delete().eq('lesson_id', lessonId);
+            } catch (cleanupError) {
+                console.error('Error deleting lesson files during rollback:', cleanupError);
+            }
+
+            try {
+                await sb.from('lesson_videos').delete().eq('lesson_id', lessonId);
+            } catch (cleanupError) {
+                console.error('Error deleting lesson videos during rollback:', cleanupError);
+            }
+
+            try {
+                await sb.from('lessons').delete().eq('id', lessonId);
+            } catch (cleanupError) {
+                console.error('Error deleting lesson during rollback:', cleanupError);
+            }
+        }
+
         function toggleUserMenu() {
             const menu = document.getElementById('userMenu');
             if (menu) menu.classList.toggle('show');
@@ -5824,112 +5955,80 @@
         }
 
         async function saveLesson(courseId, event) {
+            const saveBtn = event ? event.target.closest('.btn') : document.getElementById('saveLessonBtn');
+            let createdLessonId = null;
+            let lessonCommitted = false;
+            const uploadedPaths = [];
+
             try {
                 const course = courses.find(c => c.id === courseId);
                 if (!course) { showToast('الكورس غير موجود', 'error'); return; }
-                
-                const title = document.getElementById('lessonTitle').value.trim();
-                const content = document.getElementById('lessonContent').value.trim();
-                const videoInputs = document.querySelectorAll('.lesson-video-input');
-                const videos = [];
-                videoInputs.forEach(input => {
-                    const val = input.value.trim();
-                    if (val) videos.push(val);
-                });
-                
-                if (!title) { showToast('يرجى إدخال عنوان المحاضرة', 'warning'); return; }
-                
-                // Use the specific save button via onclick context
-                const saveBtn = event ? event.target.closest('.btn') : document.getElementById('saveLessonBtn');
-                if (!saveBtn) { console.error('Save button not found'); return; }
-                showBtnLoading(saveBtn);
-                
-                const sortOrder = course.lessons ? course.lessons.length : 0;
-                let lessonData;
-                try {
-                    const res = await sb.from('lessons').insert({
-                        course_id: courseId,
-                        title: title,
-                        content: content,
-                        sort_order: sortOrder
-                    }).select().single();
-                    if (res.error) throw res.error;
-                    lessonData = res.data;
-                } catch (e) {
-                    hideBtnLoading(saveBtn);
-                    console.error('Lesson insert error:', e);
-                    showToast('حدث خطأ في حفظ المحاضرة: ' + (e.message || e), 'error');
+                if (!currentUser) { showToast('يرجى تسجيل الدخول أولاً', 'error'); return; }
+                if (!canUserEditCourse(course)) {
+                    showToast(currentLanguage === 'ar' ? 'ليس لديك صلاحية لإضافة محاضرة لهذا الكورس' : 'You do not have permission to add lessons to this course', 'error');
                     return;
                 }
-                
-                // Insert videos
-                if (videos.length > 0) {
-                    const videoInserts = videos.map((url, i) => ({
-                        lesson_id: lessonData.id,
-                        video_url: url,
-                        sort_order: i
-                    }));
-                    const { error: vErr } = await sb.from('lesson_videos').insert(videoInserts);
-                    if (vErr) console.error('Video insert error:', vErr);
-                }
-                
-                // Upload PDF files
-                const lessonFiles = [];
+
+                const title = document.getElementById('lessonTitle').value.trim();
+                const content = document.getElementById('lessonContent').value.trim();
+                const videos = getFilledInputValues('.lesson-video-input');
                 const pdfInput = document.getElementById('lessonPdfFiles');
-                if (pdfInput && pdfInput.files && pdfInput.files.length > 0) {
-                    for (let i = 0; i < pdfInput.files.length; i++) {
-                        const file = pdfInput.files[i];
-                        const filePath = `${courseId}/${lessonData.id}/${Date.now()}_${file.name}`;
-                        try {
-                            const { data: uploadData, error: uploadError } = await sb.storage
-                                .from('lesson-pdfs')
-                                .upload(filePath, file, { contentType: file.type || 'application/pdf' });
-                            
-                            if (uploadError) { console.error('PDF upload error:', uploadError); continue; }
-                            
-                            const { data: urlData } = sb.storage.from('lesson-pdfs').getPublicUrl(filePath);
-                            const fileUrl = urlData.publicUrl;
-                            
-                            const { error: fErr } = await sb.from('lesson_files').insert({
-                                lesson_id: lessonData.id,
-                                file_url: fileUrl,
-                                file_name: file.name,
-                                sort_order: i
-                            });
-                            if (fErr) { console.error('File record insert error:', fErr); continue; }
-                            
-                            lessonFiles.push({ id: null, name: file.name, url: fileUrl });
-                        } catch (uploadEx) {
-                            console.error('PDF upload exception:', uploadEx);
-                        }
-                    }
-                }
-                
+                const pdfFiles = Array.from(pdfInput?.files || []);
+
+                if (!title) { showToast('يرجى إدخال عنوان المحاضرة', 'warning'); return; }
+                if (!saveBtn) { console.error('Save button not found'); return; }
+
+                showBtnLoading(saveBtn);
+
+                const sortOrder = Array.isArray(course.lessons) ? course.lessons.length : 0;
+                const { data: lessonData, error: lessonError } = await withRequestTimeout(
+                    sb.from('lessons').insert({
+                        course_id: courseId,
+                        title,
+                        content,
+                        sort_order: sortOrder
+                    }).select().single(),
+                    15000,
+                    currentLanguage === 'ar' ? 'انتهت مهلة حفظ المحاضرة' : 'Timed out while saving the lesson'
+                );
+
+                if (lessonError) throw new Error(lessonError.message);
+
+                createdLessonId = lessonData.id;
+
+                await persistLessonVideos(createdLessonId, videos);
+                const lessonFiles = await uploadLessonPdfFiles(courseId, createdLessonId, pdfFiles, uploadedPaths);
+
+                lessonCommitted = true;
+
                 const newLesson = {
                     id: lessonData.id,
-                    title: title,
-                    content: content,
-                    videos: videos,
+                    title,
+                    content,
+                    videos,
                     exams: [],
                     files: lessonFiles,
                     pdfData: null,
                     pdfName: ''
                 };
-                
-                if (!course.lessons) course.lessons = [];
+
+                if (!Array.isArray(course.lessons)) course.lessons = [];
                 course.lessons.push(newLesson);
-                
-                hideBtnLoading(saveBtn);
-                showToast('تم إضافة المحاضرة بنجاح', 'success');
+
                 closeModal();
                 renderCoursesGrid();
                 if (document.getElementById('manageCoursesPage').classList.contains('active')) renderManageCoursesPage();
                 if (document.getElementById('adminPage').classList.contains('active')) renderAdminPage();
+                showToast(currentLanguage === 'ar' ? 'تم حفظ المحاضرة والفيديوهات والملفات بنجاح' : 'Lesson saved successfully', 'success');
+                await showCourseDetails(courseId);
             } catch (error) {
-                const fallbackBtn = document.getElementById('saveLessonBtn');
-                hideBtnLoading(fallbackBtn);
+                if (createdLessonId && !lessonCommitted) {
+                    await rollbackCreatedLesson(createdLessonId, uploadedPaths);
+                }
                 console.error('Error saving lesson:', error);
                 showToast('حدث خطأ في حفظ المحاضرة: ' + (error.message || error), 'error');
+            } finally {
+                hideBtnLoading(saveBtn || document.getElementById('saveLessonBtn'));
             }
         }
 
@@ -6417,57 +6516,31 @@
         }
 
         async function updateLessonInDB(courseId, lessonId) {
+            const btn = document.getElementById('updateLessonBtn');
+
             try {
                 const title = document.getElementById('editLessonTitle').value.trim();
                 const content = document.getElementById('editLessonContent').value.trim();
+                const newVideos = getFilledInputValues('.edit-lesson-video-input');
+                const pdfInput = document.getElementById('editLessonPdfFiles');
+                const pdfFiles = Array.from(pdfInput?.files || []);
+
                 if (!title) { showToast('يرجى إدخال عنوان المحاضرة', 'warning'); return; }
 
-                const btn = document.getElementById('updateLessonBtn');
                 showBtnLoading(btn);
 
-                const { error } = await sb.from('lessons').update({ title, content }).eq('id', lessonId);
-                if (error) { hideBtnLoading(btn); showToast('خطأ: ' + error.message, 'error'); return; }
+                const { error: lessonError } = await withRequestTimeout(
+                    sb.from('lessons').update({ title, content }).eq('id', lessonId),
+                    15000,
+                    currentLanguage === 'ar' ? 'انتهت مهلة تعديل المحاضرة' : 'Timed out while updating the lesson'
+                );
+                if (lessonError) throw new Error(lessonError.message);
 
-                // Update videos
-                const videoInputs = document.querySelectorAll('.edit-lesson-video-input');
-                const newVideos = [];
-                videoInputs.forEach(input => { const v = input.value.trim(); if (v) newVideos.push(v); });
+                await persistLessonVideos(lessonId, newVideos, true);
+                const newFiles = await uploadLessonPdfFiles(courseId, lessonId, pdfFiles);
 
-                const { error: delVErr } = await sb.from('lesson_videos').delete().eq('lesson_id', lessonId);
-                if (delVErr) console.error('Video delete error:', delVErr);
-                if (newVideos.length > 0) {
-                    const { error: vErr } = await sb.from('lesson_videos').insert(newVideos.map((url, i) => ({
-                        lesson_id: lessonId, video_url: url, sort_order: i
-                    })));
-                    if (vErr) console.error('Video insert error:', vErr);
-                }
-
-                // Upload new PDFs
-                const pdfInput = document.getElementById('editLessonPdfFiles');
-                const newFiles = [];
-                if (pdfInput && pdfInput.files && pdfInput.files.length > 0) {
-                    for (let i = 0; i < pdfInput.files.length; i++) {
-                        const file = pdfInput.files[i];
-                        const filePath = `${courseId}/${lessonId}/${Date.now()}_${file.name}`;
-                        try {
-                            const { data: uploadData, error: uploadError } = await sb.storage
-                                .from('lesson-pdfs').upload(filePath, file, { contentType: file.type || 'application/pdf' });
-                            if (uploadError) { console.error('PDF upload error:', uploadError); continue; }
-                            const { data: urlData } = sb.storage.from('lesson-pdfs').getPublicUrl(filePath);
-                            const { error: fErr } = await sb.from('lesson_files').insert({
-                                lesson_id: lessonId, file_url: urlData.publicUrl, file_name: file.name, sort_order: i
-                            });
-                            if (fErr) { console.error('File record error:', fErr); continue; }
-                            newFiles.push({ name: file.name, url: urlData.publicUrl });
-                        } catch (uploadEx) {
-                            console.error('PDF upload exception:', uploadEx);
-                        }
-                    }
-                }
-
-                // Update local cache
                 const course = courses.find(c => c.id === courseId);
-                if (course && course.lessons) {
+                if (course && Array.isArray(course.lessons)) {
                     const lesson = course.lessons.find(l => l.id === lessonId);
                     if (lesson) {
                         lesson.title = title;
@@ -6479,14 +6552,14 @@
                     }
                 }
 
-                hideBtnLoading(btn);
-                showToast(currentLanguage === 'ar' ? 'تم تعديل المحاضرة بنجاح' : 'Lesson updated', 'success');
                 closeModal();
-                showCourseDetails(courseId);
+                showToast(currentLanguage === 'ar' ? 'تم تعديل المحاضرة بنجاح' : 'Lesson updated', 'success');
+                await showCourseDetails(courseId);
             } catch (error) {
-                hideBtnLoading(document.getElementById('updateLessonBtn'));
                 console.error('Error updating lesson:', error);
-                showToast('حدث خطأ في تعديل المحاضرة', 'error');
+                showToast('حدث خطأ في تعديل المحاضرة: ' + (error.message || error), 'error');
+            } finally {
+                hideBtnLoading(btn);
             }
         }
 
