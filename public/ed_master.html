@@ -6433,11 +6433,13 @@
                 const newVideos = [];
                 videoInputs.forEach(input => { const v = input.value.trim(); if (v) newVideos.push(v); });
 
-                await sb.from('lesson_videos').delete().eq('lesson_id', lessonId);
+                const { error: delVErr } = await sb.from('lesson_videos').delete().eq('lesson_id', lessonId);
+                if (delVErr) console.error('Video delete error:', delVErr);
                 if (newVideos.length > 0) {
-                    await sb.from('lesson_videos').insert(newVideos.map((url, i) => ({
+                    const { error: vErr } = await sb.from('lesson_videos').insert(newVideos.map((url, i) => ({
                         lesson_id: lessonId, video_url: url, sort_order: i
                     })));
+                    if (vErr) console.error('Video insert error:', vErr);
                 }
 
                 // Upload new PDFs
@@ -6447,14 +6449,18 @@
                     for (let i = 0; i < pdfInput.files.length; i++) {
                         const file = pdfInput.files[i];
                         const filePath = `${courseId}/${lessonId}/${Date.now()}_${file.name}`;
-                        const { data: uploadData, error: uploadError } = await sb.storage
-                            .from('lesson-pdfs').upload(filePath, file, { contentType: 'application/pdf' });
-                        if (!uploadError && uploadData) {
+                        try {
+                            const { data: uploadData, error: uploadError } = await sb.storage
+                                .from('lesson-pdfs').upload(filePath, file, { contentType: file.type || 'application/pdf' });
+                            if (uploadError) { console.error('PDF upload error:', uploadError); continue; }
                             const { data: urlData } = sb.storage.from('lesson-pdfs').getPublicUrl(filePath);
-                            await sb.from('lesson_files').insert({
+                            const { error: fErr } = await sb.from('lesson_files').insert({
                                 lesson_id: lessonId, file_url: urlData.publicUrl, file_name: file.name, sort_order: i
                             });
+                            if (fErr) { console.error('File record error:', fErr); continue; }
                             newFiles.push({ name: file.name, url: urlData.publicUrl });
+                        } catch (uploadEx) {
+                            console.error('PDF upload exception:', uploadEx);
                         }
                     }
                 }
