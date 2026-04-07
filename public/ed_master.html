@@ -5783,7 +5783,7 @@
                     </div>
                     
                     <div style="display:flex;gap:10px;margin-top:20px;">
-                        <button class="btn" onclick="saveLesson('${courseId}')">
+                        <button class="btn" id="saveLessonBtn" onclick="saveLesson('${courseId}', event)">
                             <i class="fas fa-save"></i>
                             ${currentLanguage === 'ar' ? 'حفظ المحاضرة' : 'Save Lesson'}
                         </button>
@@ -5823,7 +5823,7 @@
             container.appendChild(row);
         }
 
-        async function saveLesson(courseId) {
+        async function saveLesson(courseId, event) {
             try {
                 const course = courses.find(c => c.id === courseId);
                 if (!course) { showToast('الكورس غير موجود', 'error'); return; }
@@ -5839,19 +5839,28 @@
                 
                 if (!title) { showToast('يرجى إدخال عنوان المحاضرة', 'warning'); return; }
                 
-                // Use btn loading instead of full page
-                const saveBtn = document.querySelector('#modalHost .btn');
+                // Use the specific save button via onclick context
+                const saveBtn = event ? event.target.closest('.btn') : document.getElementById('saveLessonBtn');
+                if (!saveBtn) { console.error('Save button not found'); return; }
                 showBtnLoading(saveBtn);
                 
                 const sortOrder = course.lessons ? course.lessons.length : 0;
-                const { data: lessonData, error } = await sb.from('lessons').insert({
-                    course_id: courseId,
-                    title: title,
-                    content: content,
-                    sort_order: sortOrder
-                }).select().single();
-                
-                if (error) { hideBtnLoading(saveBtn); console.error('Lesson insert error:', error); showToast('حدث خطأ في حفظ المحاضرة: ' + error.message, 'error'); return; }
+                let lessonData;
+                try {
+                    const res = await sb.from('lessons').insert({
+                        course_id: courseId,
+                        title: title,
+                        content: content,
+                        sort_order: sortOrder
+                    }).select().single();
+                    if (res.error) throw res.error;
+                    lessonData = res.data;
+                } catch (e) {
+                    hideBtnLoading(saveBtn);
+                    console.error('Lesson insert error:', e);
+                    showToast('حدث خطأ في حفظ المحاضرة: ' + (e.message || e), 'error');
+                    return;
+                }
                 
                 // Insert videos
                 if (videos.length > 0) {
@@ -5860,7 +5869,8 @@
                         video_url: url,
                         sort_order: i
                     }));
-                    await sb.from('lesson_videos').insert(videoInserts);
+                    const { error: vErr } = await sb.from('lesson_videos').insert(videoInserts);
+                    if (vErr) console.error('Video insert error:', vErr);
                 }
                 
                 // Upload PDF files
@@ -5870,22 +5880,27 @@
                     for (let i = 0; i < pdfInput.files.length; i++) {
                         const file = pdfInput.files[i];
                         const filePath = `${courseId}/${lessonData.id}/${Date.now()}_${file.name}`;
-                        const { data: uploadData, error: uploadError } = await sb.storage
-                            .from('lesson-pdfs')
-                            .upload(filePath, file, { contentType: 'application/pdf' });
-                        
-                        if (!uploadError && uploadData) {
+                        try {
+                            const { data: uploadData, error: uploadError } = await sb.storage
+                                .from('lesson-pdfs')
+                                .upload(filePath, file, { contentType: file.type || 'application/pdf' });
+                            
+                            if (uploadError) { console.error('PDF upload error:', uploadError); continue; }
+                            
                             const { data: urlData } = sb.storage.from('lesson-pdfs').getPublicUrl(filePath);
                             const fileUrl = urlData.publicUrl;
                             
-                            await sb.from('lesson_files').insert({
+                            const { error: fErr } = await sb.from('lesson_files').insert({
                                 lesson_id: lessonData.id,
                                 file_url: fileUrl,
                                 file_name: file.name,
                                 sort_order: i
                             });
+                            if (fErr) { console.error('File record insert error:', fErr); continue; }
                             
                             lessonFiles.push({ id: null, name: file.name, url: fileUrl });
+                        } catch (uploadEx) {
+                            console.error('PDF upload exception:', uploadEx);
                         }
                     }
                 }
@@ -5911,9 +5926,10 @@
                 if (document.getElementById('manageCoursesPage').classList.contains('active')) renderManageCoursesPage();
                 if (document.getElementById('adminPage').classList.contains('active')) renderAdminPage();
             } catch (error) {
-                hideBtnLoading(document.querySelector('#modalHost .btn'));
+                const fallbackBtn = document.getElementById('saveLessonBtn');
+                hideBtnLoading(fallbackBtn);
                 console.error('Error saving lesson:', error);
-                showToast('حدث خطأ في حفظ المحاضرة', 'error');
+                showToast('حدث خطأ في حفظ المحاضرة: ' + (error.message || error), 'error');
             }
         }
 
@@ -6417,11 +6433,13 @@
                 const newVideos = [];
                 videoInputs.forEach(input => { const v = input.value.trim(); if (v) newVideos.push(v); });
 
-                await sb.from('lesson_videos').delete().eq('lesson_id', lessonId);
+                const { error: delVErr } = await sb.from('lesson_videos').delete().eq('lesson_id', lessonId);
+                if (delVErr) console.error('Video delete error:', delVErr);
                 if (newVideos.length > 0) {
-                    await sb.from('lesson_videos').insert(newVideos.map((url, i) => ({
+                    const { error: vErr } = await sb.from('lesson_videos').insert(newVideos.map((url, i) => ({
                         lesson_id: lessonId, video_url: url, sort_order: i
                     })));
+                    if (vErr) console.error('Video insert error:', vErr);
                 }
 
                 // Upload new PDFs
@@ -6431,14 +6449,18 @@
                     for (let i = 0; i < pdfInput.files.length; i++) {
                         const file = pdfInput.files[i];
                         const filePath = `${courseId}/${lessonId}/${Date.now()}_${file.name}`;
-                        const { data: uploadData, error: uploadError } = await sb.storage
-                            .from('lesson-pdfs').upload(filePath, file, { contentType: 'application/pdf' });
-                        if (!uploadError && uploadData) {
+                        try {
+                            const { data: uploadData, error: uploadError } = await sb.storage
+                                .from('lesson-pdfs').upload(filePath, file, { contentType: file.type || 'application/pdf' });
+                            if (uploadError) { console.error('PDF upload error:', uploadError); continue; }
                             const { data: urlData } = sb.storage.from('lesson-pdfs').getPublicUrl(filePath);
-                            await sb.from('lesson_files').insert({
+                            const { error: fErr } = await sb.from('lesson_files').insert({
                                 lesson_id: lessonId, file_url: urlData.publicUrl, file_name: file.name, sort_order: i
                             });
+                            if (fErr) { console.error('File record error:', fErr); continue; }
                             newFiles.push({ name: file.name, url: urlData.publicUrl });
+                        } catch (uploadEx) {
+                            console.error('PDF upload exception:', uploadEx);
                         }
                     }
                 }
