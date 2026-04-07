@@ -5823,7 +5823,7 @@
             container.appendChild(row);
         }
 
-        async function saveLesson(courseId) {
+        async function saveLesson(courseId, event) {
             try {
                 const course = courses.find(c => c.id === courseId);
                 if (!course) { showToast('الكورس غير موجود', 'error'); return; }
