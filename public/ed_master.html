@@ -5154,7 +5154,8 @@
                 const exam = lesson && lesson.exams ? lesson.exams[examIndex] : null;
                 if (!exam || !currentUser) return;
                 
-                showLoading();
+                const _examSubmitBtn = event ? event.target.closest('.btn') : document.querySelector('#modalHost .btn-success');
+                showBtnLoading(_examSubmitBtn);
                 
                 // Collect raw answers from the form
                 const rawAnswers = [];
