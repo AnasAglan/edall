@@ -4203,6 +4203,7 @@
         }
 
         async function createNewCourse() {
+            const btn = document.getElementById('admCreate');
             try {
                 const title = document.getElementById('admCourseTitle').value.trim();
                 const desc = document.getElementById('admCourseDesc').value.trim();
@@ -4212,7 +4213,7 @@
                     return;
                 }
                 
-                showLoading();
+                showBtnLoading(btn);
                 
                 let imageUrl = null;
                 if (courseImageFile) {
@@ -4227,7 +4228,7 @@
                     created_by: currentUser.id
                 }).select().single();
                 
-                if (error) { hideLoading(); console.error('Course insert error:', error); showToast('حدث خطأ في إنشاء الكورس: ' + error.message, 'error'); return; }
+                if (error) { hideBtnLoading(btn); console.error('Course insert error:', error); showToast('حدث خطأ في إنشاء الكورس: ' + error.message, 'error'); return; }
                 
                 courses.unshift({
                     id: newCourseData.id,
@@ -4247,12 +4248,12 @@
                 preview.innerHTML = '';
                 preview.style.display = 'none';
                 
-                hideLoading();
+                hideBtnLoading(btn);
                 showToast(currentLanguage === 'ar' ? 'تم إنشاء الكورس بنجاح' : 'Course created successfully', 'success');
                 renderAdminPage();
                 renderCoursesGrid();
             } catch (error) {
-                hideLoading();
+                hideBtnLoading(btn);
                 console.error('Error creating course:', error);
                 showToast('حدث خطأ في إنشاء الكورس', 'error');
             }
