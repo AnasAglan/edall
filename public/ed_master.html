@@ -6422,13 +6422,13 @@
             try {
                 if (!currentUser) return;
                 const bio = document.getElementById('profileBio').value.trim();
-                showLoading();
+                const _bioBtn = event ? event.target.closest(".btn") : document.querySelector("[onclick*=saveProfileBio]"); showBtnLoading(_bioBtn);;
                 await sb.from('profiles').update({ bio }).eq('id', currentUser.id);
                 currentUser.bio = bio;
-                hideLoading();
+                hideBtnLoading(_bioBtn);
                 showToast(currentLanguage === 'ar' ? 'تم حفظ النبذة بنجاح' : 'Bio saved successfully', 'success');
             } catch (error) {
-                hideLoading();
+                hideBtnLoading(_bioBtn);
                 console.error('Error saving bio:', error);
                 showToast('حدث خطأ في حفظ النبذة', 'error');
             }
@@ -6439,22 +6439,22 @@
                 const file = event.target.files[0];
                 if (!file || !currentUser) return;
                 
-                showLoading();
+                showInlineLoading("profilePage");;
                 const filePath = `${currentUser.id}/${Date.now()}_${file.name}`;
                 const avatarUrl = await uploadImageToStorage('avatars', filePath, file);
                 
                 const { error } = await sb.from('profiles').update({ avatar_url: avatarUrl }).eq('id', currentUser.id);
-                if (error) { hideLoading(); console.error('Avatar update error:', error); showToast('حدث خطأ في تحديث الصورة', 'error'); return; }
+                if (error) { hideInlineLoading("profilePage"); console.error('Avatar update error:', error); showToast('حدث خطأ في تحديث الصورة', 'error'); return; }
                 
                 currentUser.avatar_url = avatarUrl;
                 const userInList = users.find(u => u.id === currentUser.id);
                 if (userInList) userInList.avatar_url = avatarUrl;
                 
-                hideLoading();
+                hideInlineLoading("profilePage");
                 showToast(currentLanguage === 'ar' ? 'تم تحديث الصورة بنجاح' : 'Avatar updated successfully', 'success');
                 renderProfilePage();
             } catch (error) {
-                hideLoading();
+                hideInlineLoading("profilePage");
                 console.error('Error uploading avatar:', error);
                 showToast('حدث خطأ في رفع الصورة', 'error');
             }
