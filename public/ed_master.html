@@ -3334,6 +3334,7 @@
         }
 
         async function handleSignIn() {
+            const btn = document.getElementById('btnSignIn');
             try {
                 const email = document.getElementById('signInEmail').value.trim();
                 const password = document.getElementById('signInPass').value;
@@ -3343,11 +3344,11 @@
                     return;
                 }
                 
-                showLoading();
+                showBtnLoading(btn);
                 const { data, error } = await sb.auth.signInWithPassword({ email, password });
                 
                 if (error) {
-                    hideLoading();
+                    hideBtnLoading(btn);
                     showToast(currentLanguage === 'ar' ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة' : 'Invalid email or password', 'error');
                     return;
                 }
@@ -3355,11 +3356,10 @@
                 await ensureUserAccountRecord(data.user);
                 await loadCurrentUserFromSupabase(data.user);
                 
-                // Check if user is banned
                 if (currentUser && currentUser.banned) {
                     await sb.auth.signOut();
                     currentUser = null;
-                    hideLoading();
+                    hideBtnLoading(btn);
                     updateUI();
                     showToast(currentLanguage === 'ar' ? 'تم حظر حسابك. تواصل مع الإدارة.' : 'Your account has been blocked.', 'error');
                     return;
@@ -3368,11 +3368,11 @@
                 _dataLoaded = false;
                 await loadData();
                 updateUI();
-                hideLoading();
+                hideBtnLoading(btn);
                 showPage('mainPage');
                 showToast(currentLanguage === 'ar' ? `مرحباً ${currentUser.name || currentUser.email}` : `Welcome ${currentUser.name || currentUser.email}`, 'success');
             } catch (error) {
-                hideLoading();
+                hideBtnLoading(btn);
                 console.error('Error signing in:', error);
                 showToast('حدث خطأ في تسجيل الدخول', 'error');
             }
