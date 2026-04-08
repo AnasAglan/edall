@@ -6591,16 +6591,58 @@
                 if (!title) { showToast('يرجى إدخال عنوان المحاضرة', 'warning'); return; }
 
                 showBtnLoading(btn);
+                console.log('[updateLesson] Starting update for lesson:', lessonId);
 
-                const { error: lessonError } = await withRequestTimeout(
-                    sb.from('lessons').update({ title, content }).eq('id', lessonId),
-                    15000,
-                    currentLanguage === 'ar' ? 'انتهت مهلة تعديل المحاضرة' : 'Timed out while updating the lesson'
-                );
-                if (lessonError) throw new Error(lessonError.message);
+                // Step 1: Update lesson data
+                const { error: lessonError } = await sb.from('lessons').update({ title, content: content || null }).eq('id', lessonId);
+                if (lessonError) throw new Error('فشل في تعديل المحاضرة: ' + lessonError.message);
+                console.log('[updateLesson] Step 1 done - lesson updated');
 
-                await persistLessonVideos(lessonId, newVideos, true);
-                const newFiles = await uploadLessonPdfFiles(courseId, lessonId, pdfFiles);
+                // Step 2: Replace videos
+                console.log('[updateLesson] Step 2: Updating videos...');
+                const { error: delVidErr } = await sb.from('lesson_videos').delete().eq('lesson_id', lessonId);
+                if (delVidErr) throw new Error('فشل في حذف الفيديوهات القديمة: ' + delVidErr.message);
+
+                if (newVideos.length > 0) {
+                    const videoRows = newVideos.map((url, i) => ({
+                        lesson_id: lessonId,
+                        video_url: url,
+                        sort_order: i
+                    }));
+                    const { error: videoError } = await sb.from('lesson_videos').insert(videoRows);
+                    if (videoError) throw new Error('فشل في حفظ الفيديوهات: ' + videoError.message);
+                }
+                console.log('[updateLesson] Step 2 done');
+
+                // Step 3: Upload new PDFs
+                const newFiles = [];
+                if (pdfFiles.length > 0) {
+                    console.log('[updateLesson] Step 3: Uploading', pdfFiles.length, 'PDFs...');
+                    for (let i = 0; i < pdfFiles.length; i++) {
+                        const file = pdfFiles[i];
+                        const safeFileName = sanitizeStorageFileName(file.name);
+                        const filePath = `${courseId}/${lessonId}/${Date.now()}_${safeFileName}`;
+
+                        const { error: uploadError } = await sb.storage.from('lesson-pdfs').upload(filePath, file, {
+                            contentType: file.type || 'application/pdf',
+                            upsert: false
+                        });
+                        if (uploadError) throw new Error('فشل في رفع الملف ' + file.name + ': ' + uploadError.message);
+
+                        const { data: urlData } = sb.storage.from('lesson-pdfs').getPublicUrl(filePath);
+
+                        const { error: fileError } = await sb.from('lesson_files').insert({
+                            lesson_id: lessonId,
+                            file_url: urlData.publicUrl,
+                            file_name: file.name,
+                            sort_order: i
+                        });
+                        if (fileError) throw new Error('فشل في حفظ بيانات الملف: ' + fileError.message);
+
+                        newFiles.push({ id: null, name: file.name, url: urlData.publicUrl });
+                    }
+                    console.log('[updateLesson] Step 3 done');
+                }
 
                 const course = courses.find(c => c.id === courseId);
                 if (course && Array.isArray(course.lessons)) {
@@ -6618,9 +6660,10 @@
                 closeModal();
                 showToast(currentLanguage === 'ar' ? 'تم تعديل المحاضرة بنجاح' : 'Lesson updated', 'success');
                 await showCourseDetails(courseId);
+                console.log('[updateLesson] All done.');
             } catch (error) {
-                console.error('Error updating lesson:', error);
-                showToast('حدث خطأ في تعديل المحاضرة: ' + (error.message || error), 'error');
+                console.error('[updateLesson] Error:', error);
+                showToast((error.message || 'حدث خطأ في تعديل المحاضرة'), 'error');
             } finally {
                 hideBtnLoading(btn);
             }
