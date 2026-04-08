@@ -5796,7 +5796,7 @@
                     return;
                 }
                 
-                showLoading();
+                const _addUserBtn = document.getElementById("btnAddUser"); showBtnLoading(_addUserBtn);;
                 
                 // Use edge function to create user without losing admin session
                 const { data: { session } } = await sb.auth.getSession();
@@ -5812,7 +5812,7 @@
                 const result = await response.json();
                 
                 if (!response.ok || result.error) {
-                    hideLoading();
+                    hideBtnLoading(_addUserBtn);
                     showToast(result.error || 'حدث خطأ في إضافة المستخدم', 'error');
                     return;
                 }
@@ -5831,11 +5831,11 @@
                 document.getElementById('newUserEmail').value = '';
                 document.getElementById('newUserPass').value = '';
                 
-                hideLoading();
+                hideBtnLoading(_addUserBtn);
                 showToast(currentLanguage === 'ar' ? 'تم إضافة المستخدم بنجاح' : 'User added successfully', 'success');
                 renderAdminPage();
             } catch (error) {
-                hideLoading();
+                hideBtnLoading(_addUserBtn);
                 console.error('Error adding user:', error);
                 showToast('حدث خطأ في إضافة المستخدم', 'error');
             }
