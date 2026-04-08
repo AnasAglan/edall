@@ -5489,7 +5489,7 @@
                     return;
                 }
                 
-                showLoading();
+                const _gradeBtn = event ? event.target.closest(".btn") : document.querySelector("#modalHost .btn"); showBtnLoading(_gradeBtn);;
                 
                 const totalQuestions = exam.questions.length;
                 const mcqWeight = result.mcqTotal / totalQuestions;
@@ -5544,11 +5544,11 @@
                     );
                 }
                 
-                hideLoading();
+                hideBtnLoading(_gradeBtn);
                 showToast(currentLanguage === 'ar' ? 'تم حفظ التصحيح بنجاح' : 'Grades saved successfully', 'success');
                 showCorrectionPanel(courseId, lessonId, examIndex);
             } catch (error) {
-                hideLoading();
+                hideBtnLoading(_gradeBtn);
                 console.error('Error saving essay grades:', error);
                 showToast('حدث خطأ في حفظ التصحيح', 'error');
             }
