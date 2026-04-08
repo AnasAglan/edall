@@ -5187,7 +5187,7 @@
                 
                 if (gradeError) {
                     console.error('Server grading error:', gradeError);
-                    hideLoading();
+                    hideBtnLoading(_examSubmitBtn);
                     showToast(currentLanguage === 'ar' ? 'حدث خطأ أثناء تصحيح الامتحان' : 'Error grading exam', 'error');
                     return;
                 }
@@ -5252,7 +5252,7 @@
                 trackLessonProgress(courseId, lessonId, 'examCompleted', true);
                 trackLessonProgress(courseId, lessonId, 'examScore', finalScore);
                 
-                hideLoading();
+                hideBtnLoading(_examSubmitBtn);
                 
                 let resultHTML = `
                     <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">
@@ -5326,7 +5326,7 @@
                 }
                 
             } catch (error) {
-                hideLoading();
+                hideBtnLoading(_examSubmitBtn);
                 console.error('Error submitting exam:', error);
                 showToast('حدث خطأ في تسليم الامتحان', 'error');
             }
