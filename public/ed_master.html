@@ -2313,45 +2313,18 @@
             initializeApp();
         });
 
+        let _initDone = false;
         async function initializeApp() {
             try {
-                // Listen for auth changes
-                sb.auth.onAuthStateChange(async (event, session) => {
-                    if (event === 'SIGNED_IN' && session && session.user) {
-                        await ensureUserAccountRecord(session.user);
-                        await loadCurrentUserFromSupabase(session.user);
-                        // Check if user is banned
-                        if (currentUser && currentUser.banned) {
-                            await sb.auth.signOut();
-                            currentUser = null;
-                            updateUI();
-                            showToast(currentLanguage === 'ar' ? 'تم حظر حسابك. تواصل مع الإدارة.' : 'Your account has been blocked.', 'error');
-                            return;
-                        }
-                        if (!_dataLoaded) {
-                            await loadData();
-                        }
-                        updateUI();
-                        renderCoursesGrid();
-                        updateQuickStats();
-                    } else if (event === 'SIGNED_OUT') {
-                        currentUser = null;
-                        _dataLoaded = false;
-                        updateUI();
-                        renderCoursesGrid();
-                    }
-                });
-
-                // Show loading
+                // Show loading overlay only during initial boot
                 const loadingOverlay = document.getElementById('loadingOverlay');
                 if (loadingOverlay) loadingOverlay.style.display = 'flex';
 
-                // Check existing session
+                // Check existing session FIRST before setting up listener
                 const { data: { session } } = await sb.auth.getSession();
                 if (session && session.user) {
                     await ensureUserAccountRecord(session.user);
                     await loadCurrentUserFromSupabase(session.user);
-                    // Check if user is banned
                     if (currentUser && currentUser.banned) {
                         await sb.auth.signOut();
                         currentUser = null;
@@ -2372,6 +2345,7 @@
                 initializeLanguage();
                 
                 if (loadingOverlay) loadingOverlay.style.display = 'none';
+                _initDone = true;
 
                 const params = new URLSearchParams(window.location.search);
                 if (params.has('page') || params.has('id')) {
@@ -2380,10 +2354,37 @@
                     renderCoursesGrid();
                     updateBreadcrumb('mainPage');
                 }
+
+                // NOW set up auth listener for future changes (sign in/out after init)
+                sb.auth.onAuthStateChange(async (event, session) => {
+                    if (!_initDone) return; // skip events during init
+                    if (event === 'SIGNED_IN' && session && session.user) {
+                        await ensureUserAccountRecord(session.user);
+                        await loadCurrentUserFromSupabase(session.user);
+                        if (currentUser && currentUser.banned) {
+                            await sb.auth.signOut();
+                            currentUser = null;
+                            updateUI();
+                            showToast(currentLanguage === 'ar' ? 'تم حظر حسابك. تواصل مع الإدارة.' : 'Your account has been blocked.', 'error');
+                            return;
+                        }
+                        _dataLoaded = false;
+                        await loadData();
+                        updateUI();
+                        renderCoursesGrid();
+                        updateQuickStats();
+                    } else if (event === 'SIGNED_OUT') {
+                        currentUser = null;
+                        _dataLoaded = false;
+                        updateUI();
+                        renderCoursesGrid();
+                    }
+                });
             } catch (error) {
                 console.error('Error initializing app:', error);
                 const loadingOverlay = document.getElementById('loadingOverlay');
                 if (loadingOverlay) loadingOverlay.style.display = 'none';
+                _initDone = true;
                 showToast('حدث خطأ في تهيئة التطبيق', 'error');
             }
         }
