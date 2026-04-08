@@ -2073,7 +2073,7 @@
         let _dataLoading = false;
         let _searchDebounceTimer = null;
 
-        // Video embed support for YouTube, Dailymotion, 4shared
+        // Video embed support for YouTube, Dailymotion
         function getVideoEmbedUrl(url) {
             if (!url) return '';
             // YouTube
@@ -2082,12 +2082,33 @@
             // Dailymotion
             const dmMatch = url.match(/(?:dailymotion\.com\/video\/|dai\.ly\/)([a-zA-Z0-9]+)/);
             if (dmMatch) return `https://www.dailymotion.com/embed/video/${dmMatch[1]}`;
-            // 4shared
-            if (url.includes('4shared.com')) {
-                return url; // 4shared doesn't have standard embed, use direct link
-            }
-            // Generic - try as iframe src
+            // Generic - try as iframe src (but not 4shared)
             return url;
+        }
+
+        // Check if URL is from 4shared (not embeddable)
+        function is4sharedUrl(url) {
+            return url && url.includes('4shared.com');
+        }
+
+        // Render video: iframe for embeddable, link for 4shared
+        function renderVideoEmbed(videoUrl) {
+            if (is4sharedUrl(videoUrl)) {
+                return `<div style="padding:15px;background:var(--bg-lighter);border-radius:var(--radius);margin:10px 0;display:flex;align-items:center;gap:12px;">
+                    <i class="fas fa-external-link-alt" style="font-size:1.5rem;color:var(--primary);"></i>
+                    <div style="flex:1;">
+                        <div style="font-weight:600;margin-bottom:4px;">${currentLanguage === 'ar' ? 'فيديو 4shared' : '4shared Video'}</div>
+                        <div style="font-size:0.85rem;color:var(--text-muted);">${currentLanguage === 'ar' ? 'اضغط للفتح في نافذة جديدة' : 'Click to open in new tab'}</div>
+                    </div>
+                    <a href="${videoUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-sm" style="text-decoration:none;">
+                        <i class="fas fa-play"></i> ${currentLanguage === 'ar' ? 'مشاهدة' : 'Watch'}
+                    </a>
+                </div>`;
+            }
+            return `<div class="video-container">
+                <iframe width="100%" height="315" src="${getVideoEmbedUrl(videoUrl)}" 
+                    frameborder="0" allowfullscreen style="border-radius:var(--radius);"></iframe>
+            </div>`;
         }
 
         // URL Routing
