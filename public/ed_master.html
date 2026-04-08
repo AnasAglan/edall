@@ -3395,7 +3395,8 @@
                     return;
                 }
                 
-                showLoading();
+                const btn = document.getElementById('btnSignUp');
+                showBtnLoading(btn);
                 const { data, error } = await sb.auth.signUp({
                     email,
                     password,
@@ -3403,7 +3404,7 @@
                 });
                 
                 if (error) {
-                    hideLoading();
+                    hideBtnLoading(btn);
                     if (error.message.includes('already registered')) {
                         showToast(currentLanguage === 'ar' ? 'البريد الإلكتروني مستخدم بالفعل' : 'Email already exists', 'error');
                     } else {
@@ -3417,11 +3418,11 @@
                 await loadCurrentUserFromSupabase(data.user);
                 await loadData();
                 updateUI();
-                hideLoading();
+                hideBtnLoading(btn);
                 showPage('mainPage');
                 showToast(currentLanguage === 'ar' ? `تم إنشاء حسابك بنجاح، مرحباً ${name}` : `Account created successfully, welcome ${name}`, 'success');
             } catch (error) {
-                hideLoading();
+                hideBtnLoading(document.getElementById('btnSignUp'));
                 console.error('Error signing up:', error);
                 showToast('حدث خطأ في إنشاء الحساب', 'error');
             }
