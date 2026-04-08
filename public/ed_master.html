@@ -4326,7 +4326,8 @@
                 
                 if (!title) { showToast('يرجى إدخال عنوان الكورس', 'warning'); return; }
                 
-                showLoading();
+                const btn = event ? event.target.closest('.btn') : document.querySelector('#modalHost .btn');
+                showBtnLoading(btn);
                 
                 const updateData = { title, description: desc };
                 if (courseImageFile) {
@@ -4336,7 +4337,7 @@
                 }
                 
                 const { error } = await sb.from('courses').update(updateData).eq('id', courseId);
-                if (error) { hideLoading(); console.error('Course update error:', error); showToast('حدث خطأ في تحديث الكورس: ' + error.message, 'error'); return; }
+                if (error) { hideBtnLoading(btn); console.error('Course update error:', error); showToast('حدث خطأ في تحديث الكورس: ' + error.message, 'error'); return; }
                 
                 course.title = title;
                 course.description = desc;
@@ -4345,7 +4346,7 @@
                 courseImageData = null;
                 courseImageFile = null;
                 closeModal();
-                hideLoading();
+                hideBtnLoading(btn);
                 showToast(currentLanguage === 'ar' ? 'تم تحديث الكورس بنجاح' : 'Course updated successfully', 'success');
                 renderCoursesGrid();
                 
@@ -4357,7 +4358,7 @@
                     renderAdminPage();
                 }
             } catch (error) {
-                hideLoading();
+                hideBtnLoading(document.querySelector('#modalHost .btn'));
                 console.error('Error updating course:', error);
                 showToast('حدث خطأ في تحديث الكورس', 'error');
             }
