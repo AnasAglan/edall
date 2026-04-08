@@ -2073,7 +2073,7 @@
         let _dataLoading = false;
         let _searchDebounceTimer = null;
 
-        // Video embed support for YouTube, Dailymotion, 4shared
+        // Video embed support for YouTube, Dailymotion
         function getVideoEmbedUrl(url) {
             if (!url) return '';
             // YouTube
@@ -2082,12 +2082,33 @@
             // Dailymotion
             const dmMatch = url.match(/(?:dailymotion\.com\/video\/|dai\.ly\/)([a-zA-Z0-9]+)/);
             if (dmMatch) return `https://www.dailymotion.com/embed/video/${dmMatch[1]}`;
-            // 4shared
-            if (url.includes('4shared.com')) {
-                return url; // 4shared doesn't have standard embed, use direct link
-            }
-            // Generic - try as iframe src
+            // Generic - try as iframe src (but not 4shared)
             return url;
+        }
+
+        // Check if URL is from 4shared (not embeddable)
+        function is4sharedUrl(url) {
+            return url && url.includes('4shared.com');
+        }
+
+        // Render video: iframe for embeddable, link for 4shared
+        function renderVideoEmbed(videoUrl) {
+            if (is4sharedUrl(videoUrl)) {
+                return `<div style="padding:15px;background:var(--bg-lighter);border-radius:var(--radius);margin:10px 0;display:flex;align-items:center;gap:12px;">
+                    <i class="fas fa-external-link-alt" style="font-size:1.5rem;color:var(--primary);"></i>
+                    <div style="flex:1;">
+                        <div style="font-weight:600;margin-bottom:4px;">${currentLanguage === 'ar' ? 'فيديو 4shared' : '4shared Video'}</div>
+                        <div style="font-size:0.85rem;color:var(--text-muted);">${currentLanguage === 'ar' ? 'اضغط للفتح في نافذة جديدة' : 'Click to open in new tab'}</div>
+                    </div>
+                    <a href="${videoUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-sm" style="text-decoration:none;">
+                        <i class="fas fa-play"></i> ${currentLanguage === 'ar' ? 'مشاهدة' : 'Watch'}
+                    </a>
+                </div>`;
+            }
+            return `<div class="video-container">
+                <iframe width="100%" height="315" src="${getVideoEmbedUrl(videoUrl)}" 
+                    frameborder="0" allowfullscreen style="border-radius:var(--radius);"></iframe>
+            </div>`;
         }
 
         // URL Routing
@@ -2292,45 +2313,18 @@
             initializeApp();
         });
 
+        let _initDone = false;
         async function initializeApp() {
             try {
-                // Listen for auth changes
-                sb.auth.onAuthStateChange(async (event, session) => {
-                    if (event === 'SIGNED_IN' && session && session.user) {
-                        await ensureUserAccountRecord(session.user);
-                        await loadCurrentUserFromSupabase(session.user);
-                        // Check if user is banned
-                        if (currentUser && currentUser.banned) {
-                            await sb.auth.signOut();
-                            currentUser = null;
-                            updateUI();
-                            showToast(currentLanguage === 'ar' ? 'تم حظر حسابك. تواصل مع الإدارة.' : 'Your account has been blocked.', 'error');
-                            return;
-                        }
-                        if (!_dataLoaded) {
-                            await loadData();
-                        }
-                        updateUI();
-                        renderCoursesGrid();
-                        updateQuickStats();
-                    } else if (event === 'SIGNED_OUT') {
-                        currentUser = null;
-                        _dataLoaded = false;
-                        updateUI();
-                        renderCoursesGrid();
-                    }
-                });
-
-                // Show loading
+                // Show loading overlay only during initial boot
                 const loadingOverlay = document.getElementById('loadingOverlay');
                 if (loadingOverlay) loadingOverlay.style.display = 'flex';
 
-                // Check existing session
+                // Check existing session FIRST before setting up listener
                 const { data: { session } } = await sb.auth.getSession();
                 if (session && session.user) {
                     await ensureUserAccountRecord(session.user);
                     await loadCurrentUserFromSupabase(session.user);
-                    // Check if user is banned
                     if (currentUser && currentUser.banned) {
                         await sb.auth.signOut();
                         currentUser = null;
@@ -2351,6 +2345,7 @@
                 initializeLanguage();
                 
                 if (loadingOverlay) loadingOverlay.style.display = 'none';
+                _initDone = true;
 
                 const params = new URLSearchParams(window.location.search);
                 if (params.has('page') || params.has('id')) {
@@ -2359,10 +2354,37 @@
                     renderCoursesGrid();
                     updateBreadcrumb('mainPage');
                 }
+
+                // NOW set up auth listener for future changes (sign in/out after init)
+                sb.auth.onAuthStateChange(async (event, session) => {
+                    if (!_initDone) return; // skip events during init
+                    if (event === 'SIGNED_IN' && session && session.user) {
+                        await ensureUserAccountRecord(session.user);
+                        await loadCurrentUserFromSupabase(session.user);
+                        if (currentUser && currentUser.banned) {
+                            await sb.auth.signOut();
+                            currentUser = null;
+                            updateUI();
+                            showToast(currentLanguage === 'ar' ? 'تم حظر حسابك. تواصل مع الإدارة.' : 'Your account has been blocked.', 'error');
+                            return;
+                        }
+                        _dataLoaded = false;
+                        await loadData();
+                        updateUI();
+                        renderCoursesGrid();
+                        updateQuickStats();
+                    } else if (event === 'SIGNED_OUT') {
+                        currentUser = null;
+                        _dataLoaded = false;
+                        updateUI();
+                        renderCoursesGrid();
+                    }
+                });
             } catch (error) {
                 console.error('Error initializing app:', error);
                 const loadingOverlay = document.getElementById('loadingOverlay');
                 if (loadingOverlay) loadingOverlay.style.display = 'none';
+                _initDone = true;
                 showToast('حدث خطأ في تهيئة التطبيق', 'error');
             }
         }
@@ -3312,6 +3334,7 @@
         }
 
         async function handleSignIn() {
+            const btn = document.getElementById('btnSignIn');
             try {
                 const email = document.getElementById('signInEmail').value.trim();
                 const password = document.getElementById('signInPass').value;
@@ -3321,11 +3344,11 @@
                     return;
                 }
                 
-                showLoading();
+                showBtnLoading(btn);
                 const { data, error } = await sb.auth.signInWithPassword({ email, password });
                 
                 if (error) {
-                    hideLoading();
+                    hideBtnLoading(btn);
                     showToast(currentLanguage === 'ar' ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة' : 'Invalid email or password', 'error');
                     return;
                 }
@@ -3333,11 +3356,10 @@
                 await ensureUserAccountRecord(data.user);
                 await loadCurrentUserFromSupabase(data.user);
                 
-                // Check if user is banned
                 if (currentUser && currentUser.banned) {
                     await sb.auth.signOut();
                     currentUser = null;
-                    hideLoading();
+                    hideBtnLoading(btn);
                     updateUI();
                     showToast(currentLanguage === 'ar' ? 'تم حظر حسابك. تواصل مع الإدارة.' : 'Your account has been blocked.', 'error');
                     return;
@@ -3346,11 +3368,11 @@
                 _dataLoaded = false;
                 await loadData();
                 updateUI();
-                hideLoading();
+                hideBtnLoading(btn);
                 showPage('mainPage');
                 showToast(currentLanguage === 'ar' ? `مرحباً ${currentUser.name || currentUser.email}` : `Welcome ${currentUser.name || currentUser.email}`, 'success');
             } catch (error) {
-                hideLoading();
+                hideBtnLoading(btn);
                 console.error('Error signing in:', error);
                 showToast('حدث خطأ في تسجيل الدخول', 'error');
             }
@@ -3373,7 +3395,8 @@
                     return;
                 }
                 
-                showLoading();
+                const btn = document.getElementById('btnSignUp');
+                showBtnLoading(btn);
                 const { data, error } = await sb.auth.signUp({
                     email,
                     password,
@@ -3381,7 +3404,7 @@
                 });
                 
                 if (error) {
-                    hideLoading();
+                    hideBtnLoading(btn);
                     if (error.message.includes('already registered')) {
                         showToast(currentLanguage === 'ar' ? 'البريد الإلكتروني مستخدم بالفعل' : 'Email already exists', 'error');
                     } else {
@@ -3395,11 +3418,11 @@
                 await loadCurrentUserFromSupabase(data.user);
                 await loadData();
                 updateUI();
-                hideLoading();
+                hideBtnLoading(btn);
                 showPage('mainPage');
                 showToast(currentLanguage === 'ar' ? `تم إنشاء حسابك بنجاح، مرحباً ${name}` : `Account created successfully, welcome ${name}`, 'success');
             } catch (error) {
-                hideLoading();
+                hideBtnLoading(document.getElementById('btnSignUp'));
                 console.error('Error signing up:', error);
                 showToast('حدث خطأ في إنشاء الحساب', 'error');
             }
@@ -4180,6 +4203,7 @@
         }
 
         async function createNewCourse() {
+            const btn = document.getElementById('admCreate');
             try {
                 const title = document.getElementById('admCourseTitle').value.trim();
                 const desc = document.getElementById('admCourseDesc').value.trim();
@@ -4189,7 +4213,7 @@
                     return;
                 }
                 
-                showLoading();
+                showBtnLoading(btn);
                 
                 let imageUrl = null;
                 if (courseImageFile) {
@@ -4204,7 +4228,7 @@
                     created_by: currentUser.id
                 }).select().single();
                 
-                if (error) { hideLoading(); console.error('Course insert error:', error); showToast('حدث خطأ في إنشاء الكورس: ' + error.message, 'error'); return; }
+                if (error) { hideBtnLoading(btn); console.error('Course insert error:', error); showToast('حدث خطأ في إنشاء الكورس: ' + error.message, 'error'); return; }
                 
                 courses.unshift({
                     id: newCourseData.id,
@@ -4224,12 +4248,12 @@
                 preview.innerHTML = '';
                 preview.style.display = 'none';
                 
-                hideLoading();
+                hideBtnLoading(btn);
                 showToast(currentLanguage === 'ar' ? 'تم إنشاء الكورس بنجاح' : 'Course created successfully', 'success');
                 renderAdminPage();
                 renderCoursesGrid();
             } catch (error) {
-                hideLoading();
+                hideBtnLoading(btn);
                 console.error('Error creating course:', error);
                 showToast('حدث خطأ في إنشاء الكورس', 'error');
             }
@@ -4302,7 +4326,8 @@
                 
                 if (!title) { showToast('يرجى إدخال عنوان الكورس', 'warning'); return; }
                 
-                showLoading();
+                const btn = event ? event.target.closest('.btn') : document.querySelector('#modalHost .btn');
+                showBtnLoading(btn);
                 
                 const updateData = { title, description: desc };
                 if (courseImageFile) {
@@ -4312,7 +4337,7 @@
                 }
                 
                 const { error } = await sb.from('courses').update(updateData).eq('id', courseId);
-                if (error) { hideLoading(); console.error('Course update error:', error); showToast('حدث خطأ في تحديث الكورس: ' + error.message, 'error'); return; }
+                if (error) { hideBtnLoading(btn); console.error('Course update error:', error); showToast('حدث خطأ في تحديث الكورس: ' + error.message, 'error'); return; }
                 
                 course.title = title;
                 course.description = desc;
@@ -4321,7 +4346,7 @@
                 courseImageData = null;
                 courseImageFile = null;
                 closeModal();
-                hideLoading();
+                hideBtnLoading(btn);
                 showToast(currentLanguage === 'ar' ? 'تم تحديث الكورس بنجاح' : 'Course updated successfully', 'success');
                 renderCoursesGrid();
                 
@@ -4333,7 +4358,7 @@
                     renderAdminPage();
                 }
             } catch (error) {
-                hideLoading();
+                hideBtnLoading(document.querySelector('#modalHost .btn'));
                 console.error('Error updating course:', error);
                 showToast('حدث خطأ في تحديث الكورس', 'error');
             }
@@ -4498,10 +4523,7 @@
                             <h4>${currentLanguage === 'ar' ? 'فيديوهات المحاضرة' : 'Lesson Videos'}</h4>
                             ${lesson.videos.map(video => `
                                 <div style="margin:10px 0;">
-                                    <div class="video-container">
-                                        <iframe width="100%" height="315" src="${getVideoEmbedUrl(video)}" 
-                                            frameborder="0" allowfullscreen style="border-radius:var(--radius);"></iframe>
-                                    </div>
+                                    ${renderVideoEmbed(video)}
                                 </div>
                             `).join('')}
                             <button class="btn btn-sm" onclick="trackLessonProgress('${courseId}', '${lessonId}', 'videoWatched', true)">
@@ -5132,7 +5154,8 @@
                 const exam = lesson && lesson.exams ? lesson.exams[examIndex] : null;
                 if (!exam || !currentUser) return;
                 
-                showLoading();
+                const _examSubmitBtn = event ? event.target.closest('.btn') : document.querySelector('#modalHost .btn-success');
+                showBtnLoading(_examSubmitBtn);
                 
                 // Collect raw answers from the form
                 const rawAnswers = [];
@@ -5164,7 +5187,7 @@
                 
                 if (gradeError) {
                     console.error('Server grading error:', gradeError);
-                    hideLoading();
+                    hideBtnLoading(_examSubmitBtn);
                     showToast(currentLanguage === 'ar' ? 'حدث خطأ أثناء تصحيح الامتحان' : 'Error grading exam', 'error');
                     return;
                 }
@@ -5229,7 +5252,7 @@
                 trackLessonProgress(courseId, lessonId, 'examCompleted', true);
                 trackLessonProgress(courseId, lessonId, 'examScore', finalScore);
                 
-                hideLoading();
+                hideBtnLoading(_examSubmitBtn);
                 
                 let resultHTML = `
                     <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">
@@ -5303,7 +5326,7 @@
                 }
                 
             } catch (error) {
-                hideLoading();
+                hideBtnLoading(_examSubmitBtn);
                 console.error('Error submitting exam:', error);
                 showToast('حدث خطأ في تسليم الامتحان', 'error');
             }
@@ -5466,7 +5489,7 @@
                     return;
                 }
                 
-                showLoading();
+                const _gradeBtn = event ? event.target.closest(".btn") : document.querySelector("#modalHost .btn"); showBtnLoading(_gradeBtn);;
                 
                 const totalQuestions = exam.questions.length;
                 const mcqWeight = result.mcqTotal / totalQuestions;
@@ -5521,11 +5544,11 @@
                     );
                 }
                 
-                hideLoading();
+                hideBtnLoading(_gradeBtn);
                 showToast(currentLanguage === 'ar' ? 'تم حفظ التصحيح بنجاح' : 'Grades saved successfully', 'success');
                 showCorrectionPanel(courseId, lessonId, examIndex);
             } catch (error) {
-                hideLoading();
+                hideBtnLoading(_gradeBtn);
                 console.error('Error saving essay grades:', error);
                 showToast('حدث خطأ في حفظ التصحيح', 'error');
             }
@@ -5773,7 +5796,7 @@
                     return;
                 }
                 
-                showLoading();
+                const _addUserBtn = document.getElementById("btnAddUser"); showBtnLoading(_addUserBtn);;
                 
                 // Use edge function to create user without losing admin session
                 const { data: { session } } = await sb.auth.getSession();
@@ -5789,7 +5812,7 @@
                 const result = await response.json();
                 
                 if (!response.ok || result.error) {
-                    hideLoading();
+                    hideBtnLoading(_addUserBtn);
                     showToast(result.error || 'حدث خطأ في إضافة المستخدم', 'error');
                     return;
                 }
@@ -5808,11 +5831,11 @@
                 document.getElementById('newUserEmail').value = '';
                 document.getElementById('newUserPass').value = '';
                 
-                hideLoading();
+                hideBtnLoading(_addUserBtn);
                 showToast(currentLanguage === 'ar' ? 'تم إضافة المستخدم بنجاح' : 'User added successfully', 'success');
                 renderAdminPage();
             } catch (error) {
-                hideLoading();
+                hideBtnLoading(_addUserBtn);
                 console.error('Error adding user:', error);
                 showToast('حدث خطأ في إضافة المستخدم', 'error');
             }
@@ -6396,16 +6419,17 @@
         }
 
         async function saveProfileBio() {
+            const _bioBtn = document.querySelector("[onclick*=saveProfileBio]");
             try {
                 if (!currentUser) return;
                 const bio = document.getElementById('profileBio').value.trim();
-                showLoading();
+                showBtnLoading(_bioBtn);
                 await sb.from('profiles').update({ bio }).eq('id', currentUser.id);
                 currentUser.bio = bio;
-                hideLoading();
+                hideBtnLoading(_bioBtn);
                 showToast(currentLanguage === 'ar' ? 'تم حفظ النبذة بنجاح' : 'Bio saved successfully', 'success');
             } catch (error) {
-                hideLoading();
+                hideBtnLoading(_bioBtn);
                 console.error('Error saving bio:', error);
                 showToast('حدث خطأ في حفظ النبذة', 'error');
             }
@@ -6416,22 +6440,22 @@
                 const file = event.target.files[0];
                 if (!file || !currentUser) return;
                 
-                showLoading();
+                showInlineLoading("profilePage");;
                 const filePath = `${currentUser.id}/${Date.now()}_${file.name}`;
                 const avatarUrl = await uploadImageToStorage('avatars', filePath, file);
                 
                 const { error } = await sb.from('profiles').update({ avatar_url: avatarUrl }).eq('id', currentUser.id);
-                if (error) { hideLoading(); console.error('Avatar update error:', error); showToast('حدث خطأ في تحديث الصورة', 'error'); return; }
+                if (error) { hideInlineLoading("profilePage"); console.error('Avatar update error:', error); showToast('حدث خطأ في تحديث الصورة', 'error'); return; }
                 
                 currentUser.avatar_url = avatarUrl;
                 const userInList = users.find(u => u.id === currentUser.id);
                 if (userInList) userInList.avatar_url = avatarUrl;
                 
-                hideLoading();
+                hideInlineLoading("profilePage");
                 showToast(currentLanguage === 'ar' ? 'تم تحديث الصورة بنجاح' : 'Avatar updated successfully', 'success');
                 renderProfilePage();
             } catch (error) {
-                hideLoading();
+                hideInlineLoading("profilePage");
                 console.error('Error uploading avatar:', error);
                 showToast('حدث خطأ في رفع الصورة', 'error');
             }
