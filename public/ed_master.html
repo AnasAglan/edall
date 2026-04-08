@@ -6419,10 +6419,11 @@
         }
 
         async function saveProfileBio() {
+            const _bioBtn = document.querySelector("[onclick*=saveProfileBio]");
             try {
                 if (!currentUser) return;
                 const bio = document.getElementById('profileBio').value.trim();
-                const _bioBtn = event ? event.target.closest(".btn") : document.querySelector("[onclick*=saveProfileBio]"); showBtnLoading(_bioBtn);;
+                showBtnLoading(_bioBtn);
                 await sb.from('profiles').update({ bio }).eq('id', currentUser.id);
                 currentUser.bio = bio;
                 hideBtnLoading(_bioBtn);
