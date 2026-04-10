@@ -1628,7 +1628,7 @@
         
         <div style="padding: 0 20px;">
             <div class="search-bar">
-                <input type="text" id="searchInput" placeholder="ابحث عن كورس، محتوى، أو مدرس...">
+                <input type="text" id="searchInput" placeholder="ابحث عن كورس، محتوى، أو مدرس..." autocomplete="off" name="course_search_field">
                 <div class="search-icon">
                     <i class="fas fa-search"></i>
                 </div>
@@ -2228,6 +2228,13 @@
             }
         };
 
+        window.closeCourseModal = function() {
+            closeModal();
+            // Reset URL to main page
+            const newUrl = window.location.pathname;
+            history.pushState({ pageId: 'mainPage' }, '', newUrl);
+        };
+
         window.showModal = function(content) {
             try {
                 document.getElementById('modalHost').innerHTML = `
@@ -2336,6 +2343,9 @@
                 }
 
                 await loadData();
+                // Clear search input to prevent browser autofill
+                const searchEl = document.getElementById('searchInput');
+                if (searchEl) searchEl.value = '';
                 setupEventListeners();
                 setupClickOutsideListener();
                 initializeFloatingBackButton();
@@ -4384,8 +4394,12 @@
                 const isEnrolled = isUserEnrolled(courseId);
                 const completionStatus = getCourseCompletionStatus(courseId);
                 
+                const teacher = users.find(u => u.id === course.createdBy);
+                const teacherLink = teacher ? `<div style="color:var(--text-muted);font-size:0.9rem;margin-bottom:12px;cursor:pointer;" onclick="closeModal(); showTeacherProfile('${course.createdBy}')"><i class="fas fa-chalkboard-teacher"></i> ${currentLanguage === 'ar' ? 'المدرس:' : 'Teacher:'} <span style="color:var(--primary);text-decoration:underline;">${teacher.name}</span></div>` : '';
+                
                 let modalContent = `
                     <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">${course.title}</div>
+                    ${teacherLink}
                     
                     ${course.image ? `
                         <div style="text-align:center;margin-bottom:20px;">
@@ -4477,7 +4491,7 @@
                                 <i class="fas fa-user-minus"></i> ${currentLanguage === 'ar' ? 'إلغاء الانضمام' : 'Unenroll'}
                             </button>
                         `}
-                        <button class="btn btn-outline" onclick="closeModal()">
+                        <button class="btn btn-outline" onclick="closeCourseModal()">
                             <i class="fas fa-times"></i> ${currentLanguage === 'ar' ? 'إغلاق' : 'Close'}
                         </button>
                     </div>
