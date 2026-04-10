@@ -2336,6 +2336,9 @@
                 }
 
                 await loadData();
+                // Clear search input to prevent browser autofill
+                const searchEl = document.getElementById('searchInput');
+                if (searchEl) searchEl.value = '';
                 setupEventListeners();
                 setupClickOutsideListener();
                 initializeFloatingBackButton();
@@ -4384,8 +4387,12 @@
                 const isEnrolled = isUserEnrolled(courseId);
                 const completionStatus = getCourseCompletionStatus(courseId);
                 
+                const teacher = users.find(u => u.id === course.createdBy);
+                const teacherLink = teacher ? `<div style="color:var(--text-muted);font-size:0.9rem;margin-bottom:12px;cursor:pointer;" onclick="closeModal(); showTeacherProfile('${course.createdBy}')"><i class="fas fa-chalkboard-teacher"></i> ${currentLanguage === 'ar' ? 'المدرس:' : 'Teacher:'} <span style="color:var(--primary);text-decoration:underline;">${teacher.name}</span></div>` : '';
+                
                 let modalContent = `
                     <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">${course.title}</div>
+                    ${teacherLink}
                     
                     ${course.image ? `
                         <div style="text-align:center;margin-bottom:20px;">
