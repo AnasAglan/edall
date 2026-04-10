@@ -2228,6 +2228,13 @@
             }
         };
 
+        window.closeCourseModal = function() {
+            closeModal();
+            // Reset URL to main page
+            const newUrl = window.location.pathname;
+            history.pushState({ pageId: 'mainPage' }, '', newUrl);
+        };
+
         window.showModal = function(content) {
             try {
                 document.getElementById('modalHost').innerHTML = `
