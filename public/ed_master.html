@@ -2013,8 +2013,7 @@
             const filePath = `${courseId}/${lessonId}/${Date.now()}_${safeFileName}`;
             
             const xhr = new XMLHttpRequest();
-            const supabaseUrl = sb.supabaseUrl || document.querySelector('meta[name="supabase-url"]')?.content || '';
-            const uploadUrl = `${supabaseUrl}/storage/v1/object/lesson-pdfs/${filePath}`;
+            const uploadUrl = `${SUPABASE_URL}/storage/v1/object/lesson-pdfs/${filePath}`;
             
             xhr.open('POST', uploadUrl, true);
             xhr.setRequestHeader('Authorization', `Bearer ${sb.auth.session?.()?.access_token || ''}`);
@@ -6340,8 +6339,7 @@
                     const token = sessionData?.session?.access_token;
                     if (!token) { showToast('Session expired', 'error'); return; }
                     
-                    const supabaseUrl = sb.supabaseUrl;
-                    const uploadUrl = `${supabaseUrl}/storage/v1/object/lesson-pdfs/${filePath}`;
+                    const uploadUrl = `${SUPABASE_URL}/storage/v1/object/lesson-pdfs/${filePath}`;
                     
                     await new Promise((resolve, reject) => {
                         const xhr = new XMLHttpRequest();
