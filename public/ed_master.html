@@ -3514,7 +3514,7 @@
                     dropdown = document.createElement('div');
                     dropdown.id = 'searchResultsDropdown';
                     dropdown.style.cssText = 'position:absolute;top:100%;left:0;right:0;background:var(--card);border:1px solid var(--bg-lighter);border-radius:var(--radius);box-shadow:var(--shadow-lg);max-height:400px;overflow-y:auto;z-index:999;';
-                    const searchContainer = e.target.closest('.search-container') || e.target.parentElement;
+                    const searchContainer = e.target.closest('.search-bar') || e.target.parentElement;
                     searchContainer.style.position = 'relative';
                     searchContainer.appendChild(dropdown);
                 }
@@ -3568,7 +3568,7 @@
         
         // Close search dropdown when clicking outside
         document.addEventListener('click', function(e) {
-            if (!e.target.closest('.search-container') && !e.target.closest('#searchResultsDropdown')) {
+            if (!e.target.closest('.search-bar') && !e.target.closest('#searchResultsDropdown')) {
                 const dropdown = document.getElementById('searchResultsDropdown');
                 if (dropdown) dropdown.remove();
             }
