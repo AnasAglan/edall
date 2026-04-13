@@ -3488,38 +3488,92 @@
 
         function handleSearch(e) {
             const searchTerm = e.target.value.trim();
+            const existingDropdown = document.getElementById('searchResultsDropdown');
+            
             if (!searchTerm) {
-                // Show default 5 courses
                 renderCoursesGrid();
-                // Remove search dropdown if any
-                const existingDropdown = document.getElementById('searchResultsDropdown');
                 if (existingDropdown) existingDropdown.remove();
                 return;
             }
-            // Debounce DB search
+            
             if (_searchDebounceTimer) clearTimeout(_searchDebounceTimer);
             _searchDebounceTimer = setTimeout(async () => {
-                showInlineLoading('coursesGrid');
-                const results = await searchCoursesFromDB(searchTerm);
-                // Merge search results into courses array (avoid duplicates)
-                results.forEach(r => {
-                    if (!courses.find(c => c.id === r.id)) {
-                        courses.push(r);
-                    }
+                // Search both courses and teachers in parallel
+                const [courseResults, teacherResults] = await Promise.all([
+                    searchCoursesFromDB(searchTerm),
+                    searchTeachersFromDB(searchTerm)
+                ]);
+                
+                // Merge search results into courses array
+                courseResults.forEach(r => {
+                    if (!courses.find(c => c.id === r.id)) courses.push(r);
                 });
-                // Show search results
-                const grid = document.getElementById('coursesGrid');
-                if (results.length === 0) {
-                    grid.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);grid-column:1/-1;"><i class="fas fa-search" style="font-size:3rem;margin-bottom:16px;"></i><h3>' + (currentLanguage === 'ar' ? 'لم يتم العثور على نتائج' : 'No results found') + '</h3></div>';
-                } else {
-                    // Render just the search results
-                    const origCourses = courses;
-                    courses = results;
-                    renderCoursesGrid();
-                    courses = origCourses;
+                
+                // Build dropdown
+                let dropdown = document.getElementById('searchResultsDropdown');
+                if (!dropdown) {
+                    dropdown = document.createElement('div');
+                    dropdown.id = 'searchResultsDropdown';
+                    dropdown.style.cssText = 'position:absolute;top:100%;left:0;right:0;background:var(--card);border:1px solid var(--bg-lighter);border-radius:var(--radius);box-shadow:var(--shadow-lg);max-height:400px;overflow-y:auto;z-index:999;';
+                    const searchContainer = e.target.closest('.search-container') || e.target.parentElement;
+                    searchContainer.style.position = 'relative';
+                    searchContainer.appendChild(dropdown);
                 }
+                
+                let html = '';
+                
+                if (courseResults.length > 0) {
+                    html += `<div style="padding:8px 15px;font-weight:700;color:var(--primary);font-size:0.85rem;border-bottom:1px solid var(--bg-lighter);">
+                        <i class="fas fa-book"></i> ${currentLanguage === 'ar' ? 'الكورسات' : 'Courses'} (${courseResults.length})
+                    </div>`;
+                    courseResults.forEach(c => {
+                        const teacher = users.find(u => u.id === c.createdBy);
+                        html += `<div style="padding:10px 15px;cursor:pointer;border-bottom:1px solid var(--bg-lighter);transition:var(--transition-fast);" 
+                            onmouseover="this.style.background='var(--bg-lighter)'" onmouseout="this.style.background=''" 
+                            onclick="document.getElementById('searchResultsDropdown')?.remove(); showCourseDetails('${c.id}')">
+                            <div style="font-weight:600;">${c.title}</div>
+                            ${teacher ? `<div style="font-size:0.8rem;color:var(--text-muted);"><i class="fas fa-chalkboard-teacher"></i> ${teacher.name}</div>` : ''}
+                        </div>`;
+                    });
+                }
+                
+                if (teacherResults.length > 0) {
+                    html += `<div style="padding:8px 15px;font-weight:700;color:var(--accent);font-size:0.85rem;border-bottom:1px solid var(--bg-lighter);">
+                        <i class="fas fa-user-tie"></i> ${currentLanguage === 'ar' ? 'المدرسون' : 'Teachers'} (${teacherResults.length})
+                    </div>`;
+                    teacherResults.forEach(t => {
+                        html += `<div style="padding:10px 15px;cursor:pointer;border-bottom:1px solid var(--bg-lighter);display:flex;align-items:center;gap:10px;transition:var(--transition-fast);" 
+                            onmouseover="this.style.background='var(--bg-lighter)'" onmouseout="this.style.background=''" 
+                            onclick="document.getElementById('searchResultsDropdown')?.remove(); showTeacherProfile('${t.id}')">
+                            <div style="width:32px;height:32px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:0.8rem;">
+                                ${t.avatar_url ? `<img src="${t.avatar_url}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : t.name.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                                <div style="font-weight:600;">${t.name}</div>
+                                <div style="font-size:0.8rem;color:var(--text-muted);">${t.email}</div>
+                            </div>
+                        </div>`;
+                    });
+                }
+                
+                if (courseResults.length === 0 && teacherResults.length === 0) {
+                    html = `<div style="padding:20px;text-align:center;color:var(--text-muted);">
+                        <i class="fas fa-search" style="font-size:1.5rem;margin-bottom:8px;"></i>
+                        <div>${currentLanguage === 'ar' ? 'لم يتم العثور على نتائج' : 'No results found'}</div>
+                    </div>`;
+                }
+                
+                dropdown.innerHTML = html;
             }, 300);
         }
+        
+        // Close search dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.search-container') && !e.target.closest('#searchResultsDropdown')) {
+                const dropdown = document.getElementById('searchResultsDropdown');
+                if (dropdown) dropdown.remove();
+            }
+        });
 
         function handleUserSearch(e) {
             const searchTerm = e.target.value.trim().toLowerCase();
