@@ -2007,6 +2007,54 @@
             if (videoError) throw new Error(videoError.message);
         }
 
+        // Upload PDF with XHR for progress tracking
+        function uploadSinglePdfWithProgress(file, courseId, lessonId, index, onProgress, onComplete, onError) {
+            const safeFileName = sanitizeStorageFileName(file.name);
+            const filePath = `${courseId}/${lessonId}/${Date.now()}_${safeFileName}`;
+            
+            const xhr = new XMLHttpRequest();
+            const supabaseUrl = sb.supabaseUrl || document.querySelector('meta[name="supabase-url"]')?.content || '';
+            const uploadUrl = `${supabaseUrl}/storage/v1/object/lesson-pdfs/${filePath}`;
+            
+            xhr.open('POST', uploadUrl, true);
+            xhr.setRequestHeader('Authorization', `Bearer ${sb.auth.session?.()?.access_token || ''}`);
+            xhr.setRequestHeader('x-upsert', 'false');
+            
+            // Get fresh token
+            sb.auth.getSession().then(({ data }) => {
+                const token = data?.session?.access_token;
+                if (!token) { onError(new Error('No auth token')); return; }
+                
+                xhr.open('POST', uploadUrl, true);
+                xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+                xhr.setRequestHeader('Content-Type', file.type || 'application/pdf');
+                xhr.setRequestHeader('x-upsert', 'false');
+                
+                xhr.upload.onprogress = function(e) {
+                    if (e.lengthComputable) {
+                        const pct = Math.round((e.loaded / e.total) * 100);
+                        onProgress(pct);
+                    }
+                };
+                
+                xhr.onload = function() {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        const { data: urlData } = sb.storage.from('lesson-pdfs').getPublicUrl(filePath);
+                        onComplete({ filePath, publicUrl: urlData.publicUrl, fileName: file.name });
+                    } else {
+                        let errMsg = 'Upload failed';
+                        try { errMsg = JSON.parse(xhr.responseText).message || errMsg; } catch(e) {}
+                        onError(new Error(errMsg));
+                    }
+                };
+                
+                xhr.onerror = function() { onError(new Error('Network error during upload')); };
+                xhr.send(file);
+            });
+            
+            return { xhr, filePath };
+        }
+
         async function uploadLessonPdfFiles(courseId, lessonId, fileList, uploadedPaths = []) {
             const files = Array.from(fileList || []);
             const lessonFiles = [];
@@ -2031,30 +2079,24 @@
                 const safeFileName = sanitizeStorageFileName(file.name);
                 const filePath = `${courseId}/${lessonId}/${Date.now()}_${safeFileName}`;
 
-                const { error: uploadError } = await withRequestTimeout(
-                    sb.storage.from('lesson-pdfs').upload(filePath, file, {
-                        contentType: file.type || 'application/pdf',
-                        upsert: false
-                    }),
-                    25000,
-                    currentLanguage === 'ar' ? `انتهت مهلة رفع الملف: ${file.name}` : `Timed out uploading ${file.name}`
-                );
+                await ensureFreshSession();
+                
+                const { error: uploadError } = await sb.storage.from('lesson-pdfs').upload(filePath, file, {
+                    contentType: file.type || 'application/pdf',
+                    upsert: false
+                });
 
                 if (uploadError) throw new Error(uploadError.message);
 
                 uploadedPaths.push(filePath);
                 const { data: urlData } = sb.storage.from('lesson-pdfs').getPublicUrl(filePath);
 
-                const { error: fileError } = await withRequestTimeout(
-                    sb.from('lesson_files').insert({
-                        lesson_id: lessonId,
-                        file_url: urlData.publicUrl,
-                        file_name: file.name,
-                        sort_order: i
-                    }),
-                    15000,
-                    currentLanguage === 'ar' ? `انتهت مهلة حفظ الملف: ${file.name}` : `Timed out while saving ${file.name}`
-                );
+                const { error: fileError } = await sb.from('lesson_files').insert({
+                    lesson_id: lessonId,
+                    file_url: urlData.publicUrl,
+                    file_name: file.name,
+                    sort_order: i
+                });
 
                 if (fileError) throw new Error(fileError.message);
 
