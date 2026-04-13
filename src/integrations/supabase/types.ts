@@ -448,6 +448,19 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_courses_sorted_by_enrollment: {
+        Args: { _limit: number; _offset: number }
+        Returns: {
+          created_at: string
+          created_by: string
+          description: string
+          enrollment_count: number
+          id: string
+          image_url: string
+          title: string
+          updated_at: string
+        }[]
+      }
       get_exam_questions_safe: {
         Args: { _exam_id: string }
         Returns: {
