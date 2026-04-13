@@ -2852,7 +2852,7 @@
             }
         }
 
-        // Search courses from DB
+        // Search courses and teachers from DB
         async function searchCoursesFromDB(term) {
             try {
                 const { data } = await sb.from('courses').select('*').ilike('title', `%${term}%`).order('created_at', { ascending: false }).limit(20);
@@ -2865,6 +2865,69 @@
                 console.error('Search error:', e);
                 return [];
             }
+        }
+
+        async function searchTeachersFromDB(term) {
+            try {
+                const { data: teacherRoles } = await sb.from('user_roles').select('user_id').in('role', ['teacher', 'admin']);
+                const teacherIds = (teacherRoles || []).map(r => r.user_id);
+                if (teacherIds.length === 0) return [];
+                const { data } = await sb.from('profiles').select('*').in('id', teacherIds).ilike('name', `%${term}%`).limit(10);
+                return (data || []).map(p => ({ id: p.id, name: p.name, email: p.email, avatar_url: p.avatar_url }));
+            } catch (e) {
+                console.error('Teacher search error:', e);
+                return [];
+            }
+        }
+
+        // Infinite scroll: load more courses
+        async function loadMoreCourses() {
+            if (_loadingMoreCourses || _allCoursesLoaded) return;
+            _loadingMoreCourses = true;
+            
+            const sentinel = document.getElementById('coursesScrollSentinel');
+            if (sentinel) sentinel.innerHTML = '<div style="text-align:center;padding:20px;"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem;color:var(--primary);"></i></div>';
+            
+            try {
+                const { data } = await sb.rpc('get_courses_sorted_by_enrollment', { _offset: _coursesOffset, _limit: 5 });
+                const newCourses = (data || []).map(c => ({
+                    id: c.id, title: c.title, description: c.description,
+                    image: c.image_url, createdBy: c.created_by,
+                    lessons: null, enrollmentCount: c.enrollment_count || 0,
+                    created: new Date(c.created_at).getTime()
+                }));
+                
+                // Avoid duplicates
+                newCourses.forEach(nc => {
+                    if (!courses.find(c => c.id === nc.id)) {
+                        courses.push(nc);
+                    }
+                });
+                
+                _coursesOffset += newCourses.length;
+                if (newCourses.length < 5) _allCoursesLoaded = true;
+                
+                renderCoursesGrid();
+            } catch (e) {
+                console.error('Error loading more courses:', e);
+            } finally {
+                _loadingMoreCourses = false;
+                if (sentinel) sentinel.innerHTML = '';
+            }
+        }
+
+        function setupInfiniteScroll() {
+            if (_infiniteScrollObserver) _infiniteScrollObserver.disconnect();
+            const sentinel = document.getElementById('coursesScrollSentinel');
+            if (!sentinel) return;
+            
+            _infiniteScrollObserver = new IntersectionObserver((entries) => {
+                if (entries[0].isIntersecting && !_allCoursesLoaded && !_loadingMoreCourses) {
+                    loadMoreCourses();
+                }
+            }, { rootMargin: '200px' });
+            
+            _infiniteScrollObserver.observe(sentinel);
         }
 
         function ensureLocalStorageKeys() {
