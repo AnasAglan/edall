@@ -6233,6 +6233,9 @@
                     return;
                 }
                 
+                _activePdfUploads = [];
+                _pdfUploadComplete = true;
+                
                 showModal(`
                     <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">${currentLanguage === 'ar' ? 'إضافة محاضرة جديدة' : 'Add New Lesson'}</div>
                     <input id="lessonTitle" placeholder="${currentLanguage === 'ar' ? 'عنوان المحاضرة' : 'Lesson title'}">
@@ -6256,6 +6259,7 @@
                             <input type="file" id="lessonPdfFiles" accept=".pdf" multiple style="display:none;">
                         </label>
                         <div id="lessonPdfPreview" style="margin-top:8px;"></div>
+                        <div id="pdfUploadProgress" style="margin-top:8px;"></div>
                     </div>
                     
                     <div style="display:flex;gap:10px;margin-top:20px;">
@@ -6263,28 +6267,174 @@
                             <i class="fas fa-save"></i>
                             ${currentLanguage === 'ar' ? 'حفظ المحاضرة' : 'Save Lesson'}
                         </button>
-                        <button class="btn btn-outline" onclick="closeModal()">
+                        <button class="btn btn-outline" id="cancelLessonBtn" onclick="cancelLessonCreation()">
                             <i class="fas fa-times"></i>
                             ${currentLanguage === 'ar' ? 'إلغاء' : 'Cancel'}
                         </button>
                     </div>
-                `);
+                `, { onClose: cancelLessonCreation });
                 
-                // Setup PDF file preview
+                // Setup PDF file preview with progress
                 const pdfInput = document.getElementById('lessonPdfFiles');
                 if (pdfInput) {
                     pdfInput.addEventListener('change', function(e) {
                         const preview = document.getElementById('lessonPdfPreview');
+                        const progressContainer = document.getElementById('pdfUploadProgress');
                         preview.innerHTML = '';
-                        Array.from(e.target.files).forEach(f => {
-                            preview.innerHTML += `<div style="padding:5px;color:var(--text-muted);"><i class="fas fa-file-pdf" style="color:var(--danger);"></i> ${f.name}</div>`;
+                        progressContainer.innerHTML = '';
+                        
+                        const files = Array.from(e.target.files);
+                        if (files.length === 0) return;
+                        
+                        files.forEach((f, idx) => {
+                            preview.innerHTML += `<div style="padding:5px;color:var(--text-muted);"><i class="fas fa-file-pdf" style="color:var(--danger);"></i> ${f.name} <span style="font-size:0.8rem;">(${(f.size / 1024 / 1024).toFixed(1)} MB)</span></div>`;
+                            
+                            // Add progress bar for each file
+                            progressContainer.innerHTML += `
+                                <div id="pdfProgress_${idx}" style="display:flex;align-items:center;gap:8px;margin:5px 0;">
+                                    <div style="flex:1;background:var(--bg-lighter);border-radius:8px;height:8px;overflow:hidden;">
+                                        <div id="pdfProgressBar_${idx}" style="width:0%;height:100%;background:var(--primary);border-radius:8px;transition:width 0.3s;"></div>
+                                    </div>
+                                    <span id="pdfProgressText_${idx}" style="font-size:0.8rem;color:var(--text-muted);min-width:40px;">0%</span>
+                                    <button onclick="cancelPdfUpload(${idx})" style="background:var(--danger);color:white;border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:0.8rem;display:flex;align-items:center;justify-content:center;" title="${currentLanguage === 'ar' ? 'إلغاء' : 'Cancel'}">✕</button>
+                                </div>`;
                         });
+                        
+                        // Disable save button until uploads complete
+                        const saveBtn = document.getElementById('saveLessonBtn');
+                        if (saveBtn) { saveBtn.disabled = true; saveBtn.style.opacity = '0.5'; }
+                        _pdfUploadComplete = false;
+                        
+                        // Start uploading immediately for progress tracking
+                        startPdfPreUploads(courseId, files);
                     });
                 }
             } catch (error) {
                 console.error('Error adding lesson to course:', error);
                 showToast('حدث خطأ في إضافة المحاضرة', 'error');
             }
+        }
+        
+        async function startPdfPreUploads(courseId, files) {
+            _activePdfUploads = [];
+            let completedCount = 0;
+            const tempLessonId = 'temp_' + Date.now();
+            
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                if (file.size > 50 * 1024 * 1024) {
+                    showToast(currentLanguage === 'ar' ? `حجم الملف ${file.name} أكبر من 50MB` : `${file.name} exceeds 50MB`, 'error');
+                    continue;
+                }
+                
+                try {
+                    await ensureFreshSession();
+                    const safeFileName = sanitizeStorageFileName(file.name);
+                    const filePath = `${courseId}/${tempLessonId}/${Date.now()}_${safeFileName}`;
+                    
+                    const uploadInfo = { filePath, fileName: file.name, publicUrl: null, cancelled: false, idx: i };
+                    _activePdfUploads.push(uploadInfo);
+                    
+                    // Use XHR for progress
+                    const { data: sessionData } = await sb.auth.getSession();
+                    const token = sessionData?.session?.access_token;
+                    if (!token) { showToast('Session expired', 'error'); return; }
+                    
+                    const supabaseUrl = sb.supabaseUrl;
+                    const uploadUrl = `${supabaseUrl}/storage/v1/object/lesson-pdfs/${filePath}`;
+                    
+                    await new Promise((resolve, reject) => {
+                        const xhr = new XMLHttpRequest();
+                        uploadInfo.xhr = xhr;
+                        
+                        xhr.upload.onprogress = function(e) {
+                            if (e.lengthComputable && !uploadInfo.cancelled) {
+                                const pct = Math.round((e.loaded / e.total) * 100);
+                                const bar = document.getElementById(`pdfProgressBar_${i}`);
+                                const text = document.getElementById(`pdfProgressText_${i}`);
+                                if (bar) bar.style.width = pct + '%';
+                                if (text) text.textContent = pct + '%';
+                            }
+                        };
+                        
+                        xhr.onload = function() {
+                            if (uploadInfo.cancelled) { resolve(); return; }
+                            if (xhr.status >= 200 && xhr.status < 300) {
+                                const { data: urlData } = sb.storage.from('lesson-pdfs').getPublicUrl(filePath);
+                                uploadInfo.publicUrl = urlData.publicUrl;
+                                const bar = document.getElementById(`pdfProgressBar_${i}`);
+                                const text = document.getElementById(`pdfProgressText_${i}`);
+                                if (bar) bar.style.background = 'var(--success)';
+                                if (text) { text.textContent = '✓'; text.style.color = 'var(--success)'; }
+                                resolve();
+                            } else {
+                                let errMsg = 'Upload failed';
+                                try { errMsg = JSON.parse(xhr.responseText).message || errMsg; } catch(e) {}
+                                showToast(`${file.name}: ${errMsg}`, 'error');
+                                reject(new Error(errMsg));
+                            }
+                        };
+                        
+                        xhr.onerror = function() {
+                            if (!uploadInfo.cancelled) {
+                                showToast(`${file.name}: Network error`, 'error');
+                            }
+                            reject(new Error('Network error'));
+                        };
+                        
+                        xhr.open('POST', uploadUrl, true);
+                        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+                        xhr.setRequestHeader('Content-Type', file.type || 'application/pdf');
+                        xhr.setRequestHeader('x-upsert', 'false');
+                        xhr.send(file);
+                    });
+                    
+                    completedCount++;
+                } catch (e) {
+                    if (!_activePdfUploads[i]?.cancelled) {
+                        console.error('PDF upload error:', e);
+                    }
+                }
+            }
+            
+            // Enable save button when all uploads complete
+            _pdfUploadComplete = true;
+            const saveBtn = document.getElementById('saveLessonBtn');
+            if (saveBtn) { saveBtn.disabled = false; saveBtn.style.opacity = '1'; }
+        }
+        
+        function cancelPdfUpload(idx) {
+            const upload = _activePdfUploads[idx];
+            if (upload && !upload.cancelled) {
+                upload.cancelled = true;
+                if (upload.xhr) { try { upload.xhr.abort(); } catch(e) {} }
+                // Delete from storage if already uploaded
+                if (upload.publicUrl || upload.filePath) {
+                    sb.storage.from('lesson-pdfs').remove([upload.filePath]).catch(e => console.error('Cleanup error:', e));
+                }
+                const progressEl = document.getElementById(`pdfProgress_${idx}`);
+                if (progressEl) progressEl.innerHTML = `<span style="color:var(--danger);font-size:0.85rem;"><i class="fas fa-times-circle"></i> ${currentLanguage === 'ar' ? 'تم الإلغاء' : 'Cancelled'}</span>`;
+            }
+            
+            // Check if all remaining are done
+            const pending = _activePdfUploads.filter(u => !u.cancelled && !u.publicUrl);
+            if (pending.length === 0) {
+                _pdfUploadComplete = true;
+                const saveBtn = document.getElementById('saveLessonBtn');
+                if (saveBtn) { saveBtn.disabled = false; saveBtn.style.opacity = '1'; }
+            }
+        }
+        
+        async function cancelLessonCreation() {
+            // Cleanup any uploaded PDFs
+            for (const upload of _activePdfUploads) {
+                if (upload.xhr && !upload.cancelled) { try { upload.xhr.abort(); } catch(e) {} }
+                if (upload.filePath && !upload.cancelled) {
+                    try { await sb.storage.from('lesson-pdfs').remove([upload.filePath]); } catch(e) {}
+                }
+            }
+            _activePdfUploads = [];
+            closeModal();
         }
 
         function addVideoInput() {
