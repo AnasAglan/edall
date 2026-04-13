@@ -2007,6 +2007,53 @@
             if (videoError) throw new Error(videoError.message);
         }
 
+        // Upload PDF with XHR for progress tracking
+        function uploadSinglePdfWithProgress(file, courseId, lessonId, index, onProgress, onComplete, onError) {
+            const safeFileName = sanitizeStorageFileName(file.name);
+            const filePath = `${courseId}/${lessonId}/${Date.now()}_${safeFileName}`;
+            
+            const xhr = new XMLHttpRequest();
+            const uploadUrl = `${SUPABASE_URL}/storage/v1/object/lesson-pdfs/${filePath}`;
+            
+            xhr.open('POST', uploadUrl, true);
+            xhr.setRequestHeader('Authorization', `Bearer ${sb.auth.session?.()?.access_token || ''}`);
+            xhr.setRequestHeader('x-upsert', 'false');
+            
+            // Get fresh token
+            sb.auth.getSession().then(({ data }) => {
+                const token = data?.session?.access_token;
+                if (!token) { onError(new Error('No auth token')); return; }
+                
+                xhr.open('POST', uploadUrl, true);
+                xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+                xhr.setRequestHeader('Content-Type', file.type || 'application/pdf');
+                xhr.setRequestHeader('x-upsert', 'false');
+                
+                xhr.upload.onprogress = function(e) {
+                    if (e.lengthComputable) {
+                        const pct = Math.round((e.loaded / e.total) * 100);
+                        onProgress(pct);
+                    }
+                };
+                
+                xhr.onload = function() {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        const { data: urlData } = sb.storage.from('lesson-pdfs').getPublicUrl(filePath);
+                        onComplete({ filePath, publicUrl: urlData.publicUrl, fileName: file.name });
+                    } else {
+                        let errMsg = 'Upload failed';
+                        try { errMsg = JSON.parse(xhr.responseText).message || errMsg; } catch(e) {}
+                        onError(new Error(errMsg));
+                    }
+                };
+                
+                xhr.onerror = function() { onError(new Error('Network error during upload')); };
+                xhr.send(file);
+            });
+            
+            return { xhr, filePath };
+        }
+
         async function uploadLessonPdfFiles(courseId, lessonId, fileList, uploadedPaths = []) {
             const files = Array.from(fileList || []);
             const lessonFiles = [];
@@ -2031,30 +2078,24 @@
                 const safeFileName = sanitizeStorageFileName(file.name);
                 const filePath = `${courseId}/${lessonId}/${Date.now()}_${safeFileName}`;
 
-                const { error: uploadError } = await withRequestTimeout(
-                    sb.storage.from('lesson-pdfs').upload(filePath, file, {
-                        contentType: file.type || 'application/pdf',
-                        upsert: false
-                    }),
-                    25000,
-                    currentLanguage === 'ar' ? `انتهت مهلة رفع الملف: ${file.name}` : `Timed out uploading ${file.name}`
-                );
+                await ensureFreshSession();
+                
+                const { error: uploadError } = await sb.storage.from('lesson-pdfs').upload(filePath, file, {
+                    contentType: file.type || 'application/pdf',
+                    upsert: false
+                });
 
                 if (uploadError) throw new Error(uploadError.message);
 
                 uploadedPaths.push(filePath);
                 const { data: urlData } = sb.storage.from('lesson-pdfs').getPublicUrl(filePath);
 
-                const { error: fileError } = await withRequestTimeout(
-                    sb.from('lesson_files').insert({
-                        lesson_id: lessonId,
-                        file_url: urlData.publicUrl,
-                        file_name: file.name,
-                        sort_order: i
-                    }),
-                    15000,
-                    currentLanguage === 'ar' ? `انتهت مهلة حفظ الملف: ${file.name}` : `Timed out while saving ${file.name}`
-                );
+                const { error: fileError } = await sb.from('lesson_files').insert({
+                    lesson_id: lessonId,
+                    file_url: urlData.publicUrl,
+                    file_name: file.name,
+                    sort_order: i
+                });
 
                 if (fileError) throw new Error(fileError.message);
 
@@ -2114,43 +2155,80 @@
         let _searchDebounceTimer = null;
         let _courseLoadPromises = new Map();
         let _modalCloseAction = null;
+        let _coursesOffset = 0;
+        let _allCoursesLoaded = false;
+        let _loadingMoreCourses = false;
+        let _infiniteScrollObserver = null;
+        let _activePdfUploads = []; // track {xhr, path} for cancel
+        let _pdfUploadComplete = true;
 
         // Video embed support for YouTube, Dailymotion
         function getVideoEmbedUrl(url) {
             if (!url) return '';
-            // YouTube
             const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]+)/);
             if (ytMatch) return `https://www.youtube.com/embed/${ytMatch[1]}`;
-            // Dailymotion
             const dmMatch = url.match(/(?:dailymotion\.com\/video\/|dai\.ly\/)([a-zA-Z0-9]+)/);
             if (dmMatch) return `https://www.dailymotion.com/embed/video/${dmMatch[1]}`;
-            // Generic - try as iframe src (but not 4shared)
             return url;
         }
 
-        // Check if URL is from 4shared (not embeddable)
         function is4sharedUrl(url) {
             return url && url.includes('4shared.com');
         }
 
-        // Render video: iframe for embeddable, link for 4shared
-        function renderVideoEmbed(videoUrl) {
+        // Video toggle: each video starts hidden, user clicks to show/hide
+        function renderVideoToggle(videoUrl, index) {
+            const toggleId = `videoToggle_${index}_${Date.now()}`;
+            const containerId = `videoContainer_${index}_${Date.now()}`;
+            
             if (is4sharedUrl(videoUrl)) {
-                return `<div style="padding:15px;background:var(--bg-lighter);border-radius:var(--radius);margin:10px 0;display:flex;align-items:center;gap:12px;">
-                    <i class="fas fa-external-link-alt" style="font-size:1.5rem;color:var(--primary);"></i>
-                    <div style="flex:1;">
-                        <div style="font-weight:600;margin-bottom:4px;">${currentLanguage === 'ar' ? 'فيديو 4shared' : '4shared Video'}</div>
-                        <div style="font-size:0.85rem;color:var(--text-muted);">${currentLanguage === 'ar' ? 'اضغط للفتح في نافذة جديدة' : 'Click to open in new tab'}</div>
+                return `<div style="margin:8px 0;">
+                    <button id="${toggleId}" class="btn btn-sm" style="width:100%;text-align:right;justify-content:flex-start;gap:10px;" onclick="
+                        var container = document.getElementById('${containerId}');
+                        if (container.style.display === 'none') {
+                            container.style.display = 'block';
+                            this.innerHTML = '<i class=\\'fas fa-eye-slash\\'></i> ${currentLanguage === 'ar' ? 'إخفاء الفيديو' : 'Hide Video'} (${index + 1})';
+                        } else {
+                            container.style.display = 'none';
+                            container.innerHTML = '';
+                            this.innerHTML = '<i class=\\'fas fa-play-circle\\'></i> ${currentLanguage === 'ar' ? 'مشاهدة الفيديو' : 'Watch Video'} (${index + 1})';
+                        }
+                    ">
+                        <i class="fas fa-play-circle"></i> ${currentLanguage === 'ar' ? 'مشاهدة الفيديو' : 'Watch Video'} (${index + 1})
+                    </button>
+                    <div id="${containerId}" style="display:none;margin-top:8px;">
+                        <div style="padding:15px;background:var(--bg-lighter);border-radius:var(--radius);display:flex;align-items:center;gap:12px;">
+                            <i class="fas fa-external-link-alt" style="font-size:1.5rem;color:var(--primary);"></i>
+                            <div style="flex:1;">
+                                <div style="font-weight:600;margin-bottom:4px;">${currentLanguage === 'ar' ? 'فيديو 4shared' : '4shared Video'}</div>
+                                <div style="font-size:0.85rem;color:var(--text-muted);">${currentLanguage === 'ar' ? '4shared لا يدعم التضمين المباشر. اضغط لفتح الفيديو في نافذة جديدة.' : '4shared does not support direct embedding. Click to open in a new tab.'}</div>
+                            </div>
+                            <a href="${videoUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-sm" style="text-decoration:none;">
+                                <i class="fas fa-external-link-alt"></i> ${currentLanguage === 'ar' ? 'فتح' : 'Open'}
+                            </a>
+                        </div>
                     </div>
-                    <a href="${videoUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-sm" style="text-decoration:none;">
-                        <i class="fas fa-play"></i> ${currentLanguage === 'ar' ? 'مشاهدة' : 'Watch'}
-                    </a>
                 </div>`;
             }
-            return `<div class="video-container">
-                <iframe width="100%" height="315" src="${getVideoEmbedUrl(videoUrl)}" 
-                    frameborder="0" allowfullscreen style="border-radius:var(--radius);"></iframe>
-            </div>`;
+            
+            const embedUrl = getVideoEmbedUrl(videoUrl);
+            return `<div style="margin:8px 0;">
+                <button id="${toggleId}" class="btn btn-sm" style="width:100%;text-align:right;justify-content:flex-start;gap:10px;" onclick="
+                    var container = document.getElementById('${containerId}');
+                    if (container.style.display === 'none') {
+                        container.style.display = 'block';
+                        container.innerHTML = '<iframe width=\\'100%\\' height=\\'315\\' src=\\'${embedUrl}\\' frameborder=\\'0\\' allowfullscreen style=\\'border-radius:var(--radius);\\'></iframe>';
+                        this.innerHTML = '<i class=\\'fas fa-eye-slash\\'></i> ${currentLanguage === 'ar' ? 'إخفاء الفيديو' : 'Hide Video'} (${index + 1})';
+                    } else {
+                        container.style.display = 'none';
+                        container.innerHTML = '';
+                        this.innerHTML = '<i class=\\'fas fa-play-circle\\'></i> ${currentLanguage === 'ar' ? 'مشاهدة الفيديو' : 'Watch Video'} (${index + 1})';
+                    }
+                ">
+                    <i class="fas fa-play-circle"></i> ${currentLanguage === 'ar' ? 'مشاهدة الفيديو' : 'Watch Video'} (${index + 1})
+                </button>
+                <div id="${containerId}" style="display:none;margin-top:8px;"></div>
+            </div>`; 
         }
 
         // URL Routing
@@ -2495,18 +2573,21 @@
             if (_dataLoading) return;
             _dataLoading = true;
             try {
-                // Load only latest 5 courses + profiles + roles + notifications (fast initial load)
+                // Load top 5 courses sorted by enrollment + profiles + roles + notifications
                 const [
                     { data: coursesData },
                     { data: profilesData },
                     { data: rolesData },
                     { data: notifsData }
                 ] = await Promise.all([
-                    sb.from('courses').select('*').order('created_at', { ascending: false }).limit(5),
+                    sb.rpc('get_courses_sorted_by_enrollment', { _offset: 0, _limit: 5 }),
                     sb.from('profiles').select('*'),
                     sb.from('user_roles').select('*'),
                     sb.from('notifications').select('*').order('created_at', { ascending: false }).limit(50)
                 ]);
+
+                _coursesOffset = (coursesData || []).length;
+                _allCoursesLoaded = (coursesData || []).length < 5;
 
                 // Build courses WITHOUT lessons (lazy loaded on demand)
                 courses = (coursesData || []).map(c => ({
@@ -2515,7 +2596,8 @@
                     description: c.description,
                     image: c.image_url,
                     createdBy: c.created_by,
-                    lessons: null, // null = not loaded yet
+                    lessons: null,
+                    enrollmentCount: c.enrollment_count || 0,
                     created: new Date(c.created_at).getTime()
                 }));
 
@@ -2769,7 +2851,7 @@
             }
         }
 
-        // Search courses from DB
+        // Search courses and teachers from DB
         async function searchCoursesFromDB(term) {
             try {
                 const { data } = await sb.from('courses').select('*').ilike('title', `%${term}%`).order('created_at', { ascending: false }).limit(20);
@@ -2782,6 +2864,69 @@
                 console.error('Search error:', e);
                 return [];
             }
+        }
+
+        async function searchTeachersFromDB(term) {
+            try {
+                const { data: teacherRoles } = await sb.from('user_roles').select('user_id').in('role', ['teacher', 'admin']);
+                const teacherIds = (teacherRoles || []).map(r => r.user_id);
+                if (teacherIds.length === 0) return [];
+                const { data } = await sb.from('profiles').select('*').in('id', teacherIds).ilike('name', `%${term}%`).limit(10);
+                return (data || []).map(p => ({ id: p.id, name: p.name, email: p.email, avatar_url: p.avatar_url }));
+            } catch (e) {
+                console.error('Teacher search error:', e);
+                return [];
+            }
+        }
+
+        // Infinite scroll: load more courses
+        async function loadMoreCourses() {
+            if (_loadingMoreCourses || _allCoursesLoaded) return;
+            _loadingMoreCourses = true;
+            
+            const sentinel = document.getElementById('coursesScrollSentinel');
+            if (sentinel) sentinel.innerHTML = '<div style="text-align:center;padding:20px;"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem;color:var(--primary);"></i></div>';
+            
+            try {
+                const { data } = await sb.rpc('get_courses_sorted_by_enrollment', { _offset: _coursesOffset, _limit: 5 });
+                const newCourses = (data || []).map(c => ({
+                    id: c.id, title: c.title, description: c.description,
+                    image: c.image_url, createdBy: c.created_by,
+                    lessons: null, enrollmentCount: c.enrollment_count || 0,
+                    created: new Date(c.created_at).getTime()
+                }));
+                
+                // Avoid duplicates
+                newCourses.forEach(nc => {
+                    if (!courses.find(c => c.id === nc.id)) {
+                        courses.push(nc);
+                    }
+                });
+                
+                _coursesOffset += newCourses.length;
+                if (newCourses.length < 5) _allCoursesLoaded = true;
+                
+                renderCoursesGrid();
+            } catch (e) {
+                console.error('Error loading more courses:', e);
+            } finally {
+                _loadingMoreCourses = false;
+                if (sentinel) sentinel.innerHTML = '';
+            }
+        }
+
+        function setupInfiniteScroll() {
+            if (_infiniteScrollObserver) _infiniteScrollObserver.disconnect();
+            const sentinel = document.getElementById('coursesScrollSentinel');
+            if (!sentinel) return;
+            
+            _infiniteScrollObserver = new IntersectionObserver((entries) => {
+                if (entries[0].isIntersecting && !_allCoursesLoaded && !_loadingMoreCourses) {
+                    loadMoreCourses();
+                }
+            }, { rootMargin: '200px' });
+            
+            _infiniteScrollObserver.observe(sentinel);
         }
 
         function ensureLocalStorageKeys() {
@@ -3342,38 +3487,92 @@
 
         function handleSearch(e) {
             const searchTerm = e.target.value.trim();
+            const existingDropdown = document.getElementById('searchResultsDropdown');
+            
             if (!searchTerm) {
-                // Show default 5 courses
                 renderCoursesGrid();
-                // Remove search dropdown if any
-                const existingDropdown = document.getElementById('searchResultsDropdown');
                 if (existingDropdown) existingDropdown.remove();
                 return;
             }
-            // Debounce DB search
+            
             if (_searchDebounceTimer) clearTimeout(_searchDebounceTimer);
             _searchDebounceTimer = setTimeout(async () => {
-                showInlineLoading('coursesGrid');
-                const results = await searchCoursesFromDB(searchTerm);
-                // Merge search results into courses array (avoid duplicates)
-                results.forEach(r => {
-                    if (!courses.find(c => c.id === r.id)) {
-                        courses.push(r);
-                    }
+                // Search both courses and teachers in parallel
+                const [courseResults, teacherResults] = await Promise.all([
+                    searchCoursesFromDB(searchTerm),
+                    searchTeachersFromDB(searchTerm)
+                ]);
+                
+                // Merge search results into courses array
+                courseResults.forEach(r => {
+                    if (!courses.find(c => c.id === r.id)) courses.push(r);
                 });
-                // Show search results
-                const grid = document.getElementById('coursesGrid');
-                if (results.length === 0) {
-                    grid.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);grid-column:1/-1;"><i class="fas fa-search" style="font-size:3rem;margin-bottom:16px;"></i><h3>' + (currentLanguage === 'ar' ? 'لم يتم العثور على نتائج' : 'No results found') + '</h3></div>';
-                } else {
-                    // Render just the search results
-                    const origCourses = courses;
-                    courses = results;
-                    renderCoursesGrid();
-                    courses = origCourses;
+                
+                // Build dropdown
+                let dropdown = document.getElementById('searchResultsDropdown');
+                if (!dropdown) {
+                    dropdown = document.createElement('div');
+                    dropdown.id = 'searchResultsDropdown';
+                    dropdown.style.cssText = 'position:absolute;top:100%;left:0;right:0;background:var(--card);border:1px solid var(--bg-lighter);border-radius:var(--radius);box-shadow:var(--shadow-lg);max-height:400px;overflow-y:auto;z-index:999;';
+                    const searchContainer = e.target.closest('.search-bar') || e.target.parentElement;
+                    searchContainer.style.position = 'relative';
+                    searchContainer.appendChild(dropdown);
                 }
+                
+                let html = '';
+                
+                if (courseResults.length > 0) {
+                    html += `<div style="padding:8px 15px;font-weight:700;color:var(--primary);font-size:0.85rem;border-bottom:1px solid var(--bg-lighter);">
+                        <i class="fas fa-book"></i> ${currentLanguage === 'ar' ? 'الكورسات' : 'Courses'} (${courseResults.length})
+                    </div>`;
+                    courseResults.forEach(c => {
+                        const teacher = users.find(u => u.id === c.createdBy);
+                        html += `<div style="padding:10px 15px;cursor:pointer;border-bottom:1px solid var(--bg-lighter);transition:var(--transition-fast);" 
+                            onmouseover="this.style.background='var(--bg-lighter)'" onmouseout="this.style.background=''" 
+                            onclick="document.getElementById('searchResultsDropdown')?.remove(); showCourseDetails('${c.id}')">
+                            <div style="font-weight:600;">${c.title}</div>
+                            ${teacher ? `<div style="font-size:0.8rem;color:var(--text-muted);"><i class="fas fa-chalkboard-teacher"></i> ${teacher.name}</div>` : ''}
+                        </div>`;
+                    });
+                }
+                
+                if (teacherResults.length > 0) {
+                    html += `<div style="padding:8px 15px;font-weight:700;color:var(--accent);font-size:0.85rem;border-bottom:1px solid var(--bg-lighter);">
+                        <i class="fas fa-user-tie"></i> ${currentLanguage === 'ar' ? 'المدرسون' : 'Teachers'} (${teacherResults.length})
+                    </div>`;
+                    teacherResults.forEach(t => {
+                        html += `<div style="padding:10px 15px;cursor:pointer;border-bottom:1px solid var(--bg-lighter);display:flex;align-items:center;gap:10px;transition:var(--transition-fast);" 
+                            onmouseover="this.style.background='var(--bg-lighter)'" onmouseout="this.style.background=''" 
+                            onclick="document.getElementById('searchResultsDropdown')?.remove(); showTeacherProfile('${t.id}')">
+                            <div style="width:32px;height:32px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:0.8rem;">
+                                ${t.avatar_url ? `<img src="${t.avatar_url}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : t.name.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                                <div style="font-weight:600;">${t.name}</div>
+                                <div style="font-size:0.8rem;color:var(--text-muted);">${t.email}</div>
+                            </div>
+                        </div>`;
+                    });
+                }
+                
+                if (courseResults.length === 0 && teacherResults.length === 0) {
+                    html = `<div style="padding:20px;text-align:center;color:var(--text-muted);">
+                        <i class="fas fa-search" style="font-size:1.5rem;margin-bottom:8px;"></i>
+                        <div>${currentLanguage === 'ar' ? 'لم يتم العثور على نتائج' : 'No results found'}</div>
+                    </div>`;
+                }
+                
+                dropdown.innerHTML = html;
             }, 300);
         }
+        
+        // Close search dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.search-bar') && !e.target.closest('#searchResultsDropdown')) {
+                const dropdown = document.getElementById('searchResultsDropdown');
+                if (dropdown) dropdown.remove();
+            }
+        });
 
         function handleUserSearch(e) {
             const searchTerm = e.target.value.trim().toLowerCase();
@@ -3955,6 +4154,12 @@
                         </div>
                     `;
                 }).join('');
+                
+                // Add infinite scroll sentinel
+                if (!_allCoursesLoaded && currentFilter === 'all') {
+                    grid.innerHTML += '<div id="coursesScrollSentinel" style="grid-column:1/-1;min-height:10px;"></div>';
+                    setTimeout(() => setupInfiniteScroll(), 100);
+                }
             } catch (error) {
                 console.error('Error rendering courses grid:', error);
                 showToast('حدث خطأ في عرض الكورسات', 'error');
@@ -4640,13 +4845,9 @@
                 if (lesson.videos && lesson.videos.length > 0) {
                     modalContent += `
                         <div style="margin-bottom:20px;">
-                            <h4>${currentLanguage === 'ar' ? 'فيديوهات المحاضرة' : 'Lesson Videos'}</h4>
-                            ${lesson.videos.map(video => `
-                                <div style="margin:10px 0;">
-                                    ${renderVideoEmbed(video)}
-                                </div>
-                            `).join('')}
-                            <button class="btn btn-sm" onclick="trackLessonProgress('${courseId}', '${lessonId}', 'videoWatched', true)">
+                            <h4>${currentLanguage === 'ar' ? 'فيديوهات المحاضرة' : 'Lesson Videos'} (${lesson.videos.length})</h4>
+                            ${lesson.videos.map((video, vidIdx) => renderVideoToggle(video, vidIdx)).join('')}
+                            <button class="btn btn-sm" style="margin-top:10px;" onclick="trackLessonProgress('${courseId}', '${lessonId}', 'videoWatched', true)">
                                 <i class="fas fa-check"></i> ${currentLanguage === 'ar' ? 'تحديد كمشاهدة' : 'Mark as Watched'}
                             </button>
                         </div>
@@ -6031,6 +6232,9 @@
                     return;
                 }
                 
+                _activePdfUploads = [];
+                _pdfUploadComplete = true;
+                
                 showModal(`
                     <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">${currentLanguage === 'ar' ? 'إضافة محاضرة جديدة' : 'Add New Lesson'}</div>
                     <input id="lessonTitle" placeholder="${currentLanguage === 'ar' ? 'عنوان المحاضرة' : 'Lesson title'}">
@@ -6054,6 +6258,7 @@
                             <input type="file" id="lessonPdfFiles" accept=".pdf" multiple style="display:none;">
                         </label>
                         <div id="lessonPdfPreview" style="margin-top:8px;"></div>
+                        <div id="pdfUploadProgress" style="margin-top:8px;"></div>
                     </div>
                     
                     <div style="display:flex;gap:10px;margin-top:20px;">
@@ -6061,28 +6266,173 @@
                             <i class="fas fa-save"></i>
                             ${currentLanguage === 'ar' ? 'حفظ المحاضرة' : 'Save Lesson'}
                         </button>
-                        <button class="btn btn-outline" onclick="closeModal()">
+                        <button class="btn btn-outline" id="cancelLessonBtn" onclick="cancelLessonCreation()">
                             <i class="fas fa-times"></i>
                             ${currentLanguage === 'ar' ? 'إلغاء' : 'Cancel'}
                         </button>
                     </div>
-                `);
+                `, { onClose: cancelLessonCreation });
                 
-                // Setup PDF file preview
+                // Setup PDF file preview with progress
                 const pdfInput = document.getElementById('lessonPdfFiles');
                 if (pdfInput) {
                     pdfInput.addEventListener('change', function(e) {
                         const preview = document.getElementById('lessonPdfPreview');
+                        const progressContainer = document.getElementById('pdfUploadProgress');
                         preview.innerHTML = '';
-                        Array.from(e.target.files).forEach(f => {
-                            preview.innerHTML += `<div style="padding:5px;color:var(--text-muted);"><i class="fas fa-file-pdf" style="color:var(--danger);"></i> ${f.name}</div>`;
+                        progressContainer.innerHTML = '';
+                        
+                        const files = Array.from(e.target.files);
+                        if (files.length === 0) return;
+                        
+                        files.forEach((f, idx) => {
+                            preview.innerHTML += `<div style="padding:5px;color:var(--text-muted);"><i class="fas fa-file-pdf" style="color:var(--danger);"></i> ${f.name} <span style="font-size:0.8rem;">(${(f.size / 1024 / 1024).toFixed(1)} MB)</span></div>`;
+                            
+                            // Add progress bar for each file
+                            progressContainer.innerHTML += `
+                                <div id="pdfProgress_${idx}" style="display:flex;align-items:center;gap:8px;margin:5px 0;">
+                                    <div style="flex:1;background:var(--bg-lighter);border-radius:8px;height:8px;overflow:hidden;">
+                                        <div id="pdfProgressBar_${idx}" style="width:0%;height:100%;background:var(--primary);border-radius:8px;transition:width 0.3s;"></div>
+                                    </div>
+                                    <span id="pdfProgressText_${idx}" style="font-size:0.8rem;color:var(--text-muted);min-width:40px;">0%</span>
+                                    <button onclick="cancelPdfUpload(${idx})" style="background:var(--danger);color:white;border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:0.8rem;display:flex;align-items:center;justify-content:center;" title="${currentLanguage === 'ar' ? 'إلغاء' : 'Cancel'}">✕</button>
+                                </div>`;
                         });
+                        
+                        // Disable save button until uploads complete
+                        const saveBtn = document.getElementById('saveLessonBtn');
+                        if (saveBtn) { saveBtn.disabled = true; saveBtn.style.opacity = '0.5'; }
+                        _pdfUploadComplete = false;
+                        
+                        // Start uploading immediately for progress tracking
+                        startPdfPreUploads(courseId, files);
                     });
                 }
             } catch (error) {
                 console.error('Error adding lesson to course:', error);
                 showToast('حدث خطأ في إضافة المحاضرة', 'error');
             }
+        }
+        
+        async function startPdfPreUploads(courseId, files) {
+            _activePdfUploads = [];
+            let completedCount = 0;
+            const tempLessonId = 'temp_' + Date.now();
+            
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                if (file.size > 50 * 1024 * 1024) {
+                    showToast(currentLanguage === 'ar' ? `حجم الملف ${file.name} أكبر من 50MB` : `${file.name} exceeds 50MB`, 'error');
+                    continue;
+                }
+                
+                try {
+                    await ensureFreshSession();
+                    const safeFileName = sanitizeStorageFileName(file.name);
+                    const filePath = `${courseId}/${tempLessonId}/${Date.now()}_${safeFileName}`;
+                    
+                    const uploadInfo = { filePath, fileName: file.name, publicUrl: null, cancelled: false, idx: i };
+                    _activePdfUploads.push(uploadInfo);
+                    
+                    // Use XHR for progress
+                    const { data: sessionData } = await sb.auth.getSession();
+                    const token = sessionData?.session?.access_token;
+                    if (!token) { showToast('Session expired', 'error'); return; }
+                    
+                    const uploadUrl = `${SUPABASE_URL}/storage/v1/object/lesson-pdfs/${filePath}`;
+                    
+                    await new Promise((resolve, reject) => {
+                        const xhr = new XMLHttpRequest();
+                        uploadInfo.xhr = xhr;
+                        
+                        xhr.upload.onprogress = function(e) {
+                            if (e.lengthComputable && !uploadInfo.cancelled) {
+                                const pct = Math.round((e.loaded / e.total) * 100);
+                                const bar = document.getElementById(`pdfProgressBar_${i}`);
+                                const text = document.getElementById(`pdfProgressText_${i}`);
+                                if (bar) bar.style.width = pct + '%';
+                                if (text) text.textContent = pct + '%';
+                            }
+                        };
+                        
+                        xhr.onload = function() {
+                            if (uploadInfo.cancelled) { resolve(); return; }
+                            if (xhr.status >= 200 && xhr.status < 300) {
+                                const { data: urlData } = sb.storage.from('lesson-pdfs').getPublicUrl(filePath);
+                                uploadInfo.publicUrl = urlData.publicUrl;
+                                const bar = document.getElementById(`pdfProgressBar_${i}`);
+                                const text = document.getElementById(`pdfProgressText_${i}`);
+                                if (bar) bar.style.background = 'var(--success)';
+                                if (text) { text.textContent = '✓'; text.style.color = 'var(--success)'; }
+                                resolve();
+                            } else {
+                                let errMsg = 'Upload failed';
+                                try { errMsg = JSON.parse(xhr.responseText).message || errMsg; } catch(e) {}
+                                showToast(`${file.name}: ${errMsg}`, 'error');
+                                reject(new Error(errMsg));
+                            }
+                        };
+                        
+                        xhr.onerror = function() {
+                            if (!uploadInfo.cancelled) {
+                                showToast(`${file.name}: Network error`, 'error');
+                            }
+                            reject(new Error('Network error'));
+                        };
+                        
+                        xhr.open('POST', uploadUrl, true);
+                        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+                        xhr.setRequestHeader('Content-Type', file.type || 'application/pdf');
+                        xhr.setRequestHeader('x-upsert', 'false');
+                        xhr.send(file);
+                    });
+                    
+                    completedCount++;
+                } catch (e) {
+                    if (!_activePdfUploads[i]?.cancelled) {
+                        console.error('PDF upload error:', e);
+                    }
+                }
+            }
+            
+            // Enable save button when all uploads complete
+            _pdfUploadComplete = true;
+            const saveBtn = document.getElementById('saveLessonBtn');
+            if (saveBtn) { saveBtn.disabled = false; saveBtn.style.opacity = '1'; }
+        }
+        
+        function cancelPdfUpload(idx) {
+            const upload = _activePdfUploads[idx];
+            if (upload && !upload.cancelled) {
+                upload.cancelled = true;
+                if (upload.xhr) { try { upload.xhr.abort(); } catch(e) {} }
+                // Delete from storage if already uploaded
+                if (upload.publicUrl || upload.filePath) {
+                    sb.storage.from('lesson-pdfs').remove([upload.filePath]).catch(e => console.error('Cleanup error:', e));
+                }
+                const progressEl = document.getElementById(`pdfProgress_${idx}`);
+                if (progressEl) progressEl.innerHTML = `<span style="color:var(--danger);font-size:0.85rem;"><i class="fas fa-times-circle"></i> ${currentLanguage === 'ar' ? 'تم الإلغاء' : 'Cancelled'}</span>`;
+            }
+            
+            // Check if all remaining are done
+            const pending = _activePdfUploads.filter(u => !u.cancelled && !u.publicUrl);
+            if (pending.length === 0) {
+                _pdfUploadComplete = true;
+                const saveBtn = document.getElementById('saveLessonBtn');
+                if (saveBtn) { saveBtn.disabled = false; saveBtn.style.opacity = '1'; }
+            }
+        }
+        
+        async function cancelLessonCreation() {
+            // Cleanup any uploaded PDFs
+            for (const upload of _activePdfUploads) {
+                if (upload.xhr && !upload.cancelled) { try { upload.xhr.abort(); } catch(e) {} }
+                if (upload.filePath && !upload.cancelled) {
+                    try { await sb.storage.from('lesson-pdfs').remove([upload.filePath]); } catch(e) {}
+                }
+            }
+            _activePdfUploads = [];
+            closeModal();
         }
 
         function addVideoInput() {
@@ -6106,6 +6456,12 @@
             const uploadedPaths = [];
 
             if (!btn) { console.error('Save button not found'); return; }
+            
+            // Check if PDF uploads are still in progress
+            if (!_pdfUploadComplete) {
+                showToast(currentLanguage === 'ar' ? 'يرجى انتظار اكتمال رفع الملفات' : 'Please wait for uploads to complete', 'warning');
+                return;
+            }
 
             try {
                 const course = courses.find(c => c.id === courseId);
@@ -6119,69 +6475,60 @@
                 const title = document.getElementById('lessonTitle').value.trim();
                 const content = document.getElementById('lessonContent').value.trim();
                 const videos = getFilledInputValues('.lesson-video-input');
-                const pdfInput = document.getElementById('lessonPdfFiles');
-                const pdfFiles = Array.from(pdfInput?.files || []);
 
                 if (!title) { showToast('يرجى إدخال عنوان المحاضرة', 'warning'); return; }
 
                 await ensureAuthenticatedSession();
-
                 showBtnLoading(btn);
-                console.log('[saveLesson] Starting save for course:', courseId, 'videos:', videos.length, 'pdfs:', pdfFiles.length);
 
                 const sortOrder = Array.isArray(course.lessons) ? course.lessons.length : 0;
 
                 // Step 1: Insert lesson
-                console.log('[saveLesson] Step 1: Inserting lesson...');
-                let lessonData, lessonError;
-                try {
-                    const result = await sb.from('lessons').insert({
-                        course_id: courseId,
-                        title,
-                        content: content || null,
-                        sort_order: sortOrder
-                    }).select().single();
-                    lessonData = result.data;
-                    lessonError = result.error;
-                    console.log('[saveLesson] Step 1 done. data:', lessonData, 'error:', lessonError);
-                } catch (e) {
-                    console.error('[saveLesson] Step 1 exception:', e);
-                    throw new Error('فشل في حفظ المحاضرة: ' + (e.message || e));
-                }
+                const result = await sb.from('lessons').insert({
+                    course_id: courseId,
+                    title,
+                    content: content || null,
+                    sort_order: sortOrder
+                }).select().single();
 
-                if (lessonError) throw new Error('فشل في حفظ المحاضرة: ' + lessonError.message);
-                if (!lessonData || !lessonData.id) throw new Error('فشل في حفظ المحاضرة: لم يتم إرجاع بيانات');
+                if (result.error) throw new Error('فشل في حفظ المحاضرة: ' + result.error.message);
+                if (!result.data || !result.data.id) throw new Error('فشل في حفظ المحاضرة: لم يتم إرجاع بيانات');
 
-                createdLessonId = lessonData.id;
+                createdLessonId = result.data.id;
 
                 // Step 2: Insert videos
                 if (videos.length > 0) {
-                    console.log('[saveLesson] Step 2: Inserting', videos.length, 'videos...');
-                    try {
-                        const videoRows = videos.map((url, i) => ({
-                            lesson_id: createdLessonId,
-                            video_url: url,
-                            sort_order: i
-                        }));
-                        const { error: videoError } = await sb.from('lesson_videos').insert(videoRows);
-                        if (videoError) throw new Error('فشل في حفظ الفيديوهات: ' + videoError.message);
-                        console.log('[saveLesson] Step 2 done.');
-                    } catch (e) {
-                        console.error('[saveLesson] Step 2 exception:', e);
-                        throw e;
-                    }
+                    const videoRows = videos.map((url, i) => ({
+                        lesson_id: createdLessonId,
+                        video_url: url,
+                        sort_order: i
+                    }));
+                    const { error: videoError } = await sb.from('lesson_videos').insert(videoRows);
+                    if (videoError) throw new Error('فشل في حفظ الفيديوهات: ' + videoError.message);
                 }
 
-                // Step 3: Upload PDFs
-                const lessonFiles = pdfFiles.length > 0
-                    ? await uploadLessonPdfFiles(courseId, createdLessonId, pdfFiles, uploadedPaths)
-                    : [];
-                if (pdfFiles.length > 0) console.log('[saveLesson] Step 3 done.');
+                // Step 3: Link pre-uploaded PDFs to this lesson
+                const lessonFiles = [];
+                const validUploads = _activePdfUploads.filter(u => !u.cancelled && u.publicUrl);
+                
+                for (let i = 0; i < validUploads.length; i++) {
+                    const upload = validUploads[i];
+                    uploadedPaths.push(upload.filePath);
+                    
+                    const { error: fileError } = await sb.from('lesson_files').insert({
+                        lesson_id: createdLessonId,
+                        file_url: upload.publicUrl,
+                        file_name: upload.fileName,
+                        sort_order: i
+                    });
+                    if (fileError) throw new Error(fileError.message);
+                    lessonFiles.push({ id: null, name: upload.fileName, url: upload.publicUrl });
+                }
 
                 lessonCommitted = true;
 
                 const newLesson = {
-                    id: lessonData.id,
+                    id: result.data.id,
                     title,
                     content,
                     videos,
@@ -6193,6 +6540,8 @@
 
                 if (!Array.isArray(course.lessons)) course.lessons = [];
                 course.lessons.push(newLesson);
+                
+                _activePdfUploads = [];
 
                 closeModal();
                 renderCoursesGrid();
@@ -6200,7 +6549,6 @@
                 if (document.getElementById('adminPage')?.classList.contains('active')) renderAdminPage();
                 showToast(currentLanguage === 'ar' ? 'تم حفظ المحاضرة بنجاح' : 'Lesson saved successfully', 'success');
                 await showCourseDetails(courseId);
-                console.log('[saveLesson] All done successfully.');
             } catch (error) {
                 if (createdLessonId && !lessonCommitted) {
                     try { await rollbackCreatedLesson(createdLessonId, uploadedPaths); } catch(rb) { console.error('Rollback error:', rb); }
