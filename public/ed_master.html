@@ -4677,13 +4677,9 @@
                 if (lesson.videos && lesson.videos.length > 0) {
                     modalContent += `
                         <div style="margin-bottom:20px;">
-                            <h4>${currentLanguage === 'ar' ? 'فيديوهات المحاضرة' : 'Lesson Videos'}</h4>
-                            ${lesson.videos.map(video => `
-                                <div style="margin:10px 0;">
-                                    ${renderVideoEmbed(video)}
-                                </div>
-                            `).join('')}
-                            <button class="btn btn-sm" onclick="trackLessonProgress('${courseId}', '${lessonId}', 'videoWatched', true)">
+                            <h4>${currentLanguage === 'ar' ? 'فيديوهات المحاضرة' : 'Lesson Videos'} (${lesson.videos.length})</h4>
+                            ${lesson.videos.map((video, vidIdx) => renderVideoToggle(video, vidIdx)).join('')}
+                            <button class="btn btn-sm" style="margin-top:10px;" onclick="trackLessonProgress('${courseId}', '${lessonId}', 'videoWatched', true)">
                                 <i class="fas fa-check"></i> ${currentLanguage === 'ar' ? 'تحديد كمشاهدة' : 'Mark as Watched'}
                             </button>
                         </div>
