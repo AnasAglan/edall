@@ -4155,6 +4155,12 @@
                         </div>
                     `;
                 }).join('');
+                
+                // Add infinite scroll sentinel
+                if (!_allCoursesLoaded && currentFilter === 'all') {
+                    grid.innerHTML += '<div id="coursesScrollSentinel" style="grid-column:1/-1;min-height:10px;"></div>';
+                    setTimeout(() => setupInfiniteScroll(), 100);
+                }
             } catch (error) {
                 console.error('Error rendering courses grid:', error);
                 showToast('حدث خطأ في عرض الكورسات', 'error');
