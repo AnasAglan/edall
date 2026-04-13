@@ -2574,18 +2574,21 @@
             if (_dataLoading) return;
             _dataLoading = true;
             try {
-                // Load only latest 5 courses + profiles + roles + notifications (fast initial load)
+                // Load top 5 courses sorted by enrollment + profiles + roles + notifications
                 const [
                     { data: coursesData },
                     { data: profilesData },
                     { data: rolesData },
                     { data: notifsData }
                 ] = await Promise.all([
-                    sb.from('courses').select('*').order('created_at', { ascending: false }).limit(5),
+                    sb.rpc('get_courses_sorted_by_enrollment', { _offset: 0, _limit: 5 }),
                     sb.from('profiles').select('*'),
                     sb.from('user_roles').select('*'),
                     sb.from('notifications').select('*').order('created_at', { ascending: false }).limit(50)
                 ]);
+
+                _coursesOffset = (coursesData || []).length;
+                _allCoursesLoaded = (coursesData || []).length < 5;
 
                 // Build courses WITHOUT lessons (lazy loaded on demand)
                 courses = (coursesData || []).map(c => ({
@@ -2594,7 +2597,8 @@
                     description: c.description,
                     image: c.image_url,
                     createdBy: c.created_by,
-                    lessons: null, // null = not loaded yet
+                    lessons: null,
+                    enrollmentCount: c.enrollment_count || 0,
                     created: new Date(c.created_at).getTime()
                 }));
 
