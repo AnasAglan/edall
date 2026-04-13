@@ -2114,43 +2114,80 @@
         let _searchDebounceTimer = null;
         let _courseLoadPromises = new Map();
         let _modalCloseAction = null;
+        let _coursesOffset = 0;
+        let _allCoursesLoaded = false;
+        let _loadingMoreCourses = false;
+        let _infiniteScrollObserver = null;
+        let _activePdfUploads = []; // track {xhr, path} for cancel
+        let _pdfUploadComplete = true;
 
         // Video embed support for YouTube, Dailymotion
         function getVideoEmbedUrl(url) {
             if (!url) return '';
-            // YouTube
             const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]+)/);
             if (ytMatch) return `https://www.youtube.com/embed/${ytMatch[1]}`;
-            // Dailymotion
             const dmMatch = url.match(/(?:dailymotion\.com\/video\/|dai\.ly\/)([a-zA-Z0-9]+)/);
             if (dmMatch) return `https://www.dailymotion.com/embed/video/${dmMatch[1]}`;
-            // Generic - try as iframe src (but not 4shared)
             return url;
         }
 
-        // Check if URL is from 4shared (not embeddable)
         function is4sharedUrl(url) {
             return url && url.includes('4shared.com');
         }
 
-        // Render video: iframe for embeddable, link for 4shared
-        function renderVideoEmbed(videoUrl) {
+        // Video toggle: each video starts hidden, user clicks to show/hide
+        function renderVideoToggle(videoUrl, index) {
+            const toggleId = `videoToggle_${index}_${Date.now()}`;
+            const containerId = `videoContainer_${index}_${Date.now()}`;
+            
             if (is4sharedUrl(videoUrl)) {
-                return `<div style="padding:15px;background:var(--bg-lighter);border-radius:var(--radius);margin:10px 0;display:flex;align-items:center;gap:12px;">
-                    <i class="fas fa-external-link-alt" style="font-size:1.5rem;color:var(--primary);"></i>
-                    <div style="flex:1;">
-                        <div style="font-weight:600;margin-bottom:4px;">${currentLanguage === 'ar' ? 'فيديو 4shared' : '4shared Video'}</div>
-                        <div style="font-size:0.85rem;color:var(--text-muted);">${currentLanguage === 'ar' ? 'اضغط للفتح في نافذة جديدة' : 'Click to open in new tab'}</div>
+                return `<div style="margin:8px 0;">
+                    <button id="${toggleId}" class="btn btn-sm" style="width:100%;text-align:right;justify-content:flex-start;gap:10px;" onclick="
+                        var container = document.getElementById('${containerId}');
+                        if (container.style.display === 'none') {
+                            container.style.display = 'block';
+                            this.innerHTML = '<i class=\\'fas fa-eye-slash\\'></i> ${currentLanguage === 'ar' ? 'إخفاء الفيديو' : 'Hide Video'} (${index + 1})';
+                        } else {
+                            container.style.display = 'none';
+                            container.innerHTML = '';
+                            this.innerHTML = '<i class=\\'fas fa-play-circle\\'></i> ${currentLanguage === 'ar' ? 'مشاهدة الفيديو' : 'Watch Video'} (${index + 1})';
+                        }
+                    ">
+                        <i class="fas fa-play-circle"></i> ${currentLanguage === 'ar' ? 'مشاهدة الفيديو' : 'Watch Video'} (${index + 1})
+                    </button>
+                    <div id="${containerId}" style="display:none;margin-top:8px;">
+                        <div style="padding:15px;background:var(--bg-lighter);border-radius:var(--radius);display:flex;align-items:center;gap:12px;">
+                            <i class="fas fa-external-link-alt" style="font-size:1.5rem;color:var(--primary);"></i>
+                            <div style="flex:1;">
+                                <div style="font-weight:600;margin-bottom:4px;">${currentLanguage === 'ar' ? 'فيديو 4shared' : '4shared Video'}</div>
+                                <div style="font-size:0.85rem;color:var(--text-muted);">${currentLanguage === 'ar' ? '4shared لا يدعم التضمين المباشر. اضغط لفتح الفيديو في نافذة جديدة.' : '4shared does not support direct embedding. Click to open in a new tab.'}</div>
+                            </div>
+                            <a href="${videoUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-sm" style="text-decoration:none;">
+                                <i class="fas fa-external-link-alt"></i> ${currentLanguage === 'ar' ? 'فتح' : 'Open'}
+                            </a>
+                        </div>
                     </div>
-                    <a href="${videoUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-sm" style="text-decoration:none;">
-                        <i class="fas fa-play"></i> ${currentLanguage === 'ar' ? 'مشاهدة' : 'Watch'}
-                    </a>
                 </div>`;
             }
-            return `<div class="video-container">
-                <iframe width="100%" height="315" src="${getVideoEmbedUrl(videoUrl)}" 
-                    frameborder="0" allowfullscreen style="border-radius:var(--radius);"></iframe>
-            </div>`;
+            
+            const embedUrl = getVideoEmbedUrl(videoUrl);
+            return `<div style="margin:8px 0;">
+                <button id="${toggleId}" class="btn btn-sm" style="width:100%;text-align:right;justify-content:flex-start;gap:10px;" onclick="
+                    var container = document.getElementById('${containerId}');
+                    if (container.style.display === 'none') {
+                        container.style.display = 'block';
+                        container.innerHTML = '<iframe width=\\'100%\\' height=\\'315\\' src=\\'${embedUrl}\\' frameborder=\\'0\\' allowfullscreen style=\\'border-radius:var(--radius);\\'></iframe>';
+                        this.innerHTML = '<i class=\\'fas fa-eye-slash\\'></i> ${currentLanguage === 'ar' ? 'إخفاء الفيديو' : 'Hide Video'} (${index + 1})';
+                    } else {
+                        container.style.display = 'none';
+                        container.innerHTML = '';
+                        this.innerHTML = '<i class=\\'fas fa-play-circle\\'></i> ${currentLanguage === 'ar' ? 'مشاهدة الفيديو' : 'Watch Video'} (${index + 1})';
+                    }
+                ">
+                    <i class="fas fa-play-circle"></i> ${currentLanguage === 'ar' ? 'مشاهدة الفيديو' : 'Watch Video'} (${index + 1})
+                </button>
+                <div id="${containerId}" style="display:none;margin-top:8px;"></div>
+            </div>`; 
         }
 
         // URL Routing
