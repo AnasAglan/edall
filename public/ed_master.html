@@ -4892,6 +4892,13 @@
                     showToast(currentLanguage === 'ar' ? 'المحاضرة غير موجودة' : 'Lesson not found', 'error');
                     return;
                 }
+
+                if (!currentUser) {
+                    showToast(currentLanguage === 'ar' ? 'يرجى تسجيل الدخول أولاً لفتح المحاضرات' : 'Please sign in first to open lessons', 'warning');
+                    closeCourseModal();
+                    showPage('loginPage');
+                    return;
+                }
                 
                 // Check if lesson is locked
                 const lessonIndex = course.lessons.findIndex(l => l.id === lessonId);
@@ -5052,8 +5059,8 @@
         }
 
         function canAccessLesson(courseId, lessonIndex) {
+            if (!currentUser) return false;
             if (lessonIndex === 0) return true;
-            if (!currentUser) return true;
             
             const course = courses.find(c => c.id === courseId);
             if (!course || !course.lessons) return true;
