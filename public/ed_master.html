@@ -5164,11 +5164,11 @@
                         <button class="btn" onclick="saveExam('${courseId}', '${lessonId}')">
                             <i class="fas fa-save"></i> ${currentLanguage === 'ar' ? 'حفظ الامتحان' : 'Save Exam'}
                         </button>
-                        <button class="btn btn-outline" onclick="closeModal()">
+                        <button class="btn btn-outline" onclick="triggerModalClose()">
                             <i class="fas fa-times"></i> ${currentLanguage === 'ar' ? 'إلغاء' : 'Cancel'}
                         </button>
                     </div>
-                `);
+                `, { onClose: cancelLessonCreation });
                 
                 window._examBuilderQuestions = [];
                 addQuestionToBuilder();
