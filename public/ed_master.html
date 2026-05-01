@@ -6613,14 +6613,14 @@
                     const upload = validUploads[i];
                     uploadedPaths.push(upload.filePath);
                     
-                    const { error: fileError } = await sb.from('lesson_files').insert({
+                    const { data: fileRow, error: fileError } = await sb.from('lesson_files').insert({
                         lesson_id: createdLessonId,
                         file_url: upload.publicUrl,
                         file_name: upload.fileName,
                         sort_order: i
-                    });
+                    }).select().single();
                     if (fileError) throw new Error(fileError.message);
-                    lessonFiles.push({ id: null, name: upload.fileName, url: upload.publicUrl });
+                    lessonFiles.push({ id: fileRow?.id || null, name: upload.fileName, url: upload.publicUrl });
                 }
 
                 lessonCommitted = true;
@@ -6638,6 +6638,7 @@
 
                 if (!Array.isArray(course.lessons)) course.lessons = [];
                 course.lessons.push(newLesson);
+                course.lessonCount = course.lessons.length;
                 
                 _activePdfUploads = [];
 
