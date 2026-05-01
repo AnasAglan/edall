@@ -7162,10 +7162,22 @@
                 if (pdfInput) {
                     pdfInput.addEventListener('change', function(e) {
                         const preview = document.getElementById('editLessonPdfPreview');
+                        const progressContainer = document.getElementById('editPdfUploadProgress');
                         preview.innerHTML = '';
-                        Array.from(e.target.files).forEach(f => {
-                            preview.innerHTML += `<div style="padding:5px;color:var(--text-muted);"><i class="fas fa-file-pdf" style="color:var(--danger);"></i> ${f.name}</div>`;
+                        if (progressContainer) progressContainer.innerHTML = '';
+                        const files = Array.from(e.target.files);
+                        files.forEach((f, idx) => {
+                            preview.innerHTML += `<div style="padding:5px;color:var(--text-muted);"><i class="fas fa-file-pdf" style="color:var(--danger);"></i> ${f.name} <span style="font-size:0.8rem;">(${(f.size / 1024 / 1024).toFixed(1)} MB)</span></div>`;
+                            if (progressContainer) progressContainer.innerHTML += `
+                                <div id="pdfProgress_${idx}" style="display:flex;align-items:center;gap:8px;margin:5px 0;">
+                                    <div style="flex:1;background:var(--bg-lighter);border-radius:8px;height:8px;overflow:hidden;">
+                                        <div id="pdfProgressBar_${idx}" style="width:0%;height:100%;background:var(--primary);border-radius:8px;transition:width 0.3s;"></div>
+                                    </div>
+                                    <span id="pdfProgressText_${idx}" style="font-size:0.8rem;color:var(--text-muted);min-width:40px;">0%</span>
+                                    <button onclick="cancelPdfUpload(${idx})" style="background:var(--danger);color:white;border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:0.8rem;display:flex;align-items:center;justify-content:center;" title="${currentLanguage === 'ar' ? 'إلغاء' : 'Cancel'}">✕</button>
+                                </div>`;
                         });
+                        if (files.length > 0) startPdfPreUploads(courseId, files, 'updateLessonBtn');
                     });
                 }
             } catch (error) {
