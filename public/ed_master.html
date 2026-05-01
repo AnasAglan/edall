@@ -6414,29 +6414,52 @@
         }
         
         async function startPdfPreUploads(courseId, files) {
-            _activePdfUploads = [];
+            _activePdfUploads = files.map((file, idx) => ({
+                filePath: null,
+                fileName: file.name,
+                publicUrl: null,
+                cancelled: false,
+                error: false,
+                idx,
+                xhr: null
+            }));
             const tempLessonId = 'temp_' + Date.now();
+            const saveBtn = document.getElementById('saveLessonBtn');
+            if (saveBtn) { saveBtn.disabled = true; saveBtn.style.opacity = '0.5'; }
+            _pdfUploadComplete = false;
             
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
+                const uploadInfo = _activePdfUploads[i];
+                if (!uploadInfo || uploadInfo.cancelled) continue;
+
+                const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+                if (!isPdf) {
+                    uploadInfo.error = true;
+                    const row = document.getElementById(`pdfProgress_${i}`);
+                    if (row) row.innerHTML = `<span style="color:var(--danger);font-size:0.85rem;"><i class="fas fa-times-circle"></i> ${currentLanguage === 'ar' ? 'الملف ليس PDF' : 'Not a PDF file'}</span>`;
+                    showToast(currentLanguage === 'ar' ? `الملف ${file.name} ليس PDF صالحًا` : `${file.name} is not a valid PDF file`, 'error');
+                    continue;
+                }
+
                 if (file.size > 50 * 1024 * 1024) {
+                    uploadInfo.error = true;
+                    const row = document.getElementById(`pdfProgress_${i}`);
+                    if (row) row.innerHTML = `<span style="color:var(--danger);font-size:0.85rem;"><i class="fas fa-times-circle"></i> ${currentLanguage === 'ar' ? 'الحجم أكبر من 50MB' : 'Over 50MB'}</span>`;
                     showToast(currentLanguage === 'ar' ? `حجم الملف ${file.name} أكبر من 50MB` : `${file.name} exceeds 50MB`, 'error');
                     continue;
                 }
                 
                 try {
-                    await ensureFreshSession();
                     const safeFileName = sanitizeStorageFileName(file.name);
                     const filePath = `${courseId}/${tempLessonId}/${Date.now()}_${safeFileName}`;
+                    uploadInfo.filePath = filePath;
                     const encodedPath = filePath.split('/').map(encodeURIComponent).join('/');
                     
-                    const uploadInfo = { filePath, fileName: file.name, publicUrl: null, cancelled: false, idx: i };
-                    _activePdfUploads.push(uploadInfo);
-                    
-                    // Use XHR for progress
                     const { data: sessionData } = await sb.auth.getSession();
                     const token = sessionData?.session?.access_token;
-                    if (!token) { showToast('Session expired', 'error'); return; }
+                    if (!token) throw new Error(currentLanguage === 'ar' ? 'انتهت جلسة تسجيل الدخول' : 'Session expired');
+                    if (uploadInfo.cancelled) continue;
                     
                     const uploadUrl = `${SUPABASE_URL}/storage/v1/object/lesson-pdfs/${encodedPath}`;
                     
@@ -6461,23 +6484,24 @@
                                 uploadInfo.publicUrl = urlData.publicUrl;
                                 const bar = document.getElementById(`pdfProgressBar_${i}`);
                                 const text = document.getElementById(`pdfProgressText_${i}`);
-                                if (bar) bar.style.background = 'var(--success)';
+                                if (bar) { bar.style.width = '100%'; bar.style.background = 'var(--success)'; }
                                 if (text) { text.textContent = '✓'; text.style.color = 'var(--success)'; }
                                 resolve();
                             } else {
-                                let errMsg = 'Upload failed';
-                                try { errMsg = JSON.parse(xhr.responseText).message || errMsg; } catch(e) {}
-                                showToast(`${file.name}: ${errMsg}`, 'error');
+                                let errMsg = currentLanguage === 'ar' ? 'فشل رفع الملف' : 'Upload failed';
+                                try {
+                                    const parsed = JSON.parse(xhr.responseText || '{}');
+                                    errMsg = parsed.message || parsed.error || errMsg;
+                                } catch(e) {}
                                 reject(new Error(errMsg));
                             }
                         };
                         
                         xhr.onerror = function() {
-                            if (!uploadInfo.cancelled) {
-                                showToast(`${file.name}: Network error`, 'error');
-                            }
-                            reject(new Error('Network error'));
+                            if (!uploadInfo.cancelled) reject(new Error(currentLanguage === 'ar' ? 'فشل الاتصال أثناء الرفع' : 'Network error'));
+                            else resolve();
                         };
+                        xhr.onabort = function() { resolve(); };
                         
                         xhr.open('POST', uploadUrl, true);
                         xhr.setRequestHeader('Authorization', `Bearer ${token}`);
@@ -6487,16 +6511,19 @@
                         xhr.send(file);
                     });
                 } catch (e) {
-                    if (!_activePdfUploads[i]?.cancelled) {
+                    if (!uploadInfo.cancelled) {
+                        uploadInfo.error = true;
+                        const row = document.getElementById(`pdfProgress_${i}`);
+                        if (row) row.innerHTML = `<span style="color:var(--danger);font-size:0.85rem;"><i class="fas fa-times-circle"></i> ${e.message}</span>`;
                         console.error('PDF upload error:', e);
+                        showToast(`${file.name}: ${e.message}`, 'error');
                     }
                 }
             }
             
-            // Enable save button when all uploads complete
             _pdfUploadComplete = true;
-            const saveBtn = document.getElementById('saveLessonBtn');
-            if (saveBtn) { saveBtn.disabled = false; saveBtn.style.opacity = '1'; }
+            const remainingSaveBtn = document.getElementById('saveLessonBtn');
+            if (remainingSaveBtn) { remainingSaveBtn.disabled = false; remainingSaveBtn.style.opacity = '1'; }
         }
         
         function cancelPdfUpload(idx) {
