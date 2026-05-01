@@ -7197,6 +7197,10 @@
                 const pdfFiles = Array.from(pdfInput?.files || []);
 
                 if (!title) { showToast('يرجى إدخال عنوان المحاضرة', 'warning'); return; }
+                if (!_pdfUploadComplete) {
+                    showToast(currentLanguage === 'ar' ? 'يرجى انتظار اكتمال رفع الملفات' : 'Please wait for uploads to complete', 'warning');
+                    return;
+                }
 
                 await ensureAuthenticatedSession();
 
@@ -7224,10 +7228,20 @@
                 }
                 console.log('[updateLesson] Step 2 done');
 
-                // Step 3: Upload new PDFs
-                const newFiles = pdfFiles.length > 0
-                    ? await uploadLessonPdfFiles(courseId, lessonId, pdfFiles)
-                    : [];
+                // Step 3: Link newly uploaded PDFs
+                const newFiles = [];
+                const validUploads = _activePdfUploads.filter(u => !u.cancelled && !u.error && u.publicUrl);
+                for (let i = 0; i < validUploads.length; i++) {
+                    const upload = validUploads[i];
+                    const { data: fileRow, error: fileError } = await sb.from('lesson_files').insert({
+                        lesson_id: lessonId,
+                        file_url: upload.publicUrl,
+                        file_name: upload.fileName,
+                        sort_order: (i + ((courses.find(c => c.id === courseId)?.lessons || []).find(l => l.id === lessonId)?.files || []).length)
+                    }).select().single();
+                    if (fileError) throw new Error(fileError.message);
+                    newFiles.push({ id: fileRow?.id || null, name: upload.fileName, url: upload.publicUrl });
+                }
                 if (pdfFiles.length > 0) console.log('[updateLesson] Step 3 done');
 
                 const course = courses.find(c => c.id === courseId);
@@ -7244,6 +7258,7 @@
                 }
 
                 closeModal();
+                _activePdfUploads = [];
                 showToast(currentLanguage === 'ar' ? 'تم تعديل المحاضرة بنجاح' : 'Lesson updated', 'success');
                 await showCourseDetails(courseId);
                 console.log('[updateLesson] All done.');
