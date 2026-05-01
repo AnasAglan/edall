@@ -6415,7 +6415,6 @@
         
         async function startPdfPreUploads(courseId, files) {
             _activePdfUploads = [];
-            let completedCount = 0;
             const tempLessonId = 'temp_' + Date.now();
             
             for (let i = 0; i < files.length; i++) {
@@ -6429,6 +6428,7 @@
                     await ensureFreshSession();
                     const safeFileName = sanitizeStorageFileName(file.name);
                     const filePath = `${courseId}/${tempLessonId}/${Date.now()}_${safeFileName}`;
+                    const encodedPath = filePath.split('/').map(encodeURIComponent).join('/');
                     
                     const uploadInfo = { filePath, fileName: file.name, publicUrl: null, cancelled: false, idx: i };
                     _activePdfUploads.push(uploadInfo);
@@ -6438,7 +6438,7 @@
                     const token = sessionData?.session?.access_token;
                     if (!token) { showToast('Session expired', 'error'); return; }
                     
-                    const uploadUrl = `${SUPABASE_URL}/storage/v1/object/lesson-pdfs/${filePath}`;
+                    const uploadUrl = `${SUPABASE_URL}/storage/v1/object/lesson-pdfs/${encodedPath}`;
                     
                     await new Promise((resolve, reject) => {
                         const xhr = new XMLHttpRequest();
@@ -6481,12 +6481,11 @@
                         
                         xhr.open('POST', uploadUrl, true);
                         xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+                        xhr.setRequestHeader('apikey', SUPABASE_ANON_KEY);
                         xhr.setRequestHeader('Content-Type', file.type || 'application/pdf');
                         xhr.setRequestHeader('x-upsert', 'false');
                         xhr.send(file);
                     });
-                    
-                    completedCount++;
                 } catch (e) {
                     if (!_activePdfUploads[i]?.cancelled) {
                         console.error('PDF upload error:', e);
