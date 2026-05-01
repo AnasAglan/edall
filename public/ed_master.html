@@ -7100,6 +7100,8 @@
                 if (!course || !course.lessons) return;
                 const lesson = course.lessons.find(l => l.id === lessonId);
                 if (!lesson) { showToast('المحاضرة غير موجودة', 'error'); return; }
+                _activePdfUploads = [];
+                _pdfUploadComplete = true;
 
                 showModal(`
                     <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">${currentLanguage === 'ar' ? 'تعديل المحاضرة' : 'Edit Lesson'}</div>
@@ -7137,11 +7139,12 @@
                             <input type="file" id="editLessonPdfFiles" accept=".pdf" multiple style="display:none;">
                         </label>
                         <div id="editLessonPdfPreview" style="margin-top:8px;"></div>
+                        <div id="editPdfUploadProgress" style="margin-top:8px;"></div>
                     </div>
                     ${lesson.files && lesson.files.length > 0 ? `
                         <div style="margin-top:10px;">
                             <strong>${currentLanguage === 'ar' ? 'الملفات الحالية:' : 'Current files:'}</strong>
-                            ${lesson.files.map(f => `<div style="padding:4px;color:var(--text-muted);"><i class="fas fa-file-pdf" style="color:var(--danger);"></i> ${f.name}</div>`).join('')}
+                            ${lesson.files.map((f, idx) => `<div class="list-item" style="margin:6px 0;"><div><i class="fas fa-file-pdf" style="color:var(--danger);"></i> ${f.name}</div><button class="btn btn-sm btn-danger" onclick="removeLessonFile('${courseId}', '${lessonId}', '${f.id || ''}', decodeURIComponent('${encodeURIComponent(f.url || '')}'), ${idx})"><i class="fas fa-times"></i></button></div>`).join('')}
                         </div>
                     ` : ''}
                     
