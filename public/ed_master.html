@@ -2162,6 +2162,47 @@
         let _activePdfUploads = []; // track {xhr, path} for cancel
         let _pdfUploadComplete = true;
 
+        function getCourseLessonCount(course) {
+            if (!course) return 0;
+            if (Array.isArray(course.lessons)) return course.lessons.length;
+            return Number(course.lessonCount || 0);
+        }
+
+        function getStoragePathFromPublicUrl(fileUrl) {
+            try {
+                if (!fileUrl) return null;
+                const marker = '/storage/v1/object/public/lesson-pdfs/';
+                const idx = fileUrl.indexOf(marker);
+                if (idx === -1) return null;
+                return decodeURIComponent(fileUrl.slice(idx + marker.length));
+            } catch (error) {
+                console.error('Error parsing storage path:', error);
+                return null;
+            }
+        }
+
+        async function removeLessonFile(courseId, lessonId, fileId, fileUrl, fileIndex) {
+            try {
+                if (!confirm(currentLanguage === 'ar' ? 'هل تريد حذف ملف PDF؟' : 'Delete this PDF file?')) return;
+                const path = getStoragePathFromPublicUrl(fileUrl);
+                if (fileId) {
+                    const { error } = await sb.from('lesson_files').delete().eq('id', fileId);
+                    if (error) throw error;
+                }
+                if (path) await sb.storage.from('lesson-pdfs').remove([path]);
+                const course = courses.find(c => c.id === courseId);
+                const lesson = course?.lessons?.find(l => l.id === lessonId);
+                if (lesson && Array.isArray(lesson.files)) {
+                    lesson.files = lesson.files.filter((f, i) => f.id ? f.id !== fileId : i !== fileIndex);
+                }
+                showToast(currentLanguage === 'ar' ? 'تم حذف ملف PDF' : 'PDF deleted', 'success');
+                editLesson(courseId, lessonId);
+            } catch (error) {
+                console.error('Error deleting lesson file:', error);
+                showToast((currentLanguage === 'ar' ? 'فشل حذف الملف: ' : 'Failed to delete file: ') + (error.message || ''), 'error');
+            }
+        }
+
         // Video embed support for YouTube, Dailymotion
         function getVideoEmbedUrl(url) {
             if (!url) return '';
