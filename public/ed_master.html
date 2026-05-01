@@ -5427,11 +5427,11 @@
                         <button class="btn btn-danger btn-sm" onclick="deleteExam('${courseId}', '${lessonId}', ${examIndex})">
                             <i class="fas fa-trash"></i> ${currentLanguage === 'ar' ? 'حذف الامتحان' : 'Delete Exam'}
                         </button>
-                        <button class="btn btn-outline" onclick="closeModal()">
+                        <button class="btn btn-outline" onclick="triggerModalClose()">
                             <i class="fas fa-times"></i> ${currentLanguage === 'ar' ? 'إلغاء' : 'Cancel'}
                         </button>
                     </div>
-                `);
+                `, { onClose: cancelLessonCreation });
                 
                 renderExamBuilder();
             } catch (error) {
