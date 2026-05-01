@@ -2011,13 +2011,10 @@
         function uploadSinglePdfWithProgress(file, courseId, lessonId, index, onProgress, onComplete, onError) {
             const safeFileName = sanitizeStorageFileName(file.name);
             const filePath = `${courseId}/${lessonId}/${Date.now()}_${safeFileName}`;
+            const encodedPath = filePath.split('/').map(encodeURIComponent).join('/');
             
             const xhr = new XMLHttpRequest();
-            const uploadUrl = `${SUPABASE_URL}/storage/v1/object/lesson-pdfs/${filePath}`;
-            
-            xhr.open('POST', uploadUrl, true);
-            xhr.setRequestHeader('Authorization', `Bearer ${sb.auth.session?.()?.access_token || ''}`);
-            xhr.setRequestHeader('x-upsert', 'false');
+            const uploadUrl = `${SUPABASE_URL}/storage/v1/object/lesson-pdfs/${encodedPath}`;
             
             // Get fresh token
             sb.auth.getSession().then(({ data }) => {
@@ -2026,6 +2023,7 @@
                 
                 xhr.open('POST', uploadUrl, true);
                 xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+                xhr.setRequestHeader('apikey', SUPABASE_ANON_KEY);
                 xhr.setRequestHeader('Content-Type', file.type || 'application/pdf');
                 xhr.setRequestHeader('x-upsert', 'false');
                 
@@ -2054,6 +2052,41 @@
             return { xhr, filePath };
         }
 
+        async function uploadPdfFileWithXHR(file, filePath, onProgress) {
+            const session = await ensureAuthenticatedSession();
+            const encodedPath = filePath.split('/').map(encodeURIComponent).join('/');
+            const uploadUrl = `${SUPABASE_URL}/storage/v1/object/lesson-pdfs/${encodedPath}`;
+            return new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.upload.onprogress = function(e) {
+                    if (e.lengthComputable && typeof onProgress === 'function') {
+                        onProgress(Math.round((e.loaded / e.total) * 100), xhr);
+                    }
+                };
+                xhr.onload = function() {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        const { data: urlData } = sb.storage.from('lesson-pdfs').getPublicUrl(filePath);
+                        resolve({ publicUrl: urlData.publicUrl, xhr });
+                    } else {
+                        let errMsg = currentLanguage === 'ar' ? 'فشل رفع ملف PDF' : 'PDF upload failed';
+                        try {
+                            const parsed = JSON.parse(xhr.responseText || '{}');
+                            errMsg = parsed.message || parsed.error || errMsg;
+                        } catch(e) {}
+                        reject(new Error(errMsg));
+                    }
+                };
+                xhr.onerror = () => reject(new Error(currentLanguage === 'ar' ? 'فشل الاتصال أثناء رفع PDF' : 'Network error during PDF upload'));
+                xhr.onabort = () => reject(new Error(currentLanguage === 'ar' ? 'تم إلغاء رفع PDF' : 'PDF upload cancelled'));
+                xhr.open('POST', uploadUrl, true);
+                xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
+                xhr.setRequestHeader('apikey', SUPABASE_ANON_KEY);
+                xhr.setRequestHeader('Content-Type', file.type || 'application/pdf');
+                xhr.setRequestHeader('x-upsert', 'false');
+                xhr.send(file);
+            });
+        }
+
         async function uploadLessonPdfFiles(courseId, lessonId, fileList, uploadedPaths = []) {
             const files = Array.from(fileList || []);
             const lessonFiles = [];
@@ -2078,28 +2111,19 @@
                 const safeFileName = sanitizeStorageFileName(file.name);
                 const filePath = `${courseId}/${lessonId}/${Date.now()}_${safeFileName}`;
 
-                await ensureFreshSession();
-                
-                const { error: uploadError } = await sb.storage.from('lesson-pdfs').upload(filePath, file, {
-                    contentType: file.type || 'application/pdf',
-                    upsert: false
-                });
-
-                if (uploadError) throw new Error(uploadError.message);
-
+                const { publicUrl } = await uploadPdfFileWithXHR(file, filePath);
                 uploadedPaths.push(filePath);
-                const { data: urlData } = sb.storage.from('lesson-pdfs').getPublicUrl(filePath);
 
-                const { error: fileError } = await sb.from('lesson_files').insert({
+                const { data: fileRow, error: fileError } = await sb.from('lesson_files').insert({
                     lesson_id: lessonId,
-                    file_url: urlData.publicUrl,
+                    file_url: publicUrl,
                     file_name: file.name,
                     sort_order: i
-                });
+                }).select().single();
 
                 if (fileError) throw new Error(fileError.message);
 
-                lessonFiles.push({ id: null, name: file.name, url: urlData.publicUrl });
+                lessonFiles.push({ id: fileRow?.id || null, name: file.name, url: publicUrl });
             }
 
             return lessonFiles;
@@ -2161,6 +2185,47 @@
         let _infiniteScrollObserver = null;
         let _activePdfUploads = []; // track {xhr, path} for cancel
         let _pdfUploadComplete = true;
+
+        function getCourseLessonCount(course) {
+            if (!course) return 0;
+            if (Array.isArray(course.lessons)) return course.lessons.length;
+            return Number(course.lessonCount || 0);
+        }
+
+        function getStoragePathFromPublicUrl(fileUrl) {
+            try {
+                if (!fileUrl) return null;
+                const marker = '/storage/v1/object/public/lesson-pdfs/';
+                const idx = fileUrl.indexOf(marker);
+                if (idx === -1) return null;
+                return decodeURIComponent(fileUrl.slice(idx + marker.length));
+            } catch (error) {
+                console.error('Error parsing storage path:', error);
+                return null;
+            }
+        }
+
+        async function removeLessonFile(courseId, lessonId, fileId, fileUrl, fileIndex) {
+            try {
+                if (!confirm(currentLanguage === 'ar' ? 'هل تريد حذف ملف PDF؟' : 'Delete this PDF file?')) return;
+                const path = getStoragePathFromPublicUrl(fileUrl);
+                if (fileId) {
+                    const { error } = await sb.from('lesson_files').delete().eq('id', fileId);
+                    if (error) throw error;
+                }
+                if (path) await sb.storage.from('lesson-pdfs').remove([path]);
+                const course = courses.find(c => c.id === courseId);
+                const lesson = course?.lessons?.find(l => l.id === lessonId);
+                if (lesson && Array.isArray(lesson.files)) {
+                    lesson.files = lesson.files.filter((f, i) => f.id ? f.id !== fileId : i !== fileIndex);
+                }
+                showToast(currentLanguage === 'ar' ? 'تم حذف ملف PDF' : 'PDF deleted', 'success');
+                editLesson(courseId, lessonId);
+            } catch (error) {
+                console.error('Error deleting lesson file:', error);
+                showToast((currentLanguage === 'ar' ? 'فشل حذف الملف: ' : 'Failed to delete file: ') + (error.message || ''), 'error');
+            }
+        }
 
         // Video embed support for YouTube, Dailymotion
         function getVideoEmbedUrl(url) {
@@ -2278,6 +2343,12 @@
                 setTimeout(() => showCourseDetails(courseId), 100);
                 return;
             }
+            if (page === 'teacher') {
+                const teacherId = params.get('id');
+                showPage('mainPage', true);
+                if (teacherId) setTimeout(() => showTeacherProfile(teacherId, true), 100);
+                return;
+            }
             
             const targetPage = routeToPage[page || ''] || 'mainPage';
             showPage(targetPage, true);
@@ -2365,6 +2436,13 @@
         };
 
         window.closeCourseModal = function() {
+            closeModal();
+            const newUrl = window.location.pathname;
+            history.replaceState({ pageId: 'mainPage' }, '', newUrl);
+            showPage('mainPage', true);
+        };
+
+        window.closeTeacherModal = function() {
             closeModal();
             const newUrl = window.location.pathname;
             history.replaceState({ pageId: 'mainPage' }, '', newUrl);
@@ -2598,6 +2676,7 @@
                     createdBy: c.created_by,
                     lessons: null,
                     enrollmentCount: c.enrollment_count || 0,
+                    lessonCount: c.lesson_count || 0,
                     created: new Date(c.created_at).getTime()
                 }));
 
@@ -2858,7 +2937,7 @@
                 return (data || []).map(c => ({
                     id: c.id, title: c.title, description: c.description,
                     image: c.image_url, createdBy: c.created_by,
-                    lessons: null, created: new Date(c.created_at).getTime()
+                    lessons: null, lessonCount: c.lesson_count || 0, created: new Date(c.created_at).getTime()
                 }));
             } catch (e) {
                 console.error('Search error:', e);
@@ -2893,6 +2972,7 @@
                     id: c.id, title: c.title, description: c.description,
                     image: c.image_url, createdBy: c.created_by,
                     lessons: null, enrollmentCount: c.enrollment_count || 0,
+                    lessonCount: c.lesson_count || 0,
                     created: new Date(c.created_at).getTime()
                 }));
                 
@@ -4103,7 +4183,7 @@
                             `}
                             <div class="card-header">
                                 <div class="card-title">${course.title}</div>
-                                <div class="card-badge">${course.lessons ? course.lessons.length : 0} محاضرة</div>
+                                <div class="card-badge">${getCourseLessonCount(course)} محاضرة</div>
                             </div>
                             <div class="card-desc">${course.description || 'لا يوجد وصف'}</div>
                             ${(() => {
@@ -4222,7 +4302,7 @@
                             `}
                             <div class="card-header">
                                 <div class="card-title">${course.title}</div>
-                                <div class="card-badge">${course.lessons ? course.lessons.length : 0} محاضرة</div>
+                                <div class="card-badge">${getCourseLessonCount(course)} محاضرة</div>
                             </div>
                             <div class="card-desc">${course.description || 'لا يوجد وصف'}</div>
                             <div class="progress-bar">
@@ -4304,7 +4384,7 @@
                             `}
                             <div class="card-header">
                                 <div class="card-title">${course.title}</div>
-                                <div class="card-badge">${course.lessons ? course.lessons.length : 0} محاضرة</div>
+                                <div class="card-badge">${getCourseLessonCount(course)} محاضرة</div>
                             </div>
                             <div class="card-desc">${course.description || 'لا يوجد وصف'}</div>
                             <div class="card-footer">
@@ -4364,7 +4444,7 @@
                             `}
                             <div class="card-header">
                                 <div class="card-title">${course.title}</div>
-                                <div class="card-badge">${course.lessons ? course.lessons.length : 0} محاضرة</div>
+                                <div class="card-badge">${getCourseLessonCount(course)} محاضرة</div>
                             </div>
                             <div class="card-desc">${course.description || 'لا يوجد وصف'}</div>
                             <div style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 10px;">
@@ -4704,6 +4784,7 @@
                 
                 const isEnrolled = isUserEnrolled(courseId);
                 const completionStatus = getCourseCompletionStatus(courseId);
+                const canEditCourse = canUserEditCourse(course);
                 
                 const teacher = users.find(u => u.id === course.createdBy);
                 const teacherLink = teacher ? `<div style="color:var(--text-muted);font-size:0.9rem;margin-bottom:12px;cursor:pointer;" onclick="closeModal(); showTeacherProfile('${course.createdBy}')"><i class="fas fa-chalkboard-teacher"></i> ${currentLanguage === 'ar' ? 'المدرس:' : 'Teacher:'} <span style="color:var(--primary);text-decoration:underline;">${teacher.name}</span></div>` : '';
@@ -4739,7 +4820,18 @@
                         <h4>${currentLanguage === 'ar' ? 'المحاضرات' : 'Lessons'}</h4>
                 `;
                 
-                if (!course.lessons || course.lessons.length === 0) {
+                if (!currentUser) {
+                    modalContent += `
+                        <div style="text-align:center;color:var(--text-muted);padding:24px;background:var(--card-light);border-radius:var(--radius);">
+                            <i class="fas fa-lock" style="font-size:2rem;margin-bottom:10px;color:var(--primary);"></i>
+                            <h4>${currentLanguage === 'ar' ? 'سجّل الدخول لفتح المحاضرات' : 'Sign in to open lessons'}</h4>
+                            <p>${currentLanguage === 'ar' ? 'يمكنك رؤية تفاصيل الكورس، لكن فتح المحاضرات يحتاج إلى حساب.' : 'You can view course details, but opening lessons requires an account.'}</p>
+                            <button class="btn" onclick="closeCourseModal(); showPage('loginPage')" style="margin-top:12px;">
+                                <i class="fas fa-sign-in-alt"></i> ${currentLanguage === 'ar' ? 'تسجيل الدخول' : 'Sign in'}
+                            </button>
+                        </div>
+                    `;
+                } else if (!course.lessons || course.lessons.length === 0) {
                     modalContent += `
                         <div style="text-align:center;color:var(--text-muted);padding:20px;">
                             <i class="fas fa-book-open" style="font-size:2rem;margin-bottom:10px;"></i>
@@ -4751,7 +4843,7 @@
                         const lessonTracking = completionStatus.details[lesson.id] || {};
                         const lessonProgress = calculateLessonProgress(lessonTracking);
                         const isLocked = !canAccessLesson(courseId, index);
-                        const canEdit = canUserEditCourse(course);
+                        const canEdit = canEditCourse;
                         
                         modalContent += `
                             <div class="list-item" style="margin:10px 0;${isLocked ? 'opacity:0.6;' : ''}">
@@ -4822,6 +4914,13 @@
                 
                 if (!course || !lesson) {
                     showToast(currentLanguage === 'ar' ? 'المحاضرة غير موجودة' : 'Lesson not found', 'error');
+                    return;
+                }
+
+                if (!currentUser) {
+                    showToast(currentLanguage === 'ar' ? 'يرجى تسجيل الدخول أولاً لفتح المحاضرات' : 'Please sign in first to open lessons', 'warning');
+                    closeCourseModal();
+                    showPage('loginPage');
                     return;
                 }
                 
@@ -4984,8 +5083,8 @@
         }
 
         function canAccessLesson(courseId, lessonIndex) {
+            if (!currentUser) return false;
             if (lessonIndex === 0) return true;
-            if (!currentUser) return true;
             
             const course = courses.find(c => c.id === courseId);
             if (!course || !course.lessons) return true;
@@ -5065,11 +5164,11 @@
                         <button class="btn" onclick="saveExam('${courseId}', '${lessonId}')">
                             <i class="fas fa-save"></i> ${currentLanguage === 'ar' ? 'حفظ الامتحان' : 'Save Exam'}
                         </button>
-                        <button class="btn btn-outline" onclick="closeModal()">
+                        <button class="btn btn-outline" onclick="triggerModalClose()">
                             <i class="fas fa-times"></i> ${currentLanguage === 'ar' ? 'إلغاء' : 'Cancel'}
                         </button>
                     </div>
-                `);
+                `, { onClose: cancelLessonCreation });
                 
                 window._examBuilderQuestions = [];
                 addQuestionToBuilder();
@@ -5328,11 +5427,11 @@
                         <button class="btn btn-danger btn-sm" onclick="deleteExam('${courseId}', '${lessonId}', ${examIndex})">
                             <i class="fas fa-trash"></i> ${currentLanguage === 'ar' ? 'حذف الامتحان' : 'Delete Exam'}
                         </button>
-                        <button class="btn btn-outline" onclick="closeModal()">
+                        <button class="btn btn-outline" onclick="triggerModalClose()">
                             <i class="fas fa-times"></i> ${currentLanguage === 'ar' ? 'إلغاء' : 'Cancel'}
                         </button>
                     </div>
-                `);
+                `, { onClose: cancelLessonCreation });
                 
                 renderExamBuilder();
             } catch (error) {
@@ -6001,7 +6100,7 @@
                         <div>
                             <strong>${course.title}</strong>
                             <div style="color: var(--text-muted); font-size: 0.9rem;">
-                                ${course.lessons ? course.lessons.length : 0} ${currentLanguage === 'ar' ? 'محاضرة' : 'lessons'} | ${getEnrolledStudentsCount(course.id)} ${currentLanguage === 'ar' ? 'طالب' : 'students'}
+                                ${getCourseLessonCount(course)} ${currentLanguage === 'ar' ? 'محاضرة' : 'lessons'} | ${getEnrolledStudentsCount(course.id)} ${currentLanguage === 'ar' ? 'طالب' : 'students'}
                             </div>
                         </div>
                         <div style="display: flex; gap: 8px; flex-wrap:wrap;">
@@ -6314,32 +6413,55 @@
             }
         }
         
-        async function startPdfPreUploads(courseId, files) {
-            _activePdfUploads = [];
-            let completedCount = 0;
+        async function startPdfPreUploads(courseId, files, buttonId = 'saveLessonBtn') {
+            _activePdfUploads = files.map((file, idx) => ({
+                filePath: null,
+                fileName: file.name,
+                publicUrl: null,
+                cancelled: false,
+                error: false,
+                idx,
+                xhr: null
+            }));
             const tempLessonId = 'temp_' + Date.now();
+            const saveBtn = document.getElementById(buttonId);
+            if (saveBtn) { saveBtn.disabled = true; saveBtn.style.opacity = '0.5'; }
+            _pdfUploadComplete = false;
             
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
+                const uploadInfo = _activePdfUploads[i];
+                if (!uploadInfo || uploadInfo.cancelled) continue;
+
+                const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+                if (!isPdf) {
+                    uploadInfo.error = true;
+                    const row = document.getElementById(`pdfProgress_${i}`);
+                    if (row) row.innerHTML = `<span style="color:var(--danger);font-size:0.85rem;"><i class="fas fa-times-circle"></i> ${currentLanguage === 'ar' ? 'الملف ليس PDF' : 'Not a PDF file'}</span>`;
+                    showToast(currentLanguage === 'ar' ? `الملف ${file.name} ليس PDF صالحًا` : `${file.name} is not a valid PDF file`, 'error');
+                    continue;
+                }
+
                 if (file.size > 50 * 1024 * 1024) {
+                    uploadInfo.error = true;
+                    const row = document.getElementById(`pdfProgress_${i}`);
+                    if (row) row.innerHTML = `<span style="color:var(--danger);font-size:0.85rem;"><i class="fas fa-times-circle"></i> ${currentLanguage === 'ar' ? 'الحجم أكبر من 50MB' : 'Over 50MB'}</span>`;
                     showToast(currentLanguage === 'ar' ? `حجم الملف ${file.name} أكبر من 50MB` : `${file.name} exceeds 50MB`, 'error');
                     continue;
                 }
                 
                 try {
-                    await ensureFreshSession();
                     const safeFileName = sanitizeStorageFileName(file.name);
                     const filePath = `${courseId}/${tempLessonId}/${Date.now()}_${safeFileName}`;
+                    uploadInfo.filePath = filePath;
+                    const encodedPath = filePath.split('/').map(encodeURIComponent).join('/');
                     
-                    const uploadInfo = { filePath, fileName: file.name, publicUrl: null, cancelled: false, idx: i };
-                    _activePdfUploads.push(uploadInfo);
-                    
-                    // Use XHR for progress
                     const { data: sessionData } = await sb.auth.getSession();
                     const token = sessionData?.session?.access_token;
-                    if (!token) { showToast('Session expired', 'error'); return; }
+                    if (!token) throw new Error(currentLanguage === 'ar' ? 'انتهت جلسة تسجيل الدخول' : 'Session expired');
+                    if (uploadInfo.cancelled) continue;
                     
-                    const uploadUrl = `${SUPABASE_URL}/storage/v1/object/lesson-pdfs/${filePath}`;
+                    const uploadUrl = `${SUPABASE_URL}/storage/v1/object/lesson-pdfs/${encodedPath}`;
                     
                     await new Promise((resolve, reject) => {
                         const xhr = new XMLHttpRequest();
@@ -6362,43 +6484,46 @@
                                 uploadInfo.publicUrl = urlData.publicUrl;
                                 const bar = document.getElementById(`pdfProgressBar_${i}`);
                                 const text = document.getElementById(`pdfProgressText_${i}`);
-                                if (bar) bar.style.background = 'var(--success)';
+                                if (bar) { bar.style.width = '100%'; bar.style.background = 'var(--success)'; }
                                 if (text) { text.textContent = '✓'; text.style.color = 'var(--success)'; }
                                 resolve();
                             } else {
-                                let errMsg = 'Upload failed';
-                                try { errMsg = JSON.parse(xhr.responseText).message || errMsg; } catch(e) {}
-                                showToast(`${file.name}: ${errMsg}`, 'error');
+                                let errMsg = currentLanguage === 'ar' ? 'فشل رفع الملف' : 'Upload failed';
+                                try {
+                                    const parsed = JSON.parse(xhr.responseText || '{}');
+                                    errMsg = parsed.message || parsed.error || errMsg;
+                                } catch(e) {}
                                 reject(new Error(errMsg));
                             }
                         };
                         
                         xhr.onerror = function() {
-                            if (!uploadInfo.cancelled) {
-                                showToast(`${file.name}: Network error`, 'error');
-                            }
-                            reject(new Error('Network error'));
+                            if (!uploadInfo.cancelled) reject(new Error(currentLanguage === 'ar' ? 'فشل الاتصال أثناء الرفع' : 'Network error'));
+                            else resolve();
                         };
+                        xhr.onabort = function() { resolve(); };
                         
                         xhr.open('POST', uploadUrl, true);
                         xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+                        xhr.setRequestHeader('apikey', SUPABASE_ANON_KEY);
                         xhr.setRequestHeader('Content-Type', file.type || 'application/pdf');
                         xhr.setRequestHeader('x-upsert', 'false');
                         xhr.send(file);
                     });
-                    
-                    completedCount++;
                 } catch (e) {
-                    if (!_activePdfUploads[i]?.cancelled) {
+                    if (!uploadInfo.cancelled) {
+                        uploadInfo.error = true;
+                        const row = document.getElementById(`pdfProgress_${i}`);
+                        if (row) row.innerHTML = `<span style="color:var(--danger);font-size:0.85rem;"><i class="fas fa-times-circle"></i> ${e.message}</span>`;
                         console.error('PDF upload error:', e);
+                        showToast(`${file.name}: ${e.message}`, 'error');
                     }
                 }
             }
             
-            // Enable save button when all uploads complete
             _pdfUploadComplete = true;
-            const saveBtn = document.getElementById('saveLessonBtn');
-            if (saveBtn) { saveBtn.disabled = false; saveBtn.style.opacity = '1'; }
+            const remainingSaveBtn = document.getElementById(buttonId);
+            if (remainingSaveBtn) { remainingSaveBtn.disabled = false; remainingSaveBtn.style.opacity = '1'; }
         }
         
         function cancelPdfUpload(idx) {
@@ -6515,14 +6640,14 @@
                     const upload = validUploads[i];
                     uploadedPaths.push(upload.filePath);
                     
-                    const { error: fileError } = await sb.from('lesson_files').insert({
+                    const { data: fileRow, error: fileError } = await sb.from('lesson_files').insert({
                         lesson_id: createdLessonId,
                         file_url: upload.publicUrl,
                         file_name: upload.fileName,
                         sort_order: i
-                    });
+                    }).select().single();
                     if (fileError) throw new Error(fileError.message);
-                    lessonFiles.push({ id: null, name: upload.fileName, url: upload.publicUrl });
+                    lessonFiles.push({ id: fileRow?.id || null, name: upload.fileName, url: upload.publicUrl });
                 }
 
                 lessonCommitted = true;
@@ -6540,6 +6665,7 @@
 
                 if (!Array.isArray(course.lessons)) course.lessons = [];
                 course.lessons.push(newLesson);
+                course.lessonCount = course.lessons.length;
                 
                 _activePdfUploads = [];
 
@@ -6903,13 +7029,14 @@
             }
         }
 
-        function showTeacherProfile(teacherId) {
+        function showTeacherProfile(teacherId, skipPushState) {
             try {
                 const teacher = users.find(u => u.id === teacherId);
                 if (!teacher) {
                     showToast(currentLanguage === 'ar' ? 'المدرس غير موجود' : 'Teacher not found', 'error');
                     return;
                 }
+                if (!skipPushState) updateURL('mainPage', { page: 'teacher', id: teacherId });
                 
                 const teacherCourses = courses.filter(c => c.createdBy === teacherId);
                 
@@ -6939,7 +7066,7 @@
                         <div class="list-item" style="margin:8px 0;">
                             <div>
                                 <strong>${course.title}</strong>
-                                <div style="color:var(--text-muted);font-size:0.9rem;">${course.lessons ? course.lessons.length : 0} ${currentLanguage === 'ar' ? 'محاضرة' : 'lessons'}</div>
+                                <div style="color:var(--text-muted);font-size:0.9rem;">${getCourseLessonCount(course)} ${currentLanguage === 'ar' ? 'محاضرة' : 'lessons'}</div>
                             </div>
                             <button class="btn btn-sm" onclick="closeModal(); showCourseDetails('${course.id}');">
                                 <i class="fas fa-eye"></i> ${currentLanguage === 'ar' ? 'عرض' : 'View'}
@@ -6952,13 +7079,13 @@
                 
                 html += `
                     <div style="display:flex;gap:10px;margin-top:20px;">
-                        <button class="btn btn-outline" onclick="closeModal()">
+                        <button class="btn btn-outline" onclick="closeTeacherModal()">
                             <i class="fas fa-times"></i> ${currentLanguage === 'ar' ? 'إغلاق' : 'Close'}
                         </button>
                     </div>
                 `;
                 
-                showModal(html);
+                showModal(html, { onClose: closeTeacherModal });
             } catch (error) {
                 console.error('Error showing teacher profile:', error);
                 showToast('حدث خطأ', 'error');
@@ -6973,6 +7100,8 @@
                 if (!course || !course.lessons) return;
                 const lesson = course.lessons.find(l => l.id === lessonId);
                 if (!lesson) { showToast('المحاضرة غير موجودة', 'error'); return; }
+                _activePdfUploads = [];
+                _pdfUploadComplete = true;
 
                 showModal(`
                     <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">${currentLanguage === 'ar' ? 'تعديل المحاضرة' : 'Edit Lesson'}</div>
@@ -7010,11 +7139,12 @@
                             <input type="file" id="editLessonPdfFiles" accept=".pdf" multiple style="display:none;">
                         </label>
                         <div id="editLessonPdfPreview" style="margin-top:8px;"></div>
+                        <div id="editPdfUploadProgress" style="margin-top:8px;"></div>
                     </div>
                     ${lesson.files && lesson.files.length > 0 ? `
                         <div style="margin-top:10px;">
                             <strong>${currentLanguage === 'ar' ? 'الملفات الحالية:' : 'Current files:'}</strong>
-                            ${lesson.files.map(f => `<div style="padding:4px;color:var(--text-muted);"><i class="fas fa-file-pdf" style="color:var(--danger);"></i> ${f.name}</div>`).join('')}
+                            ${lesson.files.map((f, idx) => `<div class="list-item" style="margin:6px 0;"><div><i class="fas fa-file-pdf" style="color:var(--danger);"></i> ${f.name}</div><button class="btn btn-sm btn-danger" onclick="removeLessonFile('${courseId}', '${lessonId}', '${f.id || ''}', decodeURIComponent('${encodeURIComponent(f.url || '')}'), ${idx})"><i class="fas fa-times"></i></button></div>`).join('')}
                         </div>
                     ` : ''}
                     
@@ -7032,10 +7162,22 @@
                 if (pdfInput) {
                     pdfInput.addEventListener('change', function(e) {
                         const preview = document.getElementById('editLessonPdfPreview');
+                        const progressContainer = document.getElementById('editPdfUploadProgress');
                         preview.innerHTML = '';
-                        Array.from(e.target.files).forEach(f => {
-                            preview.innerHTML += `<div style="padding:5px;color:var(--text-muted);"><i class="fas fa-file-pdf" style="color:var(--danger);"></i> ${f.name}</div>`;
+                        if (progressContainer) progressContainer.innerHTML = '';
+                        const files = Array.from(e.target.files);
+                        files.forEach((f, idx) => {
+                            preview.innerHTML += `<div style="padding:5px;color:var(--text-muted);"><i class="fas fa-file-pdf" style="color:var(--danger);"></i> ${f.name} <span style="font-size:0.8rem;">(${(f.size / 1024 / 1024).toFixed(1)} MB)</span></div>`;
+                            if (progressContainer) progressContainer.innerHTML += `
+                                <div id="pdfProgress_${idx}" style="display:flex;align-items:center;gap:8px;margin:5px 0;">
+                                    <div style="flex:1;background:var(--bg-lighter);border-radius:8px;height:8px;overflow:hidden;">
+                                        <div id="pdfProgressBar_${idx}" style="width:0%;height:100%;background:var(--primary);border-radius:8px;transition:width 0.3s;"></div>
+                                    </div>
+                                    <span id="pdfProgressText_${idx}" style="font-size:0.8rem;color:var(--text-muted);min-width:40px;">0%</span>
+                                    <button onclick="cancelPdfUpload(${idx})" style="background:var(--danger);color:white;border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:0.8rem;display:flex;align-items:center;justify-content:center;" title="${currentLanguage === 'ar' ? 'إلغاء' : 'Cancel'}">✕</button>
+                                </div>`;
                         });
+                        if (files.length > 0) startPdfPreUploads(courseId, files, 'updateLessonBtn');
                     });
                 }
             } catch (error) {
@@ -7055,6 +7197,10 @@
                 const pdfFiles = Array.from(pdfInput?.files || []);
 
                 if (!title) { showToast('يرجى إدخال عنوان المحاضرة', 'warning'); return; }
+                if (!_pdfUploadComplete) {
+                    showToast(currentLanguage === 'ar' ? 'يرجى انتظار اكتمال رفع الملفات' : 'Please wait for uploads to complete', 'warning');
+                    return;
+                }
 
                 await ensureAuthenticatedSession();
 
@@ -7082,10 +7228,20 @@
                 }
                 console.log('[updateLesson] Step 2 done');
 
-                // Step 3: Upload new PDFs
-                const newFiles = pdfFiles.length > 0
-                    ? await uploadLessonPdfFiles(courseId, lessonId, pdfFiles)
-                    : [];
+                // Step 3: Link newly uploaded PDFs
+                const newFiles = [];
+                const validUploads = _activePdfUploads.filter(u => !u.cancelled && !u.error && u.publicUrl);
+                for (let i = 0; i < validUploads.length; i++) {
+                    const upload = validUploads[i];
+                    const { data: fileRow, error: fileError } = await sb.from('lesson_files').insert({
+                        lesson_id: lessonId,
+                        file_url: upload.publicUrl,
+                        file_name: upload.fileName,
+                        sort_order: (i + ((courses.find(c => c.id === courseId)?.lessons || []).find(l => l.id === lessonId)?.files || []).length)
+                    }).select().single();
+                    if (fileError) throw new Error(fileError.message);
+                    newFiles.push({ id: fileRow?.id || null, name: upload.fileName, url: upload.publicUrl });
+                }
                 if (pdfFiles.length > 0) console.log('[updateLesson] Step 3 done');
 
                 const course = courses.find(c => c.id === courseId);
@@ -7102,6 +7258,7 @@
                 }
 
                 closeModal();
+                _activePdfUploads = [];
                 showToast(currentLanguage === 'ar' ? 'تم تعديل المحاضرة بنجاح' : 'Lesson updated', 'success');
                 await showCourseDetails(courseId);
                 console.log('[updateLesson] All done.');

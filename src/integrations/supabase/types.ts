@@ -457,6 +457,7 @@ export type Database = {
           enrollment_count: number
           id: string
           image_url: string
+          lesson_count: number
           title: string
           updated_at: string
         }[]
