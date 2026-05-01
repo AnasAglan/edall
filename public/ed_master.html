@@ -4760,6 +4760,7 @@
                 
                 const isEnrolled = isUserEnrolled(courseId);
                 const completionStatus = getCourseCompletionStatus(courseId);
+                const canEditCourse = canUserEditCourse(course);
                 
                 const teacher = users.find(u => u.id === course.createdBy);
                 const teacherLink = teacher ? `<div style="color:var(--text-muted);font-size:0.9rem;margin-bottom:12px;cursor:pointer;" onclick="closeModal(); showTeacherProfile('${course.createdBy}')"><i class="fas fa-chalkboard-teacher"></i> ${currentLanguage === 'ar' ? 'المدرس:' : 'Teacher:'} <span style="color:var(--primary);text-decoration:underline;">${teacher.name}</span></div>` : '';
@@ -4795,7 +4796,18 @@
                         <h4>${currentLanguage === 'ar' ? 'المحاضرات' : 'Lessons'}</h4>
                 `;
                 
-                if (!course.lessons || course.lessons.length === 0) {
+                if (!currentUser) {
+                    modalContent += `
+                        <div style="text-align:center;color:var(--text-muted);padding:24px;background:var(--card-light);border-radius:var(--radius);">
+                            <i class="fas fa-lock" style="font-size:2rem;margin-bottom:10px;color:var(--primary);"></i>
+                            <h4>${currentLanguage === 'ar' ? 'سجّل الدخول لفتح المحاضرات' : 'Sign in to open lessons'}</h4>
+                            <p>${currentLanguage === 'ar' ? 'يمكنك رؤية تفاصيل الكورس، لكن فتح المحاضرات يحتاج إلى حساب.' : 'You can view course details, but opening lessons requires an account.'}</p>
+                            <button class="btn" onclick="closeCourseModal(); showPage('loginPage')" style="margin-top:12px;">
+                                <i class="fas fa-sign-in-alt"></i> ${currentLanguage === 'ar' ? 'تسجيل الدخول' : 'Sign in'}
+                            </button>
+                        </div>
+                    `;
+                } else if (!course.lessons || course.lessons.length === 0) {
                     modalContent += `
                         <div style="text-align:center;color:var(--text-muted);padding:20px;">
                             <i class="fas fa-book-open" style="font-size:2rem;margin-bottom:10px;"></i>
@@ -4807,7 +4819,7 @@
                         const lessonTracking = completionStatus.details[lesson.id] || {};
                         const lessonProgress = calculateLessonProgress(lessonTracking);
                         const isLocked = !canAccessLesson(courseId, index);
-                        const canEdit = canUserEditCourse(course);
+                        const canEdit = canEditCourse;
                         
                         modalContent += `
                             <div class="list-item" style="margin:10px 0;${isLocked ? 'opacity:0.6;' : ''}">
