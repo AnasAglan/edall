@@ -2114,16 +2114,16 @@
                 const { publicUrl } = await uploadPdfFileWithXHR(file, filePath);
                 uploadedPaths.push(filePath);
 
-                const { error: fileError } = await sb.from('lesson_files').insert({
+                const { data: fileRow, error: fileError } = await sb.from('lesson_files').insert({
                     lesson_id: lessonId,
                     file_url: publicUrl,
                     file_name: file.name,
                     sort_order: i
-                });
+                }).select().single();
 
                 if (fileError) throw new Error(fileError.message);
 
-                lessonFiles.push({ id: null, name: file.name, url: publicUrl });
+                lessonFiles.push({ id: fileRow?.id || null, name: file.name, url: publicUrl });
             }
 
             return lessonFiles;
