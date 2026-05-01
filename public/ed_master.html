@@ -6413,7 +6413,7 @@
             }
         }
         
-        async function startPdfPreUploads(courseId, files) {
+        async function startPdfPreUploads(courseId, files, buttonId = 'saveLessonBtn') {
             _activePdfUploads = files.map((file, idx) => ({
                 filePath: null,
                 fileName: file.name,
@@ -6424,7 +6424,7 @@
                 xhr: null
             }));
             const tempLessonId = 'temp_' + Date.now();
-            const saveBtn = document.getElementById('saveLessonBtn');
+            const saveBtn = document.getElementById(buttonId);
             if (saveBtn) { saveBtn.disabled = true; saveBtn.style.opacity = '0.5'; }
             _pdfUploadComplete = false;
             
@@ -6522,7 +6522,7 @@
             }
             
             _pdfUploadComplete = true;
-            const remainingSaveBtn = document.getElementById('saveLessonBtn');
+            const remainingSaveBtn = document.getElementById(buttonId);
             if (remainingSaveBtn) { remainingSaveBtn.disabled = false; remainingSaveBtn.style.opacity = '1'; }
         }
         
