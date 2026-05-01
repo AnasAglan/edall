@@ -2011,13 +2011,10 @@
         function uploadSinglePdfWithProgress(file, courseId, lessonId, index, onProgress, onComplete, onError) {
             const safeFileName = sanitizeStorageFileName(file.name);
             const filePath = `${courseId}/${lessonId}/${Date.now()}_${safeFileName}`;
+            const encodedPath = filePath.split('/').map(encodeURIComponent).join('/');
             
             const xhr = new XMLHttpRequest();
-            const uploadUrl = `${SUPABASE_URL}/storage/v1/object/lesson-pdfs/${filePath}`;
-            
-            xhr.open('POST', uploadUrl, true);
-            xhr.setRequestHeader('Authorization', `Bearer ${sb.auth.session?.()?.access_token || ''}`);
-            xhr.setRequestHeader('x-upsert', 'false');
+            const uploadUrl = `${SUPABASE_URL}/storage/v1/object/lesson-pdfs/${encodedPath}`;
             
             // Get fresh token
             sb.auth.getSession().then(({ data }) => {
@@ -2026,6 +2023,7 @@
                 
                 xhr.open('POST', uploadUrl, true);
                 xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+                xhr.setRequestHeader('apikey', SUPABASE_ANON_KEY);
                 xhr.setRequestHeader('Content-Type', file.type || 'application/pdf');
                 xhr.setRequestHeader('x-upsert', 'false');
                 
@@ -2054,6 +2052,41 @@
             return { xhr, filePath };
         }
 
+        async function uploadPdfFileWithXHR(file, filePath, onProgress) {
+            const session = await ensureAuthenticatedSession();
+            const encodedPath = filePath.split('/').map(encodeURIComponent).join('/');
+            const uploadUrl = `${SUPABASE_URL}/storage/v1/object/lesson-pdfs/${encodedPath}`;
+            return new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.upload.onprogress = function(e) {
+                    if (e.lengthComputable && typeof onProgress === 'function') {
+                        onProgress(Math.round((e.loaded / e.total) * 100), xhr);
+                    }
+                };
+                xhr.onload = function() {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        const { data: urlData } = sb.storage.from('lesson-pdfs').getPublicUrl(filePath);
+                        resolve({ publicUrl: urlData.publicUrl, xhr });
+                    } else {
+                        let errMsg = currentLanguage === 'ar' ? 'فشل رفع ملف PDF' : 'PDF upload failed';
+                        try {
+                            const parsed = JSON.parse(xhr.responseText || '{}');
+                            errMsg = parsed.message || parsed.error || errMsg;
+                        } catch(e) {}
+                        reject(new Error(errMsg));
+                    }
+                };
+                xhr.onerror = () => reject(new Error(currentLanguage === 'ar' ? 'فشل الاتصال أثناء رفع PDF' : 'Network error during PDF upload'));
+                xhr.onabort = () => reject(new Error(currentLanguage === 'ar' ? 'تم إلغاء رفع PDF' : 'PDF upload cancelled'));
+                xhr.open('POST', uploadUrl, true);
+                xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
+                xhr.setRequestHeader('apikey', SUPABASE_ANON_KEY);
+                xhr.setRequestHeader('Content-Type', file.type || 'application/pdf');
+                xhr.setRequestHeader('x-upsert', 'false');
+                xhr.send(file);
+            });
+        }
+
         async function uploadLessonPdfFiles(courseId, lessonId, fileList, uploadedPaths = []) {
             const files = Array.from(fileList || []);
             const lessonFiles = [];
@@ -2078,28 +2111,19 @@
                 const safeFileName = sanitizeStorageFileName(file.name);
                 const filePath = `${courseId}/${lessonId}/${Date.now()}_${safeFileName}`;
 
-                await ensureFreshSession();
-                
-                const { error: uploadError } = await sb.storage.from('lesson-pdfs').upload(filePath, file, {
-                    contentType: file.type || 'application/pdf',
-                    upsert: false
-                });
-
-                if (uploadError) throw new Error(uploadError.message);
-
+                const { publicUrl } = await uploadPdfFileWithXHR(file, filePath);
                 uploadedPaths.push(filePath);
-                const { data: urlData } = sb.storage.from('lesson-pdfs').getPublicUrl(filePath);
 
                 const { error: fileError } = await sb.from('lesson_files').insert({
                     lesson_id: lessonId,
-                    file_url: urlData.publicUrl,
+                    file_url: publicUrl,
                     file_name: file.name,
                     sort_order: i
                 });
 
                 if (fileError) throw new Error(fileError.message);
 
-                lessonFiles.push({ id: null, name: file.name, url: urlData.publicUrl });
+                lessonFiles.push({ id: null, name: file.name, url: publicUrl });
             }
 
             return lessonFiles;
