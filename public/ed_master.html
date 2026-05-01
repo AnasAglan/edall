@@ -4146,7 +4146,7 @@
                             `}
                             <div class="card-header">
                                 <div class="card-title">${course.title}</div>
-                                <div class="card-badge">${course.lessons ? course.lessons.length : 0} محاضرة</div>
+                                <div class="card-badge">${getCourseLessonCount(course)} محاضرة</div>
                             </div>
                             <div class="card-desc">${course.description || 'لا يوجد وصف'}</div>
                             ${(() => {
@@ -4265,7 +4265,7 @@
                             `}
                             <div class="card-header">
                                 <div class="card-title">${course.title}</div>
-                                <div class="card-badge">${course.lessons ? course.lessons.length : 0} محاضرة</div>
+                                <div class="card-badge">${getCourseLessonCount(course)} محاضرة</div>
                             </div>
                             <div class="card-desc">${course.description || 'لا يوجد وصف'}</div>
                             <div class="progress-bar">
@@ -4347,7 +4347,7 @@
                             `}
                             <div class="card-header">
                                 <div class="card-title">${course.title}</div>
-                                <div class="card-badge">${course.lessons ? course.lessons.length : 0} محاضرة</div>
+                                <div class="card-badge">${getCourseLessonCount(course)} محاضرة</div>
                             </div>
                             <div class="card-desc">${course.description || 'لا يوجد وصف'}</div>
                             <div class="card-footer">
@@ -4407,7 +4407,7 @@
                             `}
                             <div class="card-header">
                                 <div class="card-title">${course.title}</div>
-                                <div class="card-badge">${course.lessons ? course.lessons.length : 0} محاضرة</div>
+                                <div class="card-badge">${getCourseLessonCount(course)} محاضرة</div>
                             </div>
                             <div class="card-desc">${course.description || 'لا يوجد وصف'}</div>
                             <div style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 10px;">
@@ -6044,7 +6044,7 @@
                         <div>
                             <strong>${course.title}</strong>
                             <div style="color: var(--text-muted); font-size: 0.9rem;">
-                                ${course.lessons ? course.lessons.length : 0} ${currentLanguage === 'ar' ? 'محاضرة' : 'lessons'} | ${getEnrolledStudentsCount(course.id)} ${currentLanguage === 'ar' ? 'طالب' : 'students'}
+                                ${getCourseLessonCount(course)} ${currentLanguage === 'ar' ? 'محاضرة' : 'lessons'} | ${getEnrolledStudentsCount(course.id)} ${currentLanguage === 'ar' ? 'طالب' : 'students'}
                             </div>
                         </div>
                         <div style="display: flex; gap: 8px; flex-wrap:wrap;">
@@ -6982,7 +6982,7 @@
                         <div class="list-item" style="margin:8px 0;">
                             <div>
                                 <strong>${course.title}</strong>
-                                <div style="color:var(--text-muted);font-size:0.9rem;">${course.lessons ? course.lessons.length : 0} ${currentLanguage === 'ar' ? 'محاضرة' : 'lessons'}</div>
+                                <div style="color:var(--text-muted);font-size:0.9rem;">${getCourseLessonCount(course)} ${currentLanguage === 'ar' ? 'محاضرة' : 'lessons'}</div>
                             </div>
                             <button class="btn btn-sm" onclick="closeModal(); showCourseDetails('${course.id}');">
                                 <i class="fas fa-eye"></i> ${currentLanguage === 'ar' ? 'عرض' : 'View'}
