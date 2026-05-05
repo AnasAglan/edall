@@ -2026,11 +2026,12 @@
                 const token = data?.session?.access_token;
                 if (!token) { onError(new Error('No auth token')); return; }
                 
-                xhr.open('POST', uploadUrl, true);
+                const pdfBlob = file.type === 'application/pdf' ? file : new Blob([file], { type: 'application/pdf' });
+                xhr.open('PUT', uploadUrl, true);
                 xhr.setRequestHeader('Authorization', `Bearer ${token}`);
                 xhr.setRequestHeader('apikey', SUPABASE_ANON_KEY);
-                xhr.setRequestHeader('Content-Type', file.type || 'application/pdf');
-                xhr.setRequestHeader('x-upsert', 'false');
+                xhr.setRequestHeader('Content-Type', 'application/pdf');
+                xhr.setRequestHeader('x-upsert', 'true');
                 
                 xhr.upload.onprogress = function(e) {
                     if (e.lengthComputable) {
@@ -2046,12 +2047,13 @@
                     } else {
                         let errMsg = 'Upload failed';
                         try { errMsg = JSON.parse(xhr.responseText).message || errMsg; } catch(e) {}
-                        onError(new Error(errMsg));
+                        console.error('PDF upload failed', xhr.status, xhr.responseText);
+                        onError(new Error(errMsg + ` (HTTP ${xhr.status})`));
                     }
                 };
                 
                 xhr.onerror = function() { onError(new Error('Network error during upload')); };
-                xhr.send(file);
+                xhr.send(pdfBlob);
             });
             
             return { xhr, filePath };
