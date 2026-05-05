@@ -2668,6 +2668,10 @@
             _dataLoading = true;
             try {
                 // Load top 5 courses sorted by enrollment + profiles + roles + notifications
+                const isGuest = !currentUser;
+                const profilesQuery = isGuest
+                    ? sb.rpc('get_course_creators_public')
+                    : sb.from('profiles').select('*');
                 const [
                     { data: coursesData },
                     { data: profilesData },
@@ -2675,9 +2679,9 @@
                     { data: notifsData }
                 ] = await Promise.all([
                     sb.rpc('get_courses_sorted_by_enrollment', { _offset: 0, _limit: 5 }),
-                    sb.from('profiles').select('*'),
-                    sb.from('user_roles').select('*'),
-                    sb.from('notifications').select('*').order('created_at', { ascending: false }).limit(50)
+                    profilesQuery,
+                    isGuest ? Promise.resolve({ data: [] }) : sb.from('user_roles').select('*'),
+                    isGuest ? Promise.resolve({ data: [] }) : sb.from('notifications').select('*').order('created_at', { ascending: false }).limit(50)
                 ]);
 
                 _coursesOffset = (coursesData || []).length;
@@ -2701,15 +2705,15 @@
                     const userRoles = (rolesData || []).filter(r => r.user_id === p.id).map(r => r.role);
                     return {
                         id: p.id,
-                        email: p.email,
+                        email: p.email || '',
                         name: p.name,
-                        phone: p.phone,
-                        avatar_url: p.avatar_url,
-                        bio: p.bio,
+                        phone: p.phone || null,
+                        avatar_url: p.avatar_url || null,
+                        bio: p.bio || null,
                         banned: p.banned || false,
-                        roles: userRoles.length > 0 ? userRoles : ['student'],
+                        roles: userRoles.length > 0 ? userRoles : ['teacher'],
                         lastActive: p.last_active ? new Date(p.last_active).getTime() : Date.now(),
-                        joined: new Date(p.joined_at).getTime()
+                        joined: p.joined_at ? new Date(p.joined_at).getTime() : Date.now()
                     };
                 });
 
