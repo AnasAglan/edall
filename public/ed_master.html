@@ -1965,13 +1965,18 @@
         }
 
         function sanitizeStorageFileName(fileName) {
-            const safeName = (fileName || 'file.pdf')
+            // Storage paths must be ASCII-safe; strip Arabic/non-ASCII chars to avoid InvalidKey errors
+            const original = fileName || 'file.pdf';
+            const dotIdx = original.lastIndexOf('.');
+            const ext = dotIdx > -1 ? original.slice(dotIdx).toLowerCase().replace(/[^a-z0-9.]/g, '') : '.pdf';
+            let base = (dotIdx > -1 ? original.slice(0, dotIdx) : original)
                 .replace(/[\\/]+/g, '_')
                 .replace(/\s+/g, '_')
-                .replace(/[^\p{L}\p{N}._-]+/gu, '_')
+                .replace(/[^a-zA-Z0-9._-]+/g, '')
                 .replace(/_+/g, '_')
                 .replace(/^_+|_+$/g, '');
-            return safeName || `file_${Date.now()}.pdf`;
+            if (!base) base = `file_${Date.now()}`;
+            return base + (ext || '.pdf');
         }
 
         function getFilledInputValues(selector) {
