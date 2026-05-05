@@ -3829,6 +3829,8 @@
         }
 
         async function handleLogout() {
+            const confirmMsg = currentLanguage === 'ar' ? 'هل أنت متأكد من تسجيل الخروج؟' : 'Are you sure you want to log out?';
+            if (!confirm(confirmMsg)) return;
             try {
                 await sb.auth.signOut();
                 currentUser = null;
@@ -3841,7 +3843,7 @@
                 showToast(currentLanguage === 'ar' ? 'تم تسجيل الخروج بنجاح' : 'Logged out successfully', 'success');
             } catch (error) {
                 console.error('Error logging out:', error);
-                showToast('حدث خطأ في تسجيل الخروج', 'error');
+                showToast(currentLanguage === 'ar' ? 'حدث خطأ في تسجيل الخروج' : 'Error logging out', 'error');
             }
         }
 
