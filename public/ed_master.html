@@ -6877,10 +6877,63 @@
             }
         }
 
+        const TOAST_TRANSLATIONS = {
+            'حدث خطأ': 'An error occurred',
+            'حدث خطأ في تحميل الصفحة': 'Error loading page',
+            'حدث خطأ في فتح النافذة': 'Error opening window',
+            'حدث خطأ في تهيئة التطبيق': 'Error initializing app',
+            'حدث خطأ في تحميل البيانات': 'Error loading data',
+            'حدث خطأ في إعداد الأحداث': 'Error setting up events',
+            'حدث خطأ في تسجيل الدخول': 'Error signing in',
+            'حدث خطأ في إنشاء الحساب': 'Error creating account',
+            'حدث خطأ في تغيير الوضع': 'Error changing mode',
+            'يرجى تسجيل الدخول أولاً': 'Please sign in first',
+            'حدث خطأ في الانضمام': 'Error enrolling',
+            'تم الانضمام إلى الكورس بنجاح': 'Enrolled in course successfully',
+            'أنت منضم بالفعل إلى هذا الكورس': 'You are already enrolled in this course',
+            'حدث خطأ في الانضمام للكورس': 'Error enrolling in course',
+            'تم إلغاء الانضمام إلى الكورس': 'Unenrolled from course',
+            'حدث خطأ في إلغاء الانضمام': 'Error unenrolling',
+            'تم إزالة الكورس من المفضلة': 'Removed from favorites',
+            'تم إضافة الكورس إلى المفضلة': 'Added to favorites',
+            'حدث خطأ في إدارة المفضلة': 'Error managing favorites',
+            'حدث خطأ في إزالة المفضلة': 'Error removing favorite',
+            'حدث خطأ في عرض الكورسات': 'Error displaying courses',
+            'حدث خطأ في عرض الكورسات المنضمة': 'Error displaying enrolled courses',
+            'حدث خطأ في عرض الكورسات المفضلة': 'Error displaying favorite courses',
+            'حدث خطأ في عرض صفحة إدارة الكورسات': 'Error displaying course management page',
+            'حدث خطأ في فتح نافذة إضافة الكورس': 'Error opening add course window',
+            'حدث خطأ في إنشاء الكورس': 'Error creating course',
+            'حدث خطأ في فتح نافذة تعديل الكورس': 'Error opening edit course window',
+            'الكورس غير موجود': 'Course not found',
+            'يرجى إدخال عنوان الكورس': 'Please enter the course title',
+            'حدث خطأ في تحديث الكورس': 'Error updating course',
+            'حدث خطأ في عرض تفاصيل الكورس': 'Error displaying course details',
+            'حدث خطأ في فتح المحاضرة': 'Error opening lesson',
+            'المحاضرة غير موجودة': 'Lesson not found',
+            'يرجى إضافة سؤال واحد على الأقل': 'Please add at least one question',
+            'حدث خطأ في تحديث الصورة': 'Error updating image',
+            'حدث خطأ في عرض الملف الشخصي': 'Error displaying profile',
+            'حدث خطأ في تحديد الإشعارات كمقروءة': 'Error marking notifications as read',
+            'حدث خطأ في تحديد الإشعار كمقروء': 'Error marking notification as read'
+        };
+
+        function translateToast(message) {
+            if (currentLanguage !== 'en' || !message) return message;
+            if (TOAST_TRANSLATIONS[message]) return TOAST_TRANSLATIONS[message];
+            // Try prefix match for messages like "حدث خطأ في إنشاء الكورس: ..."
+            for (const ar of Object.keys(TOAST_TRANSLATIONS)) {
+                if (message.startsWith(ar)) {
+                    return TOAST_TRANSLATIONS[ar] + message.slice(ar.length);
+                }
+            }
+            return message;
+        }
+
         function showToast(message, type = 'info') {
             try {
                 const toast = document.getElementById('toast');
-                toast.textContent = message;
+                toast.textContent = translateToast(message);
                 toast.style.display = 'block';
                 toast.style.background = type === 'error' ? 'var(--danger)' : type === 'success' ? 'var(--success)' : type === 'warning' ? 'var(--warning)' : 'var(--accent)';
 
