@@ -6782,6 +6782,14 @@
                             <i class="fas fa-save"></i> ${currentLanguage === 'ar' ? 'حفظ' : 'Save'}
                         </button>
                     </div>
+                    <div style="margin-bottom:20px;border-top:1px solid var(--border);padding-top:16px;">
+                        <label style="font-weight:bold;display:block;margin-bottom:8px;"><i class="fas fa-lock"></i> ${currentLanguage === 'ar' ? 'تغيير كلمة المرور' : 'Change Password'}</label>
+                        <input type="password" id="newPasswordInput" placeholder="${currentLanguage === 'ar' ? 'كلمة المرور الجديدة (6 أحرف على الأقل)' : 'New password (min 6 chars)'}" style="width:100%;margin-bottom:8px;" />
+                        <input type="password" id="confirmPasswordInput" placeholder="${currentLanguage === 'ar' ? 'تأكيد كلمة المرور' : 'Confirm password'}" style="width:100%;margin-bottom:8px;" />
+                        <button class="btn btn-sm" onclick="changeUserPassword()">
+                            <i class="fas fa-key"></i> ${currentLanguage === 'ar' ? 'تحديث كلمة المرور' : 'Update Password'}
+                        </button>
+                    </div>
                 `;
                 
                 const enrollments = JSON.parse(localStorage.getItem(LS_KEYS.USER_ENROLLMENTS)) || {};
