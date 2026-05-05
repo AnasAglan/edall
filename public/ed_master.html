@@ -6972,6 +6972,32 @@
             }
         }
 
+        async function changeUserPassword() {
+            try {
+                const newPwd = document.getElementById('newPasswordInput').value;
+                const confirmPwd = document.getElementById('confirmPasswordInput').value;
+                if (!newPwd || newPwd.length < 6) {
+                    showToast(currentLanguage === 'ar' ? 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' : 'Password must be at least 6 characters', 'error');
+                    return;
+                }
+                if (newPwd !== confirmPwd) {
+                    showToast(currentLanguage === 'ar' ? 'كلمتا المرور غير متطابقتين' : 'Passwords do not match', 'error');
+                    return;
+                }
+                const { error } = await sb.auth.updateUser({ password: newPwd });
+                if (error) {
+                    showToast((currentLanguage === 'ar' ? 'فشل تحديث كلمة المرور: ' : 'Failed to update password: ') + error.message, 'error');
+                    return;
+                }
+                document.getElementById('newPasswordInput').value = '';
+                document.getElementById('confirmPasswordInput').value = '';
+                showToast(currentLanguage === 'ar' ? 'تم تحديث كلمة المرور بنجاح' : 'Password updated successfully', 'success');
+            } catch (error) {
+                console.error('Error changing password:', error);
+                showToast(currentLanguage === 'ar' ? 'حدث خطأ في تحديث كلمة المرور' : 'Error updating password', 'error');
+            }
+        }
+
         function resetData() {
             try {
                 if (!confirm(currentLanguage === 'ar' ? 'هل أنت متأكد من مسح جميع البيانات؟ هذا الإجراء لا يمكن التراجع عنه.' : 'Are you sure you want to reset all data? This action cannot be undone.')) {
