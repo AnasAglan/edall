@@ -448,6 +448,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_course_creators_public: {
+        Args: never
+        Returns: {
+          avatar_url: string
+          bio: string
+          id: string
+          name: string
+        }[]
+      }
       get_courses_sorted_by_enrollment: {
         Args: { _limit: number; _offset: number }
         Returns: {
