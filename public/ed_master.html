@@ -6923,35 +6923,42 @@
             }
         }
 
-        function markAllNotificationsAsRead() {
+        async function markAllNotificationsAsRead() {
             try {
+                if (!currentUser) return;
+                const ids = [];
                 notifications.forEach(notification => {
                     if ((notification.userId === currentUser.id || notification.userId === 'all') && !notification.read) {
                         notification.read = true;
+                        if (notification.id) ids.push(notification.id);
                     }
                 });
-                
+                if (ids.length > 0) {
+                    await sb.from('notifications').update({ read: true }).in('id', ids);
+                }
                 saveAllData();
                 renderNotificationsPage();
                 updateNotificationBadge();
                 showToast(currentLanguage === 'ar' ? 'تم تحديد جميع الإشعارات كمقروءة' : 'All notifications marked as read', 'success');
             } catch (error) {
                 console.error('Error marking all notifications as read:', error);
-                showToast('حدث خطأ في تحديد الإشعارات كمقروءة', 'error');
+                showToast(currentLanguage === 'ar' ? 'حدث خطأ في تحديد الإشعارات كمقروءة' : 'Error marking notifications as read', 'error');
             }
         }
 
-        function markNotificationAsRead(notificationId) {
+        async function markNotificationAsRead(notificationId) {
             try {
                 const notification = notifications.find(n => n.id === notificationId);
                 if (notification) {
                     notification.read = true;
+                    await sb.from('notifications').update({ read: true }).eq('id', notificationId);
                     saveAllData();
                     renderNotificationsPage();
                     updateNotificationBadge();
                 }
             } catch (error) {
                 console.error('Error marking notification as read:', error);
+                showToast(currentLanguage === 'ar' ? 'حدث خطأ في تحديد الإشعار كمقروء' : 'Error marking notification as read', 'error');
             }
         }
 
