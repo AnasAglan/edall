@@ -2026,11 +2026,12 @@
                 const token = data?.session?.access_token;
                 if (!token) { onError(new Error('No auth token')); return; }
                 
-                xhr.open('POST', uploadUrl, true);
+                const pdfBlob = file.type === 'application/pdf' ? file : new Blob([file], { type: 'application/pdf' });
+                xhr.open('PUT', uploadUrl, true);
                 xhr.setRequestHeader('Authorization', `Bearer ${token}`);
                 xhr.setRequestHeader('apikey', SUPABASE_ANON_KEY);
-                xhr.setRequestHeader('Content-Type', file.type || 'application/pdf');
-                xhr.setRequestHeader('x-upsert', 'false');
+                xhr.setRequestHeader('Content-Type', 'application/pdf');
+                xhr.setRequestHeader('x-upsert', 'true');
                 
                 xhr.upload.onprogress = function(e) {
                     if (e.lengthComputable) {
@@ -2046,12 +2047,13 @@
                     } else {
                         let errMsg = 'Upload failed';
                         try { errMsg = JSON.parse(xhr.responseText).message || errMsg; } catch(e) {}
-                        onError(new Error(errMsg));
+                        console.error('PDF upload failed', xhr.status, xhr.responseText);
+                        onError(new Error(errMsg + ` (HTTP ${xhr.status})`));
                     }
                 };
                 
                 xhr.onerror = function() { onError(new Error('Network error during upload')); };
-                xhr.send(file);
+                xhr.send(pdfBlob);
             });
             
             return { xhr, filePath };
@@ -2061,6 +2063,11 @@
             const session = await ensureAuthenticatedSession();
             const encodedPath = filePath.split('/').map(encodeURIComponent).join('/');
             const uploadUrl = `${SUPABASE_URL}/storage/v1/object/lesson-pdfs/${encodedPath}`;
+            // Use a Blob with explicit pdf MIME so mobile browsers (iOS/Android) that
+            // sometimes report empty file.type still upload correctly.
+            const pdfBlob = file.type === 'application/pdf'
+                ? file
+                : new Blob([file], { type: 'application/pdf' });
             return new Promise((resolve, reject) => {
                 const xhr = new XMLHttpRequest();
                 xhr.upload.onprogress = function(e) {
@@ -2078,17 +2085,21 @@
                             const parsed = JSON.parse(xhr.responseText || '{}');
                             errMsg = parsed.message || parsed.error || errMsg;
                         } catch(e) {}
-                        reject(new Error(errMsg));
+                        console.error('PDF upload failed', xhr.status, xhr.responseText);
+                        reject(new Error(errMsg + ` (HTTP ${xhr.status})`));
                     }
                 };
                 xhr.onerror = () => reject(new Error(currentLanguage === 'ar' ? 'فشل الاتصال أثناء رفع PDF' : 'Network error during PDF upload'));
                 xhr.onabort = () => reject(new Error(currentLanguage === 'ar' ? 'تم إلغاء رفع PDF' : 'PDF upload cancelled'));
-                xhr.open('POST', uploadUrl, true);
+                xhr.ontimeout = () => reject(new Error(currentLanguage === 'ar' ? 'انتهت مهلة رفع PDF' : 'PDF upload timed out'));
+                // Use PUT with x-upsert:true so retries don't 409 on mobile flaky uploads
+                xhr.open('PUT', uploadUrl, true);
                 xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
                 xhr.setRequestHeader('apikey', SUPABASE_ANON_KEY);
-                xhr.setRequestHeader('Content-Type', file.type || 'application/pdf');
-                xhr.setRequestHeader('x-upsert', 'false');
-                xhr.send(file);
+                xhr.setRequestHeader('Content-Type', 'application/pdf');
+                xhr.setRequestHeader('x-upsert', 'true');
+                xhr.setRequestHeader('Cache-Control', 'max-age=3600');
+                xhr.send(pdfBlob);
             });
         }
 
@@ -2657,6 +2668,10 @@
             _dataLoading = true;
             try {
                 // Load top 5 courses sorted by enrollment + profiles + roles + notifications
+                const isGuest = !currentUser;
+                const profilesQuery = isGuest
+                    ? sb.rpc('get_course_creators_public')
+                    : sb.from('profiles').select('*');
                 const [
                     { data: coursesData },
                     { data: profilesData },
@@ -2664,9 +2679,9 @@
                     { data: notifsData }
                 ] = await Promise.all([
                     sb.rpc('get_courses_sorted_by_enrollment', { _offset: 0, _limit: 5 }),
-                    sb.from('profiles').select('*'),
-                    sb.from('user_roles').select('*'),
-                    sb.from('notifications').select('*').order('created_at', { ascending: false }).limit(50)
+                    profilesQuery,
+                    isGuest ? Promise.resolve({ data: [] }) : sb.from('user_roles').select('*'),
+                    isGuest ? Promise.resolve({ data: [] }) : sb.from('notifications').select('*').order('created_at', { ascending: false }).limit(50)
                 ]);
 
                 _coursesOffset = (coursesData || []).length;
@@ -2690,15 +2705,15 @@
                     const userRoles = (rolesData || []).filter(r => r.user_id === p.id).map(r => r.role);
                     return {
                         id: p.id,
-                        email: p.email,
+                        email: p.email || '',
                         name: p.name,
-                        phone: p.phone,
-                        avatar_url: p.avatar_url,
-                        bio: p.bio,
+                        phone: p.phone || null,
+                        avatar_url: p.avatar_url || null,
+                        bio: p.bio || null,
                         banned: p.banned || false,
-                        roles: userRoles.length > 0 ? userRoles : ['student'],
+                        roles: userRoles.length > 0 ? userRoles : ['teacher'],
                         lastActive: p.last_active ? new Date(p.last_active).getTime() : Date.now(),
-                        joined: new Date(p.joined_at).getTime()
+                        joined: p.joined_at ? new Date(p.joined_at).getTime() : Date.now()
                     };
                 });
 
