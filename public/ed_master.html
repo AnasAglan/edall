@@ -7051,6 +7051,42 @@
             }
         }
 
+        async function deleteNotification(notificationId) {
+            try {
+                if (!confirm(currentLanguage === 'ar' ? 'هل تريد حذف هذا الإشعار؟' : 'Delete this notification?')) return;
+                const { error } = await sb.from('notifications').delete().eq('id', notificationId);
+                if (error) throw error;
+                notifications = notifications.filter(n => n.id !== notificationId);
+                renderNotificationsPage();
+                updateNotificationBadge();
+                showToast(currentLanguage === 'ar' ? 'تم حذف الإشعار' : 'Notification deleted', 'success');
+            } catch (error) {
+                console.error('Error deleting notification:', error);
+                showToast(currentLanguage === 'ar' ? 'حدث خطأ في حذف الإشعار' : 'Error deleting notification', 'error');
+            }
+        }
+
+        async function deleteAllNotifications() {
+            try {
+                if (!currentUser) return;
+                if (!confirm(currentLanguage === 'ar' ? 'هل تريد حذف جميع إشعاراتك؟' : 'Delete all your notifications?')) return;
+                const myIds = notifications
+                    .filter(n => n.userId === currentUser.id || n.userId === 'all')
+                    .map(n => n.id)
+                    .filter(Boolean);
+                if (myIds.length === 0) return;
+                const { error } = await sb.from('notifications').delete().in('id', myIds);
+                if (error) throw error;
+                notifications = notifications.filter(n => !myIds.includes(n.id));
+                renderNotificationsPage();
+                updateNotificationBadge();
+                showToast(currentLanguage === 'ar' ? 'تم حذف جميع الإشعارات' : 'All notifications deleted', 'success');
+            } catch (error) {
+                console.error('Error deleting all notifications:', error);
+                showToast(currentLanguage === 'ar' ? 'حدث خطأ في حذف الإشعارات' : 'Error deleting notifications', 'error');
+            }
+        }
+
         async function changeUserPassword() {
             try {
                 const newPwd = document.getElementById('newPasswordInput').value;
