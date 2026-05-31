@@ -4580,8 +4580,8 @@
                     return;
                 }
                 
-                const createBtn = event ? event.target.closest('.btn') : document.querySelector('#modalHost .btn');
-                showBtnLoading(createBtn);
+                const createBtn = document.querySelector('#modalHost .btn') || null;
+                if (createBtn) showBtnLoading(createBtn);
                 
                 let imageUrl = null;
                 if (courseImageFile) {
