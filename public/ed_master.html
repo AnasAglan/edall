@@ -6344,11 +6344,27 @@
             }
         }
 
-        function addLessonToCourse(courseId) {
+        async function addLessonToCourse(courseId) {
             try {
-                const course = courses.find(c => c.id === courseId);
+                if (!currentUser) {
+                    showToast(currentLanguage === 'ar' ? 'يرجى تسجيل الدخول أولاً' : 'Please sign in first', 'warning');
+                    return;
+                }
+                let course = courses.find(c => c.id === courseId);
+                if (!course) {
+                    // Lazy-load course if not yet in array (e.g., not paged in)
+                    const { data: c } = await sb.from('courses').select('*').eq('id', courseId).maybeSingle();
+                    if (c) {
+                        course = { id: c.id, title: c.title, description: c.description, image: c.image_url, createdBy: c.created_by, lessons: null, created: new Date(c.created_at).getTime() };
+                        courses.push(course);
+                    }
+                }
                 if (!course) {
                     showToast(currentLanguage === 'ar' ? 'الكورس غير موجود' : 'Course not found', 'error');
+                    return;
+                }
+                if (!canUserEditCourse(course)) {
+                    showToast(currentLanguage === 'ar' ? 'ليس لديك صلاحية' : 'You do not have permission', 'error');
                     return;
                 }
                 
