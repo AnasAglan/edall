@@ -6861,7 +6861,13 @@
                 
                 userNotifications.sort((a, b) => b.timestamp - a.timestamp);
                 
-                notificationsList.innerHTML = userNotifications.map(notification => `
+                const headerHtml = `
+                    <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px;">
+                        <button class="btn btn-sm btn-danger" onclick="deleteAllNotifications()">
+                            <i class="fas fa-trash"></i> ${currentLanguage === 'ar' ? 'حذف الكل' : 'Delete All'}
+                        </button>
+                    </div>`;
+                notificationsList.innerHTML = headerHtml + userNotifications.map(notification => `
                     <div class="list-item" style="${notification.read ? 'opacity: 0.7;' : ''}">
                         <div>
                             <strong>${notification.title}</strong>
@@ -6870,11 +6876,16 @@
                                 ${new Date(notification.timestamp).toLocaleString(currentLanguage === 'ar' ? 'ar-EG' : 'en-US')}
                             </div>
                         </div>
-                        ${!notification.read ? `
-                            <button class="btn btn-sm" onclick="markNotificationAsRead('${notification.id}')">
-                                <i class="fas fa-check"></i> ${currentLanguage === 'ar' ? 'تحديد كمقروء' : 'Mark as Read'}
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                            ${!notification.read ? `
+                                <button class="btn btn-sm" onclick="markNotificationAsRead('${notification.id}')">
+                                    <i class="fas fa-check"></i> ${currentLanguage === 'ar' ? 'تحديد كمقروء' : 'Mark as Read'}
+                                </button>
+                            ` : ''}
+                            <button class="btn btn-sm btn-danger" onclick="deleteNotification('${notification.id}')" title="${currentLanguage === 'ar' ? 'حذف' : 'Delete'}">
+                                <i class="fas fa-trash"></i>
                             </button>
-                        ` : ''}
+                        </div>
                     </div>
                 `).join('');
             } catch (error) {
