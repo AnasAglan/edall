@@ -4596,7 +4596,7 @@
                     created_by: currentUser.id
                 }).select().single();
                 
-                if (error) { hideBtnLoading(createBtn); console.error('Course insert error:', error); showToast('حدث خطأ في إنشاء الكورس: ' + error.message, 'error'); return; }
+                if (error) { if (createBtn) hideBtnLoading(createBtn); console.error('Course insert error:', error); showToast((currentLanguage === 'ar' ? 'حدث خطأ في إنشاء الكورس: ' : 'Error creating course: ') + error.message, 'error'); return; }
                 
                 courses.unshift({
                     id: newCourseData.id,
@@ -4609,18 +4609,19 @@
                 });
                 courseImageData = null;
                 courseImageFile = null;
-                hideBtnLoading(createBtn);
+                if (createBtn) hideBtnLoading(createBtn);
                 closeModal();
                 showToast(currentLanguage === 'ar' ? 'تم إنشاء الكورس بنجاح' : 'Course created successfully', 'success');
                 renderCoursesGrid();
                 
-                if (document.getElementById('manageCoursesPage').classList.contains('active')) {
+                if (document.getElementById('manageCoursesPage')?.classList.contains('active')) {
                     renderManageCoursesPage();
                 }
             } catch (error) {
-                hideBtnLoading(document.querySelector('#modalHost .btn'));
+                const btn = document.querySelector('#modalHost .btn');
+                if (btn) hideBtnLoading(btn);
                 console.error('Error creating course from modal:', error);
-                showToast('حدث خطأ في إنشاء الكورس', 'error');
+                showToast((currentLanguage === 'ar' ? 'حدث خطأ في إنشاء الكورس: ' : 'Error creating course: ') + (error?.message || ''), 'error');
             }
         }
 
