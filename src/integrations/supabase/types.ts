@@ -494,6 +494,15 @@ export type Database = {
         }
         Returns: boolean
       }
+      search_teachers_public: {
+        Args: { _term: string }
+        Returns: {
+          avatar_url: string
+          email: string
+          id: string
+          name: string
+        }[]
+      }
       setup_new_user:
         | {
             Args: { _email: string; _name: string; _user_id: string }

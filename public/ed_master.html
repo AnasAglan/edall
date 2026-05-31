@@ -2967,11 +2967,10 @@
 
         async function searchTeachersFromDB(term) {
             try {
-                const { data: teacherRoles } = await sb.from('user_roles').select('user_id').in('role', ['teacher', 'admin']);
-                const teacherIds = (teacherRoles || []).map(r => r.user_id);
-                if (teacherIds.length === 0) return [];
-                const { data } = await sb.from('profiles').select('*').in('id', teacherIds).ilike('name', `%${term}%`).limit(10);
-                return (data || []).map(p => ({ id: p.id, name: p.name, email: p.email, avatar_url: p.avatar_url }));
+                // Use public RPC so guests can also search teachers
+                const { data, error } = await sb.rpc('search_teachers_public', { _term: term });
+                if (error) throw error;
+                return (data || []).map(p => ({ id: p.id, name: p.name, email: p.email || '', avatar_url: p.avatar_url }));
             } catch (e) {
                 console.error('Teacher search error:', e);
                 return [];
@@ -4581,8 +4580,8 @@
                     return;
                 }
                 
-                const createBtn = event ? event.target.closest('.btn') : document.querySelector('#modalHost .btn');
-                showBtnLoading(createBtn);
+                const createBtn = document.querySelector('#modalHost .btn') || null;
+                if (createBtn) showBtnLoading(createBtn);
                 
                 let imageUrl = null;
                 if (courseImageFile) {
@@ -4597,7 +4596,7 @@
                     created_by: currentUser.id
                 }).select().single();
                 
-                if (error) { hideBtnLoading(createBtn); console.error('Course insert error:', error); showToast('حدث خطأ في إنشاء الكورس: ' + error.message, 'error'); return; }
+                if (error) { if (createBtn) hideBtnLoading(createBtn); console.error('Course insert error:', error); showToast((currentLanguage === 'ar' ? 'حدث خطأ في إنشاء الكورس: ' : 'Error creating course: ') + error.message, 'error'); return; }
                 
                 courses.unshift({
                     id: newCourseData.id,
@@ -4610,18 +4609,19 @@
                 });
                 courseImageData = null;
                 courseImageFile = null;
-                hideBtnLoading(createBtn);
+                if (createBtn) hideBtnLoading(createBtn);
                 closeModal();
                 showToast(currentLanguage === 'ar' ? 'تم إنشاء الكورس بنجاح' : 'Course created successfully', 'success');
                 renderCoursesGrid();
                 
-                if (document.getElementById('manageCoursesPage').classList.contains('active')) {
+                if (document.getElementById('manageCoursesPage')?.classList.contains('active')) {
                     renderManageCoursesPage();
                 }
             } catch (error) {
-                hideBtnLoading(document.querySelector('#modalHost .btn'));
+                const btn = document.querySelector('#modalHost .btn');
+                if (btn) hideBtnLoading(btn);
                 console.error('Error creating course from modal:', error);
-                showToast('حدث خطأ في إنشاء الكورس', 'error');
+                showToast((currentLanguage === 'ar' ? 'حدث خطأ في إنشاء الكورس: ' : 'Error creating course: ') + (error?.message || ''), 'error');
             }
         }
 
@@ -6345,11 +6345,27 @@
             }
         }
 
-        function addLessonToCourse(courseId) {
+        async function addLessonToCourse(courseId) {
             try {
-                const course = courses.find(c => c.id === courseId);
+                if (!currentUser) {
+                    showToast(currentLanguage === 'ar' ? 'يرجى تسجيل الدخول أولاً' : 'Please sign in first', 'warning');
+                    return;
+                }
+                let course = courses.find(c => c.id === courseId);
+                if (!course) {
+                    // Lazy-load course if not yet in array (e.g., not paged in)
+                    const { data: c } = await sb.from('courses').select('*').eq('id', courseId).maybeSingle();
+                    if (c) {
+                        course = { id: c.id, title: c.title, description: c.description, image: c.image_url, createdBy: c.created_by, lessons: null, created: new Date(c.created_at).getTime() };
+                        courses.push(course);
+                    }
+                }
                 if (!course) {
                     showToast(currentLanguage === 'ar' ? 'الكورس غير موجود' : 'Course not found', 'error');
+                    return;
+                }
+                if (!canUserEditCourse(course)) {
+                    showToast(currentLanguage === 'ar' ? 'ليس لديك صلاحية' : 'You do not have permission', 'error');
                     return;
                 }
                 
@@ -6861,7 +6877,13 @@
                 
                 userNotifications.sort((a, b) => b.timestamp - a.timestamp);
                 
-                notificationsList.innerHTML = userNotifications.map(notification => `
+                const headerHtml = `
+                    <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px;">
+                        <button class="btn btn-sm btn-danger" onclick="deleteAllNotifications()">
+                            <i class="fas fa-trash"></i> ${currentLanguage === 'ar' ? 'حذف الكل' : 'Delete All'}
+                        </button>
+                    </div>`;
+                notificationsList.innerHTML = headerHtml + userNotifications.map(notification => `
                     <div class="list-item" style="${notification.read ? 'opacity: 0.7;' : ''}">
                         <div>
                             <strong>${notification.title}</strong>
@@ -6870,11 +6892,16 @@
                                 ${new Date(notification.timestamp).toLocaleString(currentLanguage === 'ar' ? 'ar-EG' : 'en-US')}
                             </div>
                         </div>
-                        ${!notification.read ? `
-                            <button class="btn btn-sm" onclick="markNotificationAsRead('${notification.id}')">
-                                <i class="fas fa-check"></i> ${currentLanguage === 'ar' ? 'تحديد كمقروء' : 'Mark as Read'}
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                            ${!notification.read ? `
+                                <button class="btn btn-sm" onclick="markNotificationAsRead('${notification.id}')">
+                                    <i class="fas fa-check"></i> ${currentLanguage === 'ar' ? 'تحديد كمقروء' : 'Mark as Read'}
+                                </button>
+                            ` : ''}
+                            <button class="btn btn-sm btn-danger" onclick="deleteNotification('${notification.id}')" title="${currentLanguage === 'ar' ? 'حذف' : 'Delete'}">
+                                <i class="fas fa-trash"></i>
                             </button>
-                        ` : ''}
+                        </div>
                     </div>
                 `).join('');
             } catch (error) {
@@ -7037,6 +7064,42 @@
             } catch (error) {
                 console.error('Error marking notification as read:', error);
                 showToast(currentLanguage === 'ar' ? 'حدث خطأ في تحديد الإشعار كمقروء' : 'Error marking notification as read', 'error');
+            }
+        }
+
+        async function deleteNotification(notificationId) {
+            try {
+                if (!confirm(currentLanguage === 'ar' ? 'هل تريد حذف هذا الإشعار؟' : 'Delete this notification?')) return;
+                const { error } = await sb.from('notifications').delete().eq('id', notificationId);
+                if (error) throw error;
+                notifications = notifications.filter(n => n.id !== notificationId);
+                renderNotificationsPage();
+                updateNotificationBadge();
+                showToast(currentLanguage === 'ar' ? 'تم حذف الإشعار' : 'Notification deleted', 'success');
+            } catch (error) {
+                console.error('Error deleting notification:', error);
+                showToast(currentLanguage === 'ar' ? 'حدث خطأ في حذف الإشعار' : 'Error deleting notification', 'error');
+            }
+        }
+
+        async function deleteAllNotifications() {
+            try {
+                if (!currentUser) return;
+                if (!confirm(currentLanguage === 'ar' ? 'هل تريد حذف جميع إشعاراتك؟' : 'Delete all your notifications?')) return;
+                const myIds = notifications
+                    .filter(n => n.userId === currentUser.id || n.userId === 'all')
+                    .map(n => n.id)
+                    .filter(Boolean);
+                if (myIds.length === 0) return;
+                const { error } = await sb.from('notifications').delete().in('id', myIds);
+                if (error) throw error;
+                notifications = notifications.filter(n => !myIds.includes(n.id));
+                renderNotificationsPage();
+                updateNotificationBadge();
+                showToast(currentLanguage === 'ar' ? 'تم حذف جميع الإشعارات' : 'All notifications deleted', 'success');
+            } catch (error) {
+                console.error('Error deleting all notifications:', error);
+                showToast(currentLanguage === 'ar' ? 'حدث خطأ في حذف الإشعارات' : 'Error deleting notifications', 'error');
             }
         }
 
@@ -7435,6 +7498,8 @@
         window.deleteCourse = deleteCourse;
         window.deleteUser = deleteUser;
         window.markNotificationAsRead = markNotificationAsRead;
+        window.deleteNotification = deleteNotification;
+        window.deleteAllNotifications = deleteAllNotifications;
         window.changeUserPassword = changeUserPassword;
         window.toggleUserMenu = toggleUserMenu;
         window.hideUserMenu = hideUserMenu;
