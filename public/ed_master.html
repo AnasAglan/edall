@@ -2967,11 +2967,10 @@
 
         async function searchTeachersFromDB(term) {
             try {
-                const { data: teacherRoles } = await sb.from('user_roles').select('user_id').in('role', ['teacher', 'admin']);
-                const teacherIds = (teacherRoles || []).map(r => r.user_id);
-                if (teacherIds.length === 0) return [];
-                const { data } = await sb.from('profiles').select('*').in('id', teacherIds).ilike('name', `%${term}%`).limit(10);
-                return (data || []).map(p => ({ id: p.id, name: p.name, email: p.email, avatar_url: p.avatar_url }));
+                // Use public RPC so guests can also search teachers
+                const { data, error } = await sb.rpc('search_teachers_public', { _term: term });
+                if (error) throw error;
+                return (data || []).map(p => ({ id: p.id, name: p.name, email: p.email || '', avatar_url: p.avatar_url }));
             } catch (e) {
                 console.error('Teacher search error:', e);
                 return [];
