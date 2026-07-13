@@ -2744,9 +2744,15 @@
                 }
 
                 await loadData();
-                // Clear search input to prevent browser autofill
-                const searchEl = document.getElementById('searchInput');
-                if (searchEl) searchEl.value = '';
+                // Aggressively clear search input to defeat browser/password-manager autofill
+                (function forceClearSearch(){
+                    var el = document.getElementById('searchInput');
+                    if (!el) return;
+                    var clear = function(){ if (el.value) el.value = ''; };
+                    clear();
+                    [0, 50, 150, 400, 900, 1800].forEach(function(t){ setTimeout(clear, t); });
+                    requestAnimationFrame(function(){ requestAnimationFrame(clear); });
+                })();
                 setupEventListeners();
                 setupClickOutsideListener();
                 initializeFloatingBackButton();
