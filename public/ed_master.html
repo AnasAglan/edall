@@ -3312,6 +3312,12 @@
                     renderManageCoursesPage();
                     hideUserMenu();
                 });
+                var walletBtnEl = document.getElementById('walletBtn');
+                if (walletBtnEl) walletBtnEl.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    showPage('walletPage');
+                    hideUserMenu();
+                });
                 document.getElementById('settingsBtn').addEventListener('click', (e) => {
                     e.preventDefault();
                     showPage('settingsPage');
