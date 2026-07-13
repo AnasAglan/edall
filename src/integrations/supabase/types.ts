@@ -443,11 +443,103 @@ export type Database = {
         }
         Relationships: []
       }
+      wallet_topup_contacts: {
+        Row: {
+          created_at: string
+          id: string
+          link: string | null
+          phone: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          link?: string | null
+          phone: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          link?: string | null
+          phone?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      wallet_transactions: {
+        Row: {
+          amount: number
+          created_at: string
+          created_by: string | null
+          id: string
+          note: string | null
+          type: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          note?: string | null
+          type?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          note?: string | null
+          type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      wallets: {
+        Row: {
+          balance: number
+          created_at: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          balance?: number
+          created_at?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          balance?: number
+          created_at?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      admin_credit_wallet: {
+        Args: { _amount: number; _note?: string; _user_id: string }
+        Returns: number
+      }
+      admin_search_users: {
+        Args: { _limit?: number; _offset?: number; _term: string }
+        Returns: {
+          avatar_url: string
+          balance: number
+          email: string
+          id: string
+          name: string
+        }[]
+      }
       get_course_creators_public: {
         Args: never
         Returns: {
