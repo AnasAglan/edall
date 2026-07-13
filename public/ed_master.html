@@ -386,6 +386,61 @@
             cursor: grabbing;
         }
 
+        .telegram-fab {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 9998;
+            width: 58px;
+            height: 58px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #29b6f6, #0088cc);
+            color: #fff;
+            border: none;
+            box-shadow: 0 8px 24px rgba(0,136,204,0.45), 0 2px 6px rgba(0,0,0,0.25);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.6rem;
+            transition: transform .2s ease, box-shadow .2s ease;
+        }
+        .telegram-fab:hover { transform: translateY(-2px) scale(1.06); box-shadow: 0 12px 30px rgba(0,136,204,0.55); }
+        .telegram-fab:active { transform: scale(0.96); }
+        [dir="ltr"] .telegram-fab { right: auto; left: 24px; }
+        @media (max-width: 768px) {
+            .telegram-fab { width: 52px; height: 52px; bottom: 18px; right: 18px; font-size: 1.4rem; }
+            [dir="ltr"] .telegram-fab { left: 18px; }
+        }
+
+        .telegram-qr-card { text-align: center; padding: 4px; }
+        .telegram-qr-card img {
+            width: 100%;
+            max-width: 260px;
+            height: auto;
+            border-radius: 16px;
+            display: block;
+            margin: 8px auto 18px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+        }
+        .telegram-chat-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: linear-gradient(135deg, #29b6f6, #0088cc);
+            color: #fff !important;
+            border: none;
+            padding: 12px 28px;
+            border-radius: 999px;
+            font-weight: 800;
+            font-size: 1rem;
+            cursor: pointer;
+            text-decoration: none;
+            box-shadow: 0 6px 18px rgba(0,136,204,0.4);
+            transition: transform .15s ease;
+        }
+        .telegram-chat-btn:hover { transform: translateY(-1px) scale(1.03); }
+
         .language-selector {
             position: relative;
             display: inline-block;
@@ -1709,6 +1764,23 @@
     <button id="floatingBackBtn" class="floating-back-btn" title="العودة للخلف">
         <i class="fas fa-arrow-right"></i>
     </button>
+
+    <button id="telegramFab" class="telegram-fab" title="Telegram" onclick="openTelegramModal()" aria-label="Telegram">
+        <i class="fab fa-telegram-plane"></i>
+    </button>
+    <script>
+        window.openTelegramModal = function() {
+            var title = (window.currentLanguage === 'ar') ? 'تواصل عبر تليجرام' : 'Contact on Telegram';
+            var chatLbl = (window.currentLanguage === 'ar') ? 'محادثة' : 'Chat';
+            var html = '<div class="telegram-qr-card">'
+                + '<div style="font-size:1.15rem;font-weight:900;margin-bottom:10px;">' + title + '</div>'
+                + '<img src="/__l5e/assets-v1/e8579efa-772a-483c-84c5-1cee7151be27/telegram-qr.png" alt="Telegram QR">'
+                + '<a class="telegram-chat-btn" href="https://t.me/anasaglan" target="_blank" rel="noopener">'
+                + '<i class="fab fa-telegram-plane"></i> ' + chatLbl + '</a>'
+                + '</div>';
+            if (typeof window.showModal === 'function') window.showModal(html);
+        };
+    </script>
 
     <div class="breadcrumb" id="breadcrumb">
         <a href="#" onclick="showPage('mainPage'); return false;">الرئيسية</a>
