@@ -8039,16 +8039,19 @@
         })();
 
         // Show/hide wallet button + refresh badge based on auth state
+        // Refresh wallet badge periodically and when the user menu opens.
         (function(){
-            var origUpdateUI = window.updateUI;
-            window.updateUI = function(){
-                try { if (typeof origUpdateUI === 'function') origUpdateUI(); } catch(e){ console.error(e); }
-                try {
-                    var w = document.getElementById('walletBtn');
-                    if (w) w.style.display = (typeof currentUser !== 'undefined' && currentUser) ? 'flex' : 'none';
-                    if (typeof window.refreshWalletBadge === 'function' && currentUser) window.refreshWalletBadge();
-                } catch(e){ console.error(e); }
-            };
+            setInterval(function(){
+                if (typeof currentUser !== 'undefined' && currentUser && typeof window.refreshWalletBadge === 'function') {
+                    window.refreshWalletBadge();
+                }
+            }, 30000);
+            document.addEventListener('click', function(e){
+                var t = e.target;
+                if (t && (t.id === 'userBtn' || (t.closest && t.closest('#userBtn')))) {
+                    if (typeof window.refreshWalletBadge === 'function') window.refreshWalletBadge();
+                }
+            });
         })();
 
     </script>
