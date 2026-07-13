@@ -1795,8 +1795,10 @@
 
         <div style="padding: 0 20px;">
             <div class="search-bar">
-
-                <input type="text" id="searchInput" placeholder="ابحث عن كورس، محتوى، أو مدرس..." autocomplete="off" name="course_search_field">
+                <!-- Dummy inputs to trap browser autofill (Chrome ignores autocomplete=off) -->
+                <input type="text" style="display:none" tabindex="-1" aria-hidden="true">
+                <input type="password" style="display:none" tabindex="-1" aria-hidden="true">
+                <input type="search" role="searchbox" id="searchInput" placeholder="ابحث عن كورس، محتوى، أو مدرس..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other" data-lpignore="true" data-1p-ignore="true" aria-autocomplete="none" name="ed_q_search_no_autofill" readonly onfocus="this.removeAttribute('readonly');">
                 <div class="search-icon">
                     <i class="fas fa-search"></i>
                 </div>
