@@ -4692,7 +4692,7 @@
                     created_by: currentUser.id
                 }).select().single();
                 
-                if (error) { if (createBtn) hideBtnLoading(createBtn); console.error('Course insert error:', error); showToast((currentLanguage === 'ar' ? 'حدث خطأ في إنشاء الكورس: ' : 'Error creating course: ') + error.message, 'error'); return; }
+                if (error) { if (createBtn) hideBtnLoading(createBtn); console.error('Course insert error:', error); if (error.code === '23505') { showToast(currentLanguage === 'ar' ? 'يوجد كورس بنفس الاسم بالفعل' : 'A course with the same name already exists', 'error'); } else { showToast((currentLanguage === 'ar' ? 'حدث خطأ في إنشاء الكورس: ' : 'Error creating course: ') + error.message, 'error'); } return; }
                 
                 courses.unshift({
                     id: newCourseData.id,
@@ -4747,7 +4747,7 @@
                     created_by: currentUser.id
                 }).select().single();
                 
-                if (error) { hideBtnLoading(btn); console.error('Course insert error:', error); showToast('حدث خطأ في إنشاء الكورس: ' + error.message, 'error'); return; }
+                if (error) { hideBtnLoading(btn); console.error('Course insert error:', error); if (error.code === '23505') { showToast(currentLanguage === 'ar' ? 'يوجد كورس بنفس الاسم بالفعل' : 'A course with the same name already exists', 'error'); } else { showToast((currentLanguage === 'ar' ? 'حدث خطأ في إنشاء الكورس: ' : 'Error creating course: ') + error.message, 'error'); } return; }
                 
                 courses.unshift({
                     id: newCourseData.id,
@@ -4856,7 +4856,7 @@
                 }
                 
                 const { error } = await sb.from('courses').update(updateData).eq('id', courseId);
-                if (error) { hideBtnLoading(btn); console.error('Course update error:', error); showToast('حدث خطأ في تحديث الكورس: ' + error.message, 'error'); return; }
+                if (error) { hideBtnLoading(btn); console.error('Course update error:', error); if (error.code === '23505') { showToast(currentLanguage === 'ar' ? 'يوجد كورس بنفس الاسم بالفعل' : 'A course with the same name already exists', 'error'); } else { showToast((currentLanguage === 'ar' ? 'حدث خطأ في تحديث الكورس: ' : 'Error updating course: ') + error.message, 'error'); } return; }
                 
                 course.title = title;
                 course.description = desc;
