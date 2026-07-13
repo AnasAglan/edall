@@ -2039,6 +2039,36 @@
         <div class="cards-container" id="manageCoursesGrid"></div>
     </div>
 
+    <div id="walletPage" class="page">
+        <div class="header">
+            <div class="logo" onclick="showPage('mainPage')">ED</div>
+            <div class="header-title" id="walletPageTitle">المحفظة</div>
+            <div class="header-desc" id="walletPageDesc">رصيدك وسجل عمليات الشحن</div>
+            <div class="actions">
+                <button class="btn" id="walletBackBtn" onclick="showPage('mainPage')"><i class="fas fa-arrow-right"></i> <span>العودة</span></button>
+            </div>
+        </div>
+        <div id="walletPageBody" style="padding:20px;max-width:900px;margin:0 auto;"></div>
+    </div>
+
+    <div id="walletAdminTopupPage" class="page">
+        <div class="header">
+            <div class="logo" onclick="showPage('mainPage')">ED</div>
+            <div class="header-title" id="walletAdminTopupTitle">شحن رصيد المستخدمين</div>
+            <div class="header-desc" id="walletAdminTopupDesc">ابحث عن مستخدم واختر ➕ لشحن رصيده</div>
+            <div class="actions">
+                <button class="btn" onclick="showPage('walletPage')"><i class="fas fa-arrow-right"></i> <span>العودة</span></button>
+            </div>
+        </div>
+        <div style="padding:0 20px;max-width:900px;margin:0 auto;">
+            <div class="search-bar" style="margin-bottom:16px;">
+                <input type="search" id="walletTopupSearch" placeholder="ابحث بالاسم أو البريد الإلكتروني..." autocomplete="off">
+                <div class="search-icon"><i class="fas fa-search"></i></div>
+            </div>
+            <div id="walletTopupUsersList"></div>
+        </div>
+    </div>
+
     <footer>
         © <span id="yr"></span> ED MASTER — <span id="footerText">منصة تعليمية متكاملة بالسلاسة والتركيز</span>
     </footer>
