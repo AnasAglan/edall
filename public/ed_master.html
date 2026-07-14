@@ -4991,6 +4991,16 @@
                     <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">${currentLanguage === 'ar' ? 'تعديل الكورس' : 'Edit Course'}</div>
                     <input id="editCourseTitle" placeholder="${currentLanguage === 'ar' ? 'عنوان الكورس' : 'Course title'}" value="${course.title}">
                     <textarea id="editCourseDesc" rows="3" placeholder="${currentLanguage === 'ar' ? 'وصف الكورس' : 'Course description'}">${course.description || ''}</textarea>
+                    <div style="margin:10px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                        <label style="display:flex;align-items:center;gap:6px;font-weight:700;cursor:pointer;">
+                            <input type="checkbox" id="editCourseFree" ${Number(course.price || 0) === 0 ? 'checked' : ''} onchange="document.getElementById('editCoursePrice').disabled=this.checked; if(this.checked)document.getElementById('editCoursePrice').value='';">
+                            ${currentLanguage === 'ar' ? 'كورس مجاني' : 'Free course'}
+                        </label>
+                        <label style="display:flex;align-items:center;gap:6px;">
+                            ${currentLanguage === 'ar' ? 'السعر:' : 'Price:'}
+                            <input id="editCoursePrice" type="number" step="0.01" min="0" value="${Number(course.price || 0) > 0 ? course.price : ''}" ${Number(course.price || 0) === 0 ? 'disabled' : ''} placeholder="0.00" style="width:120px;">
+                        </label>
+                    </div>
                     <div class="image-upload-container">
                         ${course.image ? `
                             <div class="image-preview" style="display:block;">
