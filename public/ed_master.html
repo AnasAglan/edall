@@ -6636,7 +6636,7 @@
                     // Lazy-load course if not yet in array (e.g., not paged in)
                     const { data: c } = await sb.from('courses').select('*').eq('id', courseId).maybeSingle();
                     if (c) {
-                        course = { id: c.id, title: c.title, description: c.description, image: c.image_url, createdBy: c.created_by, lessons: null, created: new Date(c.created_at).getTime() };
+                        course = { id: c.id, title: c.title, description: c.description, image: c.image_url, createdBy: c.created_by, price: Number(c.price || 0), lessons: null, created: new Date(c.created_at).getTime() };
                         courses.push(course);
                     }
                 }
