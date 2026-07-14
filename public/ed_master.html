@@ -4811,6 +4811,16 @@
                     <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">${currentLanguage === 'ar' ? 'إضافة كورس جديد' : 'Add New Course'}</div>
                     <input id="newCourseTitle" placeholder="${currentLanguage === 'ar' ? 'عنوان الكورس' : 'Course title'}">
                     <textarea id="newCourseDesc" rows="3" placeholder="${currentLanguage === 'ar' ? 'وصف الكورس' : 'Course description'}"></textarea>
+                    <div style="margin:10px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                        <label style="display:flex;align-items:center;gap:6px;font-weight:700;cursor:pointer;">
+                            <input type="checkbox" id="newCourseFree" checked onchange="document.getElementById('newCoursePrice').disabled=this.checked; if(this.checked)document.getElementById('newCoursePrice').value='';">
+                            ${currentLanguage === 'ar' ? 'كورس مجاني' : 'Free course'}
+                        </label>
+                        <label style="display:flex;align-items:center;gap:6px;">
+                            ${currentLanguage === 'ar' ? 'السعر:' : 'Price:'}
+                            <input id="newCoursePrice" type="number" step="0.01" min="0" disabled placeholder="0.00" style="width:120px;">
+                        </label>
+                    </div>
                     <div class="image-upload-container">
                         <label class="upload-btn">
                             <i class="fas fa-image"></i>
