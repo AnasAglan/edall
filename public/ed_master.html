@@ -5066,11 +5066,17 @@
                     updateData.image_url = imageUrl;
                 }
                 
+                const isFreeChk = document.getElementById('editCourseFree');
+                const priceInput = document.getElementById('editCoursePrice');
+                if (isFreeChk) {
+                    updateData.price = isFreeChk.checked ? 0 : Math.max(0, parseFloat(priceInput && priceInput.value) || 0);
+                }
                 const { error } = await sb.from('courses').update(updateData).eq('id', courseId);
                 if (error) { hideBtnLoading(btn); console.error('Course update error:', error); if (error.code === '23505') { showToast(currentLanguage === 'ar' ? 'يوجد كورس بنفس الاسم بالفعل' : 'A course with the same name already exists', 'error'); } else { showToast((currentLanguage === 'ar' ? 'حدث خطأ في تحديث الكورس: ' : 'Error updating course: ') + error.message, 'error'); } return; }
                 
                 course.title = title;
                 course.description = desc;
+                if (typeof updateData.price === 'number') course.price = updateData.price;
                 if (updateData.image_url) course.image = updateData.image_url;
                 
                 courseImageData = null;
