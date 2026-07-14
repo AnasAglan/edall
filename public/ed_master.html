@@ -4880,11 +4880,16 @@
                     imageUrl = await uploadImageToStorage('course-images', filePath, courseImageFile);
                 }
                 
+                const isFreeChk = document.getElementById('newCourseFree');
+                const priceInput = document.getElementById('newCoursePrice');
+                const coursePrice = (isFreeChk && isFreeChk.checked) ? 0 : Math.max(0, parseFloat(priceInput && priceInput.value) || 0);
+
                 const { data: newCourseData, error } = await sb.from('courses').insert({
                     title: title,
                     description: desc,
                     image_url: imageUrl,
-                    created_by: currentUser.id
+                    created_by: currentUser.id,
+                    price: coursePrice
                 }).select().single();
                 
                 if (error) { if (createBtn) hideBtnLoading(createBtn); console.error('Course insert error:', error); if (error.code === '23505') { showToast(currentLanguage === 'ar' ? 'يوجد كورس بنفس الاسم بالفعل' : 'A course with the same name already exists', 'error'); } else { showToast((currentLanguage === 'ar' ? 'حدث خطأ في إنشاء الكورس: ' : 'Error creating course: ') + error.message, 'error'); } return; }
@@ -4895,6 +4900,7 @@
                     description: desc,
                     image: imageUrl,
                     createdBy: currentUser.id,
+                    price: coursePrice,
                     lessons: [],
                     created: Date.now()
                 });
