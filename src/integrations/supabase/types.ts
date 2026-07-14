@@ -21,6 +21,7 @@ export type Database = {
           description: string | null
           id: string
           image_url: string | null
+          price: number
           title: string
           updated_at: string
         }
@@ -30,6 +31,7 @@ export type Database = {
           description?: string | null
           id?: string
           image_url?: string | null
+          price?: number
           title: string
           updated_at?: string
         }
@@ -39,6 +41,7 @@ export type Database = {
           description?: string | null
           id?: string
           image_url?: string | null
+          price?: number
           title?: string
           updated_at?: string
         }
@@ -330,6 +333,7 @@ export type Database = {
           course_id: string
           created_at: string
           id: string
+          is_free: boolean
           sort_order: number
           title: string
         }
@@ -338,6 +342,7 @@ export type Database = {
           course_id: string
           created_at?: string
           id?: string
+          is_free?: boolean
           sort_order?: number
           title: string
         }
@@ -346,6 +351,7 @@ export type Database = {
           course_id?: string
           created_at?: string
           id?: string
+          is_free?: boolean
           sort_order?: number
           title?: string
         }
@@ -400,6 +406,7 @@ export type Database = {
           last_active: string | null
           name: string
           phone: string | null
+          public_id: string | null
         }
         Insert: {
           avatar_url?: string | null
@@ -411,6 +418,7 @@ export type Database = {
           last_active?: string | null
           name: string
           phone?: string | null
+          public_id?: string | null
         }
         Update: {
           avatar_url?: string | null
@@ -422,6 +430,25 @@ export type Database = {
           last_active?: string | null
           name?: string
           phone?: string | null
+          public_id?: string | null
+        }
+        Relationships: []
+      }
+      site_settings: {
+        Row: {
+          key: string
+          updated_at: string
+          value: Json
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          value?: Json
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          value?: Json
         }
         Relationships: []
       }
@@ -540,6 +567,7 @@ export type Database = {
           name: string
         }[]
       }
+      generate_public_id: { Args: never; Returns: string }
       get_course_creators_public: {
         Args: never
         Returns: {
@@ -559,6 +587,7 @@ export type Database = {
           id: string
           image_url: string
           lesson_count: number
+          price: number
           title: string
           updated_at: string
         }[]
@@ -586,6 +615,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      purchase_course: { Args: { _course_id: string }; Returns: Json }
       search_teachers_public: {
         Args: { _term: string }
         Returns: {
