@@ -3230,7 +3230,7 @@
                 const { data } = await sb.from('courses').select('*').ilike('title', `%${term}%`).order('created_at', { ascending: false }).limit(20);
                 return (data || []).map(c => ({
                     id: c.id, title: c.title, description: c.description,
-                    image: c.image_url, createdBy: c.created_by,
+                    image: c.image_url, createdBy: c.created_by, price: Number(c.price || 0),
                     lessons: null, lessonCount: c.lesson_count || 0, created: new Date(c.created_at).getTime()
                 }));
             } catch (e) {
