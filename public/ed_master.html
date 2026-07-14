@@ -1774,16 +1774,72 @@
         <i class="fab fa-telegram-plane"></i>
     </button>
     <script>
-        window.openTelegramModal = function() {
-            var title = (window.currentLanguage === 'ar') ? 'تواصل عبر تليجرام' : 'Contact on Telegram';
-            var chatLbl = (window.currentLanguage === 'ar') ? 'محادثة' : 'Chat';
-            var html = '<div class="telegram-qr-card">'
+        window._telegramConfig = {
+            qr_url: '/__l5e/assets-v1/e8579efa-772a-483c-84c5-1cee7151be27/telegram-qr.png',
+            chat_url: 'https://t.me/anasaglan'
+        };
+        window._loadTelegramConfig = async function(){
+            try {
+                if (!window.sb) return;
+                var r = await window.sb.from('site_settings').select('value').eq('key','telegram').maybeSingle();
+                if (r && r.data && r.data.value) {
+                    if (r.data.value.qr_url) window._telegramConfig.qr_url = r.data.value.qr_url;
+                    if (r.data.value.chat_url) window._telegramConfig.chat_url = r.data.value.chat_url;
+                }
+            } catch(e){ console.warn('loadTelegramConfig', e); }
+        };
+        window.openTelegramModal = async function() {
+            await window._loadTelegramConfig();
+            var isAr = window.currentLanguage === 'ar';
+            var title = isAr ? 'تواصل عبر تليجرام' : 'Contact on Telegram';
+            var chatLbl = isAr ? 'محادثة' : 'Chat';
+            var isAdm = window.currentUser && window.currentUser.roles && window.currentUser.roles.includes('admin');
+            var editBtn = isAdm ? '<button onclick="openTelegramEdit()" style="position:absolute;top:8px;'+(isAr?'left':'right')+':8px;background:transparent;border:none;color:#0088cc;font-size:1.1rem;cursor:pointer;" title="'+(isAr?'تعديل':'Edit')+'"><i class="fas fa-pen"></i></button>' : '';
+            var html = '<div class="telegram-qr-card" style="position:relative;">'
+                + editBtn
                 + '<div style="font-size:1.15rem;font-weight:900;margin-bottom:10px;">' + title + '</div>'
-                + '<img src="/__l5e/assets-v1/e8579efa-772a-483c-84c5-1cee7151be27/telegram-qr.png" alt="Telegram QR">'
-                + '<a class="telegram-chat-btn" href="https://t.me/anasaglan" target="_blank" rel="noopener">'
+                + '<img src="' + window._telegramConfig.qr_url + '" alt="Telegram QR">'
+                + '<a class="telegram-chat-btn" href="' + window._telegramConfig.chat_url + '" target="_blank" rel="noopener">'
                 + '<i class="fab fa-telegram-plane"></i> ' + chatLbl + '</a>'
                 + '</div>';
             if (typeof window.showModal === 'function') window.showModal(html);
+        };
+        window.openTelegramEdit = function(){
+            var isAr = window.currentLanguage === 'ar';
+            var cfg = window._telegramConfig;
+            var html = '<div style="font-size:1.15rem;font-weight:900;margin-bottom:12px;text-align:center;">' + (isAr?'تعديل بيانات التليجرام':'Edit Telegram Info') + '</div>'
+                + '<label style="display:block;font-weight:700;margin-bottom:6px;">' + (isAr?'رابط QR الحالي':'Current QR URL') + '</label>'
+                + '<div style="margin-bottom:10px;text-align:center;"><img id="tgQrPreview" src="' + cfg.qr_url + '" style="max-width:160px;border-radius:8px;"></div>'
+                + '<label class="upload-btn" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;padding:8px 12px;border:1px dashed rgba(255,255,255,.2);border-radius:10px;margin-bottom:10px;"><i class="fas fa-image"></i> ' + (isAr?'اختيار صورة جديدة':'Choose new image') + '<input type="file" id="tgQrFile" accept="image/*" style="display:none;" onchange="(function(e){var f=e.target.files[0];if(!f)return;var r=new FileReader();r.onload=function(ev){document.getElementById(\'tgQrPreview\').src=ev.target.result;window._tgQrFile=f;};r.readAsDataURL(f);})(event)"></label>'
+                + '<label style="display:block;font-weight:700;margin:10px 0 6px;">' + (isAr?'رابط المحادثة':'Chat URL') + '</label>'
+                + '<input id="tgChatUrl" type="url" value="' + (cfg.chat_url || '') + '" style="width:100%;margin-bottom:14px;">'
+                + '<div style="display:flex;gap:8px;justify-content:center;">'
+                + '<button class="btn" onclick="saveTelegramConfig()"><i class="fas fa-save"></i> ' + (isAr?'حفظ':'Save') + '</button>'
+                + '<button class="btn btn-outline" onclick="openTelegramModal()">' + (isAr?'إلغاء':'Cancel') + '</button>'
+                + '</div>';
+            window.showModal(html);
+        };
+        window.saveTelegramConfig = async function(){
+            try {
+                var isAr = window.currentLanguage === 'ar';
+                var chatUrl = document.getElementById('tgChatUrl').value.trim();
+                var qrUrl = window._telegramConfig.qr_url;
+                if (window._tgQrFile) {
+                    var file = window._tgQrFile;
+                    var filePath = 'telegram/' + Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+                    var up = await window.sb.storage.from('course-images').upload(filePath, file, { upsert: true });
+                    if (up.error) throw up.error;
+                    var pub = window.sb.storage.from('course-images').getPublicUrl(filePath);
+                    qrUrl = pub.data.publicUrl;
+                }
+                var val = { qr_url: qrUrl, chat_url: chatUrl };
+                var r = await window.sb.from('site_settings').upsert({ key: 'telegram', value: val, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+                if (r.error) throw r.error;
+                window._telegramConfig = val;
+                window._tgQrFile = null;
+                if (typeof showToast === 'function') showToast(isAr?'تم الحفظ':'Saved','success');
+                window.openTelegramModal();
+            } catch(e){ console.error(e); if (typeof showToast === 'function') showToast((e && e.message) || 'Save failed','error'); }
         };
     </script>
 
