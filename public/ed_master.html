@@ -3263,7 +3263,7 @@
                 const { data } = await sb.rpc('get_courses_sorted_by_enrollment', { _offset: _coursesOffset, _limit: 5 });
                 const newCourses = (data || []).map(c => ({
                     id: c.id, title: c.title, description: c.description,
-                    image: c.image_url, createdBy: c.created_by,
+                    image: c.image_url, createdBy: c.created_by, price: Number(c.price || 0),
                     lessons: null, enrollmentCount: c.enrollment_count || 0,
                     lessonCount: c.lesson_count || 0,
                     created: new Date(c.created_at).getTime()
