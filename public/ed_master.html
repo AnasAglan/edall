@@ -6735,9 +6735,18 @@
                 _activePdfUploads = [];
                 _pdfUploadComplete = true;
                 
+                const coursePriceForLesson = Number(course.price || 0);
+                const freeToggleHtml = coursePriceForLesson > 0
+                    ? `<div style="margin:10px 0;padding:10px;background:var(--bg-lighter);border-radius:8px;">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:700;">
+                            <input type="checkbox" id="lessonIsFree">
+                            <span>${currentLanguage === 'ar' ? 'محاضرة مجانية (يمكن للجميع فتحها)' : 'Free lesson (open for everyone)'}</span>
+                        </label>
+                       </div>` : '';
                 showModal(`
                     <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">${currentLanguage === 'ar' ? 'إضافة محاضرة جديدة' : 'Add New Lesson'}</div>
                     <input id="lessonTitle" placeholder="${currentLanguage === 'ar' ? 'عنوان المحاضرة' : 'Lesson title'}">
+                    ${freeToggleHtml}
                     <textarea id="lessonContent" rows="3" placeholder="${currentLanguage === 'ar' ? 'محتوى المحاضرة' : 'Lesson content'}"></textarea>
                     
                     <div style="font-weight:bold;margin:10px 0 5px;">${currentLanguage === 'ar' ? 'روابط الفيديو:' : 'Video URLs:'}</div>
