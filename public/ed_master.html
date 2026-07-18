@@ -7176,6 +7176,7 @@
                         </div>
                         <h3>${currentUser.name || currentUser.email}</h3>
                         <p style="color: var(--text-muted);">${currentUser.email}</p>
+                        ${currentUser.public_id ? `<div style="margin-top:6px;font-weight:800;"><span style="background:var(--bg-lighter);padding:6px 12px;border-radius:999px;letter-spacing:2px;font-family:monospace;"><i class="fas fa-id-badge"></i> ${currentLanguage === 'ar' ? 'المعرف:' : 'ID:'} ${currentUser.public_id}</span></div>` : ''}
                         <div style="display: flex; gap: 10px; justify-content: center; margin-top: 10px;">
                             ${currentUser.roles && currentUser.roles.map(role => 
                                 `<span class="badge ${role === 'admin' ? 'badge-primary' : role === 'teacher' ? 'badge-accent' : 'badge-success'}">${role === 'admin' ? (currentLanguage === 'ar' ? 'مدير' : 'Admin') : role === 'teacher' ? (currentLanguage === 'ar' ? 'مدرس' : 'Teacher') : (currentLanguage === 'ar' ? 'طالب' : 'Student')}</span>`
