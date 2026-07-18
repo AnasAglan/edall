@@ -565,6 +565,7 @@ export type Database = {
           email: string
           id: string
           name: string
+          public_id: string
         }[]
       }
       generate_public_id: { Args: never; Returns: string }
