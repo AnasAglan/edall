@@ -5288,6 +5288,26 @@
                     showPage('loginPage');
                     return;
                 }
+
+                // Paid course gating: only paid non-free lessons require enrollment
+                const coursePrice = Number(course.price || 0);
+                const isEnrolled = isUserEnrolled(courseId);
+                const canEditThis = canUserEditCourse(course);
+                if (coursePrice > 0 && !isEnrolled && !lesson.isFree && !canEditThis) {
+                    const isAr = currentLanguage === 'ar';
+                    showModal(
+                        '<div style="text-align:center;padding:8px;">'
+                        + '<i class="fas fa-lock" style="font-size:2.4rem;color:#f59e0b;margin-bottom:10px;"></i>'
+                        + '<h3 style="margin:0 0 8px;">' + (isAr?'محاضرة مدفوعة':'Paid Lesson') + '</h3>'
+                        + '<p style="color:var(--text-muted);margin-bottom:16px;">' + (isAr?('يجب شراء الكورس أولاً لفتح هذه المحاضرة. السعر: '+coursePrice):('You must purchase the course first. Price: '+coursePrice)) + '</p>'
+                        + '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">'
+                        + '<button class="btn" onclick="closeModal(); enrollInCourse(\''+courseId+'\');"><i class="fas fa-user-plus"></i> ' + (isAr?'شراء الكورس':'Purchase Course') + '</button>'
+                        + '<button class="btn btn-outline" onclick="closeModal()">' + (isAr?'إغلاق':'Close') + '</button>'
+                        + '</div></div>'
+                    );
+                    return;
+                }
+                
                 
                 // Check if lesson is locked
                 const lessonIndex = course.lessons.findIndex(l => l.id === lessonId);
