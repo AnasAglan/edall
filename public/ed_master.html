@@ -4289,8 +4289,12 @@
                 }
                 const course = courses.find(c => c.id === courseId);
                 const price = Number((course && course.price) || 0);
+                const isAr = currentLanguage === 'ar';
+                const confirmMsg = price > 0
+                    ? (isAr ? `هل تريد شراء هذا الكورس مقابل ${price}؟ سيتم خصم المبلغ من محفظتك.` : `Purchase this course for ${price}? The amount will be deducted from your wallet.`)
+                    : (isAr ? 'هل تريد الانضمام إلى هذا الكورس؟' : 'Join this course?');
+                if (!confirm(confirmMsg)) return;
 
-                const { data, error } = await sb.rpc('purchase_course', { _course_id: courseId });
                 if (error) {
                     var msg = (error.message || '') + ' ' + (error.details || '');
                     if (msg.indexOf('INSUFFICIENT_BALANCE') !== -1) {
