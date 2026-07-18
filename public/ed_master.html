@@ -2926,10 +2926,12 @@
                     avatar_url: profile ? profile.avatar_url : null,
                     bio: profile ? profile.bio : null,
                     banned: profile ? profile.banned : false,
+                    public_id: profile ? profile.public_id : null,
                     roles: roles && roles.length > 0 ? roles.map(r => r.role) : ['student'],
                     lastActive: Date.now(),
                     joined: profile ? new Date(profile.joined_at).getTime() : Date.now()
                 };
+                _syncUser();
 
                 // Update last_active
                 sb.from('profiles').update({ last_active: new Date().toISOString() }).eq('id', authUser.id).then(() => {});
