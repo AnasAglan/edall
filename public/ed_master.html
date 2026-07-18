@@ -7764,8 +7764,13 @@
                 console.log('[updateLesson] Starting update for lesson:', lessonId);
 
                 // Step 1: Update lesson data
-                const { error: lessonError } = await sb.from('lessons').update({ title, content: content || null }).eq('id', lessonId);
+                const courseObjEdit = courses.find(c => c.id === courseId);
+                const editFreeChk = document.getElementById('editLessonIsFree');
+                const editIsFree = Number((courseObjEdit && courseObjEdit.price) || 0) === 0 ? true : (editFreeChk ? !!editFreeChk.checked : false);
+                const { error: lessonError } = await sb.from('lessons').update({ title, content: content || null, is_free: editIsFree }).eq('id', lessonId);
                 if (lessonError) throw new Error('فشل في تعديل المحاضرة: ' + lessonError.message);
+                // Update local
+                try { const _l = (courseObjEdit && courseObjEdit.lessons || []).find(l => l.id === lessonId); if (_l) _l.isFree = editIsFree; } catch(e){}
                 console.log('[updateLesson] Step 1 done - lesson updated');
 
                 // Step 2: Replace videos
