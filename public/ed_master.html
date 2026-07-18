@@ -8150,15 +8150,17 @@
                     var users = r.data || [];
                     if (users.length === 0) { listEl.innerHTML = '<div style="padding:16px;opacity:.75;">' + t('لا يوجد نتائج','No results') + '</div>'; return; }
                     listEl.innerHTML = users.map(function(u){
+                        var safeName = escapeHtml((u.name || u.email || '').replace(/\x27/g,"&#39;"));
                         return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px;border:1px solid rgba(255,255,255,.08);border-radius:12px;margin-bottom:8px;">'
                             + '<div style="display:flex;align-items:center;gap:10px;min-width:0;">'
                             + (u.avatar_url ? '<img src="' + escapeHtml(u.avatar_url) + '" style="width:40px;height:40px;border-radius:50%;object-fit:cover;">' : '<i class="fas fa-user-circle" style="font-size:2.2rem;opacity:.6;"></i>')
-                            + '<div style="min-width:0;"><div style="font-weight:800;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(u.name || u.email) + '</div>'
+                            + '<div style="min-width:0;"><div style="font-weight:800;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(u.name || u.email) + (u.public_id ? ' <span style="font-family:monospace;background:var(--bg-lighter);padding:2px 8px;border-radius:999px;font-size:.75rem;letter-spacing:1px;">#' + escapeHtml(u.public_id) + '</span>' : '') + '</div>'
                             + '<div style="font-size:.85rem;opacity:.7;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(u.email || '') + '</div></div>'
                             + '</div>'
-                            + '<div style="display:flex;align-items:center;gap:10px;">'
+                            + '<div style="display:flex;align-items:center;gap:8px;">'
                             + '<span style="font-weight:900;color:#22d3ee;">' + fmt(u.balance) + '</span>'
-                            + '<button class="btn btn-accent" onclick="openCreditUserModal(\'' + u.id + '\',\'' + escapeHtml((u.name || u.email || '').replace(/\x27/g,"&#39;")) + '\')" title="' + t('شحن','Top up') + '"><i class="fas fa-plus"></i></button>'
+                            + '<button class="btn btn-accent" onclick="openCreditUserModal(\'' + u.id + '\',\'' + safeName + '\', 1)" title="' + t('شحن','Top up') + '"><i class="fas fa-plus"></i></button>'
+                            + '<button class="btn btn-danger" onclick="openCreditUserModal(\'' + u.id + '\',\'' + safeName + '\', -1)" title="' + t('خصم','Debit') + '"><i class="fas fa-minus"></i></button>'
                             + '</div>'
                             + '</div>';
                     }).join('');
