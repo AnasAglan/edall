@@ -8171,32 +8171,35 @@
             }
             window.runWalletUserSearch = runWalletUserSearch;
 
-            window.openCreditUserModal = function(userId, userName){
-                var html = '<h3 style="margin:0 0 10px;text-align:center;">' + t('شحن رصيد','Top up balance') + '</h3>'
+            window.openCreditUserModal = function(userId, userName, sign){
+                sign = (sign === -1) ? -1 : 1;
+                var title = sign > 0 ? t('شحن رصيد','Top up balance') : t('خصم رصيد','Debit balance');
+                var html = '<h3 style="margin:0 0 10px;text-align:center;">' + title + '</h3>'
                     + '<div style="text-align:center;opacity:.85;margin-bottom:12px;">' + userName + '</div>'
                     + '<label style="display:block;margin-bottom:6px;font-weight:700;">' + t('المبلغ','Amount') + '</label>'
                     + '<input id="creditAmount" type="number" step="0.01" min="0.01" style="width:100%;margin-bottom:10px;" placeholder="0.00">'
                     + '<label style="display:block;margin-bottom:6px;font-weight:700;">' + t('ملاحظة (اختياري)','Note (optional)') + '</label>'
                     + '<input id="creditNote" type="text" style="width:100%;margin-bottom:14px;">'
                     + '<div style="display:flex;gap:8px;justify-content:center;">'
-                    + '<button class="btn btn-accent" onclick="submitCreditUser(\'' + userId + '\')"><i class="fas fa-check"></i> ' + t('تأكيد الشحن','Confirm') + '</button>'
+                    + '<button class="' + (sign > 0 ? 'btn btn-accent' : 'btn btn-danger') + '" onclick="submitCreditUser(\'' + userId + '\',' + sign + ')"><i class="fas fa-check"></i> ' + t('تأكيد','Confirm') + '</button>'
                     + '<button class="btn btn-outline" onclick="closeModal()">' + t('إلغاء','Cancel') + '</button>'
                     + '</div>';
                 showModal(html);
             };
 
-            window.submitCreditUser = async function(userId){
+            window.submitCreditUser = async function(userId, sign){
+                sign = (sign === -1) ? -1 : 1;
                 var amount = parseFloat(document.getElementById('creditAmount').value);
                 var note = document.getElementById('creditNote').value.trim();
                 if (!amount || amount <= 0) { showToast(t('أدخل مبلغاً صحيحاً','Enter a valid amount'),'error'); return; }
                 try {
-                    var r = await sb.rpc('admin_credit_wallet', { _user_id: userId, _amount: amount, _note: note || null });
+                    var r = await sb.rpc('admin_credit_wallet', { _user_id: userId, _amount: sign * amount, _note: note || null });
                     if (r.error) throw r.error;
-                    showToast(t('تم الشحن بنجاح','Top-up successful'),'success');
+                    showToast(sign > 0 ? t('تم الشحن بنجاح','Top-up successful') : t('تم الخصم بنجاح','Debit successful'),'success');
                     closeModal();
                     var term = (document.getElementById('walletTopupSearch') || {}).value || '';
                     runWalletUserSearch(term.trim());
-                } catch(e){ console.error(e); showToast((e && e.message) || t('فشل الشحن','Top-up failed'),'error'); }
+                } catch(e){ console.error(e); showToast((e && e.message) || t('فشلت العملية','Operation failed'),'error'); }
             };
         })();
 
