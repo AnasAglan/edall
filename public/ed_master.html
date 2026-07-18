@@ -7662,6 +7662,7 @@
                     <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">${currentLanguage === 'ar' ? 'تعديل المحاضرة' : 'Edit Lesson'}</div>
                     <input id="editLessonTitle" value="${lesson.title}" placeholder="${currentLanguage === 'ar' ? 'عنوان المحاضرة' : 'Lesson title'}">
                     <textarea id="editLessonContent" rows="3" placeholder="${currentLanguage === 'ar' ? 'محتوى المحاضرة' : 'Lesson content'}">${lesson.content || ''}</textarea>
+                    ${Number(course.price || 0) > 0 ? `<div style="margin:10px 0;padding:10px;background:var(--bg-lighter);border-radius:8px;"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:700;"><input type="checkbox" id="editLessonIsFree" ${lesson.isFree ? 'checked' : ''}><span>${currentLanguage === 'ar' ? 'محاضرة مجانية (يمكن للجميع فتحها)' : 'Free lesson (open for everyone)'}</span></label></div>` : ''}
                     
                     <div style="font-weight:bold;margin:10px 0 5px;">${currentLanguage === 'ar' ? 'روابط الفيديو:' : 'Video URLs:'}</div>
                     <div id="editLessonVideosContainer">
