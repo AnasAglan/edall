@@ -4295,6 +4295,9 @@
                     : (isAr ? 'هل تريد الانضمام إلى هذا الكورس؟' : 'Join this course?');
                 if (!confirm(confirmMsg)) return;
 
+                const { data, error } = await sb.rpc('purchase_course', { _course_id: courseId });
+
+
                 if (error) {
                     var msg = (error.message || '') + ' ' + (error.details || '');
                     if (msg.indexOf('INSUFFICIENT_BALANCE') !== -1) {
