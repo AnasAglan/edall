@@ -2768,6 +2768,8 @@
         };
 
         let currentUser = null;
+        function _syncUser(){ try { window.currentUser = currentUser; } catch(e){} }
+        _syncUser();
         let users = [];
         let courses = [];
         let notifications = [];
@@ -2832,7 +2834,7 @@
                     await loadCurrentUserFromSupabase(session.user);
                     if (currentUser && currentUser.banned) {
                         await sb.auth.signOut();
-                        currentUser = null;
+                        currentUser = null; _syncUser();
                         if (loadingOverlay) loadingOverlay.style.display = 'none';
                         updateUI();
                         showToast(currentLanguage === 'ar' ? 'تم حظر حسابك. تواصل مع الإدارة.' : 'Your account has been blocked.', 'error');
@@ -2877,7 +2879,7 @@
                         await loadCurrentUserFromSupabase(session.user);
                         if (currentUser && currentUser.banned) {
                             await sb.auth.signOut();
-                            currentUser = null;
+                            currentUser = null; _syncUser();
                             updateUI();
                             showToast(currentLanguage === 'ar' ? 'تم حظر حسابك. تواصل مع الإدارة.' : 'Your account has been blocked.', 'error');
                             return;
@@ -2888,7 +2890,7 @@
                         renderCoursesGrid();
                         updateQuickStats();
                     } else if (event === 'SIGNED_OUT') {
-                        currentUser = null;
+                        currentUser = null; _syncUser();
                         _dataLoaded = false;
                         updateUI();
                         renderCoursesGrid();
@@ -2924,10 +2926,12 @@
                     avatar_url: profile ? profile.avatar_url : null,
                     bio: profile ? profile.bio : null,
                     banned: profile ? profile.banned : false,
+                    public_id: profile ? profile.public_id : null,
                     roles: roles && roles.length > 0 ? roles.map(r => r.role) : ['student'],
                     lastActive: Date.now(),
                     joined: profile ? new Date(profile.joined_at).getTime() : Date.now()
                 };
+                _syncUser();
 
                 // Update last_active
                 sb.from('profiles').update({ last_active: new Date().toISOString() }).eq('id', authUser.id).then(() => {});
@@ -4053,7 +4057,7 @@
                 
                 if (currentUser && currentUser.banned) {
                     await sb.auth.signOut();
-                    currentUser = null;
+                    currentUser = null; _syncUser();
                     hideBtnLoading(btn);
                     updateUI();
                     showToast(currentLanguage === 'ar' ? 'تم حظر حسابك. تواصل مع الإدارة.' : 'Your account has been blocked.', 'error');
@@ -4128,7 +4132,7 @@
             if (!confirm(confirmMsg)) return;
             try {
                 await sb.auth.signOut();
-                currentUser = null;
+                currentUser = null; _syncUser();
                 localStorage.removeItem(LS_KEYS.USER_ENROLLMENTS);
                 localStorage.removeItem(LS_KEYS.USER_FAVORITES);
                 localStorage.removeItem(LS_KEYS.EXAM_RESULTS);
@@ -4285,8 +4289,15 @@
                 }
                 const course = courses.find(c => c.id === courseId);
                 const price = Number((course && course.price) || 0);
+                const isAr = currentLanguage === 'ar';
+                const confirmMsg = price > 0
+                    ? (isAr ? `هل تريد شراء هذا الكورس مقابل ${price}؟ سيتم خصم المبلغ من محفظتك.` : `Purchase this course for ${price}? The amount will be deducted from your wallet.`)
+                    : (isAr ? 'هل تريد الانضمام إلى هذا الكورس؟' : 'Join this course?');
+                if (!confirm(confirmMsg)) return;
 
                 const { data, error } = await sb.rpc('purchase_course', { _course_id: courseId });
+
+
                 if (error) {
                     var msg = (error.message || '') + ' ' + (error.details || '');
                     if (msg.indexOf('INSUFFICIENT_BALANCE') !== -1) {
@@ -4499,9 +4510,14 @@
                             `}
                             <div class="card-header">
                                 <div class="card-title">${course.title}</div>
-                                <div class="card-badge">${getCourseLessonCount(course)} محاضرة</div>
+                                <div class="card-badge">${getCourseLessonCount(course)} ${currentLanguage === 'ar' ? 'محاضرة' : 'lessons'}</div>
                             </div>
-                            <div class="card-desc">${course.description || 'لا يوجد وصف'}</div>
+                            <div style="margin:6px 0 8px;">
+                                ${Number(course.price || 0) > 0
+                                    ? `<span class="badge badge-accent" style="background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;padding:4px 10px;border-radius:999px;font-weight:900;"><i class="fas fa-tag"></i> ${currentLanguage === 'ar' ? 'السعر:' : 'Price:'} ${Number(course.price)}</span>`
+                                    : `<span class="badge badge-success" style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:4px 10px;border-radius:999px;font-weight:900;"><i class="fas fa-gift"></i> ${currentLanguage === 'ar' ? 'كورس مجاني' : 'Free Course'}</span>`}
+                            </div>
+                            <div class="card-desc">${course.description || (currentLanguage === 'ar' ? 'لا يوجد وصف' : 'No description')}</div>
                             ${(() => {
                                 const teacher = users.find(u => u.id === course.createdBy);
                                 return teacher ? `<div style="color:var(--text-muted);font-size:0.85rem;margin-bottom:8px;cursor:pointer;" onclick="showTeacherProfile('${course.createdBy}')"><i class="fas fa-chalkboard-teacher"></i> ${currentLanguage === 'ar' ? 'المدرس:' : 'Teacher:'} <span style="color:var(--primary);text-decoration:underline;">${teacher.name}</span></div>` : '';
@@ -5272,6 +5288,26 @@
                     showPage('loginPage');
                     return;
                 }
+
+                // Paid course gating: only paid non-free lessons require enrollment
+                const coursePrice = Number(course.price || 0);
+                const isEnrolled = isUserEnrolled(courseId);
+                const canEditThis = canUserEditCourse(course);
+                if (coursePrice > 0 && !isEnrolled && !lesson.isFree && !canEditThis) {
+                    const isAr = currentLanguage === 'ar';
+                    showModal(
+                        '<div style="text-align:center;padding:8px;">'
+                        + '<i class="fas fa-lock" style="font-size:2.4rem;color:#f59e0b;margin-bottom:10px;"></i>'
+                        + '<h3 style="margin:0 0 8px;">' + (isAr?'محاضرة مدفوعة':'Paid Lesson') + '</h3>'
+                        + '<p style="color:var(--text-muted);margin-bottom:16px;">' + (isAr?('يجب شراء الكورس أولاً لفتح هذه المحاضرة. السعر: '+coursePrice):('You must purchase the course first. Price: '+coursePrice)) + '</p>'
+                        + '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">'
+                        + '<button class="btn" onclick="closeModal(); enrollInCourse(\''+courseId+'\');"><i class="fas fa-user-plus"></i> ' + (isAr?'شراء الكورس':'Purchase Course') + '</button>'
+                        + '<button class="btn btn-outline" onclick="closeModal()">' + (isAr?'إغلاق':'Close') + '</button>'
+                        + '</div></div>'
+                    );
+                    return;
+                }
+                
                 
                 // Check if lesson is locked
                 const lessonIndex = course.lessons.findIndex(l => l.id === lessonId);
@@ -6699,9 +6735,18 @@
                 _activePdfUploads = [];
                 _pdfUploadComplete = true;
                 
+                const coursePriceForLesson = Number(course.price || 0);
+                const freeToggleHtml = coursePriceForLesson > 0
+                    ? `<div style="margin:10px 0;padding:10px;background:var(--bg-lighter);border-radius:8px;">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:700;">
+                            <input type="checkbox" id="lessonIsFree">
+                            <span>${currentLanguage === 'ar' ? 'محاضرة مجانية (يمكن للجميع فتحها)' : 'Free lesson (open for everyone)'}</span>
+                        </label>
+                       </div>` : '';
                 showModal(`
                     <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">${currentLanguage === 'ar' ? 'إضافة محاضرة جديدة' : 'Add New Lesson'}</div>
                     <input id="lessonTitle" placeholder="${currentLanguage === 'ar' ? 'عنوان المحاضرة' : 'Lesson title'}">
+                    ${freeToggleHtml}
                     <textarea id="lessonContent" rows="3" placeholder="${currentLanguage === 'ar' ? 'محتوى المحاضرة' : 'Lesson content'}"></textarea>
                     
                     <div style="font-weight:bold;margin:10px 0 5px;">${currentLanguage === 'ar' ? 'روابط الفيديو:' : 'Video URLs:'}</div>
@@ -6965,6 +7010,8 @@
                 const title = document.getElementById('lessonTitle').value.trim();
                 const content = document.getElementById('lessonContent').value.trim();
                 const videos = getFilledInputValues('.lesson-video-input');
+                const freeChk = document.getElementById('lessonIsFree');
+                const isFreeLesson = Number(course.price || 0) === 0 ? true : (freeChk ? !!freeChk.checked : false);
 
                 if (!title) { showToast('يرجى إدخال عنوان المحاضرة', 'warning'); return; }
 
@@ -6978,7 +7025,8 @@
                     course_id: courseId,
                     title,
                     content: content || null,
-                    sort_order: sortOrder
+                    sort_order: sortOrder,
+                    is_free: isFreeLesson
                 }).select().single();
 
                 if (result.error) throw new Error('فشل في حفظ المحاضرة: ' + result.error.message);
@@ -7025,7 +7073,8 @@
                     exams: [],
                     files: lessonFiles,
                     pdfData: null,
-                    pdfName: ''
+                    pdfName: '',
+                    isFree: isFreeLesson
                 };
 
                 if (!Array.isArray(course.lessons)) course.lessons = [];
@@ -7127,6 +7176,7 @@
                         </div>
                         <h3>${currentUser.name || currentUser.email}</h3>
                         <p style="color: var(--text-muted);">${currentUser.email}</p>
+                        ${currentUser.public_id ? `<div style="margin-top:6px;font-weight:800;"><span style="background:var(--bg-lighter);padding:6px 12px;border-radius:999px;letter-spacing:2px;font-family:monospace;"><i class="fas fa-id-badge"></i> ${currentLanguage === 'ar' ? 'المعرف:' : 'ID:'} ${currentUser.public_id}</span></div>` : ''}
                         <div style="display: flex; gap: 10px; justify-content: center; margin-top: 10px;">
                             ${currentUser.roles && currentUser.roles.map(role => 
                                 `<span class="badge ${role === 'admin' ? 'badge-primary' : role === 'teacher' ? 'badge-accent' : 'badge-success'}">${role === 'admin' ? (currentLanguage === 'ar' ? 'مدير' : 'Admin') : role === 'teacher' ? (currentLanguage === 'ar' ? 'مدرس' : 'Teacher') : (currentLanguage === 'ar' ? 'طالب' : 'Student')}</span>`
@@ -7613,6 +7663,7 @@
                     <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">${currentLanguage === 'ar' ? 'تعديل المحاضرة' : 'Edit Lesson'}</div>
                     <input id="editLessonTitle" value="${lesson.title}" placeholder="${currentLanguage === 'ar' ? 'عنوان المحاضرة' : 'Lesson title'}">
                     <textarea id="editLessonContent" rows="3" placeholder="${currentLanguage === 'ar' ? 'محتوى المحاضرة' : 'Lesson content'}">${lesson.content || ''}</textarea>
+                    ${Number(course.price || 0) > 0 ? `<div style="margin:10px 0;padding:10px;background:var(--bg-lighter);border-radius:8px;"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:700;"><input type="checkbox" id="editLessonIsFree" ${lesson.isFree ? 'checked' : ''}><span>${currentLanguage === 'ar' ? 'محاضرة مجانية (يمكن للجميع فتحها)' : 'Free lesson (open for everyone)'}</span></label></div>` : ''}
                     
                     <div style="font-weight:bold;margin:10px 0 5px;">${currentLanguage === 'ar' ? 'روابط الفيديو:' : 'Video URLs:'}</div>
                     <div id="editLessonVideosContainer">
@@ -7714,8 +7765,13 @@
                 console.log('[updateLesson] Starting update for lesson:', lessonId);
 
                 // Step 1: Update lesson data
-                const { error: lessonError } = await sb.from('lessons').update({ title, content: content || null }).eq('id', lessonId);
+                const courseObjEdit = courses.find(c => c.id === courseId);
+                const editFreeChk = document.getElementById('editLessonIsFree');
+                const editIsFree = Number((courseObjEdit && courseObjEdit.price) || 0) === 0 ? true : (editFreeChk ? !!editFreeChk.checked : false);
+                const { error: lessonError } = await sb.from('lessons').update({ title, content: content || null, is_free: editIsFree }).eq('id', lessonId);
                 if (lessonError) throw new Error('فشل في تعديل المحاضرة: ' + lessonError.message);
+                // Update local
+                try { const _l = (courseObjEdit && courseObjEdit.lessons || []).find(l => l.id === lessonId); if (_l) _l.isFree = editIsFree; } catch(e){}
                 console.log('[updateLesson] Step 1 done - lesson updated');
 
                 // Step 2: Replace videos
@@ -8094,15 +8150,17 @@
                     var users = r.data || [];
                     if (users.length === 0) { listEl.innerHTML = '<div style="padding:16px;opacity:.75;">' + t('لا يوجد نتائج','No results') + '</div>'; return; }
                     listEl.innerHTML = users.map(function(u){
+                        var safeName = escapeHtml((u.name || u.email || '').replace(/\x27/g,"&#39;"));
                         return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px;border:1px solid rgba(255,255,255,.08);border-radius:12px;margin-bottom:8px;">'
                             + '<div style="display:flex;align-items:center;gap:10px;min-width:0;">'
                             + (u.avatar_url ? '<img src="' + escapeHtml(u.avatar_url) + '" style="width:40px;height:40px;border-radius:50%;object-fit:cover;">' : '<i class="fas fa-user-circle" style="font-size:2.2rem;opacity:.6;"></i>')
-                            + '<div style="min-width:0;"><div style="font-weight:800;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(u.name || u.email) + '</div>'
+                            + '<div style="min-width:0;"><div style="font-weight:800;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(u.name || u.email) + (u.public_id ? ' <span style="font-family:monospace;background:var(--bg-lighter);padding:2px 8px;border-radius:999px;font-size:.75rem;letter-spacing:1px;">#' + escapeHtml(u.public_id) + '</span>' : '') + '</div>'
                             + '<div style="font-size:.85rem;opacity:.7;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(u.email || '') + '</div></div>'
                             + '</div>'
-                            + '<div style="display:flex;align-items:center;gap:10px;">'
+                            + '<div style="display:flex;align-items:center;gap:8px;">'
                             + '<span style="font-weight:900;color:#22d3ee;">' + fmt(u.balance) + '</span>'
-                            + '<button class="btn btn-accent" onclick="openCreditUserModal(\'' + u.id + '\',\'' + escapeHtml((u.name || u.email || '').replace(/\x27/g,"&#39;")) + '\')" title="' + t('شحن','Top up') + '"><i class="fas fa-plus"></i></button>'
+                            + '<button class="btn btn-accent" onclick="openCreditUserModal(\'' + u.id + '\',\'' + safeName + '\', 1)" title="' + t('شحن','Top up') + '"><i class="fas fa-plus"></i></button>'
+                            + '<button class="btn btn-danger" onclick="openCreditUserModal(\'' + u.id + '\',\'' + safeName + '\', -1)" title="' + t('خصم','Debit') + '"><i class="fas fa-minus"></i></button>'
                             + '</div>'
                             + '</div>';
                     }).join('');
@@ -8113,32 +8171,35 @@
             }
             window.runWalletUserSearch = runWalletUserSearch;
 
-            window.openCreditUserModal = function(userId, userName){
-                var html = '<h3 style="margin:0 0 10px;text-align:center;">' + t('شحن رصيد','Top up balance') + '</h3>'
+            window.openCreditUserModal = function(userId, userName, sign){
+                sign = (sign === -1) ? -1 : 1;
+                var title = sign > 0 ? t('شحن رصيد','Top up balance') : t('خصم رصيد','Debit balance');
+                var html = '<h3 style="margin:0 0 10px;text-align:center;">' + title + '</h3>'
                     + '<div style="text-align:center;opacity:.85;margin-bottom:12px;">' + userName + '</div>'
                     + '<label style="display:block;margin-bottom:6px;font-weight:700;">' + t('المبلغ','Amount') + '</label>'
                     + '<input id="creditAmount" type="number" step="0.01" min="0.01" style="width:100%;margin-bottom:10px;" placeholder="0.00">'
                     + '<label style="display:block;margin-bottom:6px;font-weight:700;">' + t('ملاحظة (اختياري)','Note (optional)') + '</label>'
                     + '<input id="creditNote" type="text" style="width:100%;margin-bottom:14px;">'
                     + '<div style="display:flex;gap:8px;justify-content:center;">'
-                    + '<button class="btn btn-accent" onclick="submitCreditUser(\'' + userId + '\')"><i class="fas fa-check"></i> ' + t('تأكيد الشحن','Confirm') + '</button>'
+                    + '<button class="' + (sign > 0 ? 'btn btn-accent' : 'btn btn-danger') + '" onclick="submitCreditUser(\'' + userId + '\',' + sign + ')"><i class="fas fa-check"></i> ' + t('تأكيد','Confirm') + '</button>'
                     + '<button class="btn btn-outline" onclick="closeModal()">' + t('إلغاء','Cancel') + '</button>'
                     + '</div>';
                 showModal(html);
             };
 
-            window.submitCreditUser = async function(userId){
+            window.submitCreditUser = async function(userId, sign){
+                sign = (sign === -1) ? -1 : 1;
                 var amount = parseFloat(document.getElementById('creditAmount').value);
                 var note = document.getElementById('creditNote').value.trim();
                 if (!amount || amount <= 0) { showToast(t('أدخل مبلغاً صحيحاً','Enter a valid amount'),'error'); return; }
                 try {
-                    var r = await sb.rpc('admin_credit_wallet', { _user_id: userId, _amount: amount, _note: note || null });
+                    var r = await sb.rpc('admin_credit_wallet', { _user_id: userId, _amount: sign * amount, _note: note || null });
                     if (r.error) throw r.error;
-                    showToast(t('تم الشحن بنجاح','Top-up successful'),'success');
+                    showToast(sign > 0 ? t('تم الشحن بنجاح','Top-up successful') : t('تم الخصم بنجاح','Debit successful'),'success');
                     closeModal();
                     var term = (document.getElementById('walletTopupSearch') || {}).value || '';
                     runWalletUserSearch(term.trim());
-                } catch(e){ console.error(e); showToast((e && e.message) || t('فشل الشحن','Top-up failed'),'error'); }
+                } catch(e){ console.error(e); showToast((e && e.message) || t('فشلت العملية','Operation failed'),'error'); }
             };
         })();
 
