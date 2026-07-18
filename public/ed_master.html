@@ -2834,7 +2834,7 @@
                     await loadCurrentUserFromSupabase(session.user);
                     if (currentUser && currentUser.banned) {
                         await sb.auth.signOut();
-                        currentUser = null;
+                        currentUser = null; _syncUser();
                         if (loadingOverlay) loadingOverlay.style.display = 'none';
                         updateUI();
                         showToast(currentLanguage === 'ar' ? 'تم حظر حسابك. تواصل مع الإدارة.' : 'Your account has been blocked.', 'error');
@@ -2879,7 +2879,7 @@
                         await loadCurrentUserFromSupabase(session.user);
                         if (currentUser && currentUser.banned) {
                             await sb.auth.signOut();
-                            currentUser = null;
+                            currentUser = null; _syncUser();
                             updateUI();
                             showToast(currentLanguage === 'ar' ? 'تم حظر حسابك. تواصل مع الإدارة.' : 'Your account has been blocked.', 'error');
                             return;
@@ -2890,7 +2890,7 @@
                         renderCoursesGrid();
                         updateQuickStats();
                     } else if (event === 'SIGNED_OUT') {
-                        currentUser = null;
+                        currentUser = null; _syncUser();
                         _dataLoaded = false;
                         updateUI();
                         renderCoursesGrid();
@@ -4057,7 +4057,7 @@
                 
                 if (currentUser && currentUser.banned) {
                     await sb.auth.signOut();
-                    currentUser = null;
+                    currentUser = null; _syncUser();
                     hideBtnLoading(btn);
                     updateUI();
                     showToast(currentLanguage === 'ar' ? 'تم حظر حسابك. تواصل مع الإدارة.' : 'Your account has been blocked.', 'error');
@@ -4132,7 +4132,7 @@
             if (!confirm(confirmMsg)) return;
             try {
                 await sb.auth.signOut();
-                currentUser = null;
+                currentUser = null; _syncUser();
                 localStorage.removeItem(LS_KEYS.USER_ENROLLMENTS);
                 localStorage.removeItem(LS_KEYS.USER_FAVORITES);
                 localStorage.removeItem(LS_KEYS.EXAM_RESULTS);
