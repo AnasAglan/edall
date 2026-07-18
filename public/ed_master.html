@@ -7010,6 +7010,8 @@
                 const title = document.getElementById('lessonTitle').value.trim();
                 const content = document.getElementById('lessonContent').value.trim();
                 const videos = getFilledInputValues('.lesson-video-input');
+                const freeChk = document.getElementById('lessonIsFree');
+                const isFreeLesson = Number(course.price || 0) === 0 ? true : (freeChk ? !!freeChk.checked : false);
 
                 if (!title) { showToast('يرجى إدخال عنوان المحاضرة', 'warning'); return; }
 
@@ -7023,7 +7025,8 @@
                     course_id: courseId,
                     title,
                     content: content || null,
-                    sort_order: sortOrder
+                    sort_order: sortOrder,
+                    is_free: isFreeLesson
                 }).select().single();
 
                 if (result.error) throw new Error('فشل في حفظ المحاضرة: ' + result.error.message);
