@@ -4510,9 +4510,14 @@
                             `}
                             <div class="card-header">
                                 <div class="card-title">${course.title}</div>
-                                <div class="card-badge">${getCourseLessonCount(course)} محاضرة</div>
+                                <div class="card-badge">${getCourseLessonCount(course)} ${currentLanguage === 'ar' ? 'محاضرة' : 'lessons'}</div>
                             </div>
-                            <div class="card-desc">${course.description || 'لا يوجد وصف'}</div>
+                            <div style="margin:6px 0 8px;">
+                                ${Number(course.price || 0) > 0
+                                    ? `<span class="badge badge-accent" style="background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;padding:4px 10px;border-radius:999px;font-weight:900;"><i class="fas fa-tag"></i> ${currentLanguage === 'ar' ? 'السعر:' : 'Price:'} ${Number(course.price)}</span>`
+                                    : `<span class="badge badge-success" style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:4px 10px;border-radius:999px;font-weight:900;"><i class="fas fa-gift"></i> ${currentLanguage === 'ar' ? 'كورس مجاني' : 'Free Course'}</span>`}
+                            </div>
+                            <div class="card-desc">${course.description || (currentLanguage === 'ar' ? 'لا يوجد وصف' : 'No description')}</div>
                             ${(() => {
                                 const teacher = users.find(u => u.id === course.createdBy);
                                 return teacher ? `<div style="color:var(--text-muted);font-size:0.85rem;margin-bottom:8px;cursor:pointer;" onclick="showTeacherProfile('${course.createdBy}')"><i class="fas fa-chalkboard-teacher"></i> ${currentLanguage === 'ar' ? 'المدرس:' : 'Teacher:'} <span style="color:var(--primary);text-decoration:underline;">${teacher.name}</span></div>` : '';
