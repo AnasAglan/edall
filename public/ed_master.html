@@ -2768,6 +2768,8 @@
         };
 
         let currentUser = null;
+        function _syncUser(){ try { window.currentUser = currentUser; } catch(e){} }
+        _syncUser();
         let users = [];
         let courses = [];
         let notifications = [];
