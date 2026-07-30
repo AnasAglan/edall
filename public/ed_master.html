@@ -4547,10 +4547,11 @@
                                         ${currentLanguage === 'ar' ? 'انضم' : 'Join'}
                                     </button>
                                 ` : `
-                                    <button class="card-btn btn-danger" data-action="unenroll" data-course-id="${course.id}">
-                                        <i class="fas fa-user-minus"></i>
-                                        ${currentLanguage === 'ar' ? 'إلغاء' : 'Unjoin'}
-                                    </button>
+                                    <span class="card-btn" style="background:rgba(34,197,94,.15);color:#22c55e;font-weight:800;cursor:default;">
+                                        <i class="fas fa-circle-check"></i>
+                                        ${currentLanguage === 'ar' ? 'أنت مشترك' : 'Enrolled'}
+                                    </span>
+
                                 `}
                                 ${canEdit ? `
                                     <div class="teacher-course-actions">
