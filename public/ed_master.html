@@ -2554,24 +2554,107 @@
             }
             
             const embedUrl = getVideoEmbedUrl(videoUrl);
+            const showLbl = currentLanguage === 'ar' ? 'مشاهدة الفيديو' : 'Watch Video';
+            const hideLbl = currentLanguage === 'ar' ? 'إخفاء الفيديو' : 'Hide Video';
             return `<div style="margin:8px 0;">
-                <button id="${toggleId}" class="btn btn-sm" style="width:100%;text-align:right;justify-content:flex-start;gap:10px;" onclick="
-                    var container = document.getElementById('${containerId}');
-                    if (container.style.display === 'none') {
-                        container.style.display = 'block';
-                        container.innerHTML = '<iframe width=\\'100%\\' height=\\'315\\' src=\\'${embedUrl}\\' frameborder=\\'0\\' allowfullscreen style=\\'border-radius:var(--radius);\\'></iframe>';
-                        this.innerHTML = '<i class=\\'fas fa-eye-slash\\'></i> ${currentLanguage === 'ar' ? 'إخفاء الفيديو' : 'Hide Video'} (${index + 1})';
-                    } else {
-                        container.style.display = 'none';
-                        container.innerHTML = '';
-                        this.innerHTML = '<i class=\\'fas fa-play-circle\\'></i> ${currentLanguage === 'ar' ? 'مشاهدة الفيديو' : 'Watch Video'} (${index + 1})';
-                    }
-                ">
-                    <i class="fas fa-play-circle"></i> ${currentLanguage === 'ar' ? 'مشاهدة الفيديو' : 'Watch Video'} (${index + 1})
+                <button id="${toggleId}" class="btn btn-sm" style="width:100%;text-align:right;justify-content:flex-start;gap:10px;"
+                    onclick="toggleLessonVideo(this, '${containerId}', '${encodeURIComponent(embedUrl)}', ${index + 1})">
+                    <i class="fas fa-play-circle"></i> ${showLbl} (${index + 1})
                 </button>
-                <div id="${containerId}" style="display:none;margin-top:8px;"></div>
-            </div>`; 
+                <div id="${containerId}" data-show-label="${showLbl}" data-hide-label="${hideLbl}" style="display:none;margin-top:8px;"></div>
+            </div>`;
         }
+
+        // ---- Video watermark (student identifier) --------------------------
+        function getWatermarkText() {
+            const u = window.currentUser || (typeof currentUser !== 'undefined' ? currentUser : null);
+            if (!u) return '';
+            const id = u.publicId || u.public_id || '';
+            const mail = (u.email || '').split('@')[0] || '';
+            return (id ? 'ID ' + id : '') + (mail ? ' • ' + mail : '');
+        }
+
+        function buildWatermarkLayer(text) {
+            const wm = document.createElement('div');
+            wm.className = 'video-watermark';
+            wm.setAttribute('dir', 'ltr');
+            wm.textContent = text;
+            wm.style.cssText = 'position:absolute;top:8%;left:8%;pointer-events:none;z-index:9;'
+                + 'color:rgba(255,255,255,.55);text-shadow:0 1px 4px rgba(0,0,0,.85);'
+                + 'font-weight:800;font-size:.9rem;letter-spacing:.5px;'
+                + 'transition:top 3s linear,left 3s linear;user-select:none;';
+            return wm;
+        }
+
+        function guardWatermark(wrap, text) {
+            let strikes = 0;
+            const ensure = () => {
+                if (!document.body.contains(wrap)) return false;
+                let wm = wrap.querySelector('.video-watermark');
+                if (!wm) {
+                    strikes++;
+                    wm = buildWatermarkLayer(text);
+                    wrap.appendChild(wm);
+                }
+                return true;
+            };
+            const observer = new MutationObserver(() => {
+                if (!ensure()) { observer.disconnect(); return; }
+                if (strikes >= 3) {
+                    observer.disconnect();
+                    wrap.innerHTML = '';
+                    wrap.parentElement && (wrap.parentElement.style.display = 'none');
+                    showToast(currentLanguage === 'ar'
+                        ? 'تم إيقاف الفيديو بسبب محاولة إزالة علامة الحماية'
+                        : 'Video stopped: watermark tampering detected', 'error');
+                }
+            });
+            observer.observe(wrap, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+
+            // Float the watermark slowly between corners.
+            const spots = [['8%','8%'], ['8%','62%'], ['72%','62%'], ['72%','8%'], ['40%','38%']];
+            let i = 0;
+            const timer = setInterval(() => {
+                if (!document.body.contains(wrap)) { clearInterval(timer); observer.disconnect(); return; }
+                const wm = wrap.querySelector('.video-watermark');
+                if (wm) { i = (i + 1) % spots.length; wm.style.top = spots[i][0]; wm.style.left = spots[i][1]; }
+            }, 4000);
+        }
+
+        function toggleLessonVideo(btn, containerId, encodedUrl, num) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            const showLbl = container.getAttribute('data-show-label') || 'Watch';
+            const hideLbl = container.getAttribute('data-hide-label') || 'Hide';
+            if (container.style.display === 'none' || !container.style.display) {
+                const src = decodeURIComponent(encodedUrl);
+                const wrap = document.createElement('div');
+                wrap.style.cssText = 'position:relative;border-radius:var(--radius);overflow:hidden;';
+                const iframe = document.createElement('iframe');
+                iframe.setAttribute('width', '100%');
+                iframe.setAttribute('height', '315');
+                iframe.setAttribute('frameborder', '0');
+                iframe.setAttribute('allowfullscreen', 'true');
+                iframe.style.cssText = 'width:100%;height:315px;border:0;display:block;';
+                iframe.src = src;
+                wrap.appendChild(iframe);
+                const text = getWatermarkText();
+                if (text) {
+                    wrap.appendChild(buildWatermarkLayer(text));
+                    guardWatermark(wrap, text);
+                }
+                container.innerHTML = '';
+                container.appendChild(wrap);
+                container.style.display = 'block';
+                btn.innerHTML = '<i class="fas fa-eye-slash"></i> ' + hideLbl + ' (' + num + ')';
+            } else {
+                container.style.display = 'none';
+                container.innerHTML = '';
+                btn.innerHTML = '<i class="fas fa-play-circle"></i> ' + showLbl + ' (' + num + ')';
+            }
+        }
+        window.toggleLessonVideo = toggleLessonVideo;
+
 
         // URL Routing
         const pageToRoute = {
@@ -3976,6 +4059,8 @@
                             showCourseDetails(courseId);
                         } else if (action === 'enroll') {
                             enrollInCourse(courseId);
+                        } else if (action === 'students') {
+                            openCourseStudents(courseId);
                         } else if (action === 'unenroll') {
                             unenrollFromCourse(courseId);
                         } else if (action === 'addLesson') {
@@ -4335,27 +4420,13 @@
         }
         window.showInsufficientBalanceModal = showInsufficientBalanceModal;
 
+        // Students can no longer leave a course (enforced in the database too).
         async function unenrollFromCourse(courseId) {
-            try {
-                if (!currentUser) return;
-
-                await sb.from('enrollments').delete().eq('user_id', currentUser.id).eq('course_id', courseId);
-
-                const enrollments = JSON.parse(localStorage.getItem(LS_KEYS.USER_ENROLLMENTS)) || {};
-                if (enrollments[currentUser.id]) {
-                    enrollments[currentUser.id] = enrollments[currentUser.id].filter(id => id !== courseId);
-                    localStorage.setItem(LS_KEYS.USER_ENROLLMENTS, JSON.stringify(enrollments));
-                    showToast('تم إلغاء الانضمام إلى الكورس', 'success');
-                    renderCoursesGrid();
-                    if (document.getElementById('enrolledPage').classList.contains('active')) {
-                        renderEnrolledCourses();
-                    }
-                }
-            } catch (error) {
-                console.error('Error unenrolling from course:', error);
-                showToast('حدث خطأ في إلغاء الانضمام', 'error');
-            }
+            showToast(currentLanguage === 'ar'
+                ? 'لا يمكن إلغاء الاشتراك في الكورس'
+                : 'Leaving a course is not allowed', 'info');
         }
+
 
         async function toggleFavorite(courseId) {
             try {
@@ -4547,10 +4618,11 @@
                                         ${currentLanguage === 'ar' ? 'انضم' : 'Join'}
                                     </button>
                                 ` : `
-                                    <button class="card-btn btn-danger" data-action="unenroll" data-course-id="${course.id}">
-                                        <i class="fas fa-user-minus"></i>
-                                        ${currentLanguage === 'ar' ? 'إلغاء' : 'Unjoin'}
-                                    </button>
+                                    <span class="card-btn" style="background:rgba(34,197,94,.15);color:#22c55e;font-weight:800;cursor:default;">
+                                        <i class="fas fa-circle-check"></i>
+                                        ${currentLanguage === 'ar' ? 'أنت مشترك' : 'Enrolled'}
+                                    </span>
+
                                 `}
                                 ${canEdit ? `
                                     <div class="teacher-course-actions">
@@ -4647,9 +4719,10 @@
                                 <button class="card-btn card-btn-primary" data-action="view" data-course-id="${course.id}">
                                     <i class="fas fa-eye"></i> عرض
                                 </button>
-                                <button class="card-btn btn-danger" data-action="unenroll" data-course-id="${course.id}">
-                                    <i class="fas fa-user-minus"></i> إلغاء الانضمام
-                                </button>
+                                <span class="card-btn" style="background:rgba(34,197,94,.15);color:#22c55e;font-weight:800;cursor:default;">
+                                    <i class="fas fa-circle-check"></i> ${currentLanguage === 'ar' ? 'أنت مشترك بهذا الكورس' : 'You are enrolled'}
+                                </span>
+
                             </div>
                         </div>
                     `;
@@ -4788,6 +4861,10 @@
                                     ${currentLanguage === 'ar' ? 'عرض' : 'View'}
                                 </button>
                                 ${canEdit ? `
+                                    <button class="card-btn" data-action="students" data-course-id="${course.id}">
+                                        <i class="fas fa-user-graduate"></i>
+                                        ${currentLanguage === 'ar' ? 'المشتركون' : 'Students'}
+                                    </button>
                                     <button class="card-btn" data-action="editCourse" data-course-id="${course.id}">
                                         <i class="fas fa-edit"></i>
                                         ${currentLanguage === 'ar' ? 'تعديل' : 'Edit'}
@@ -5255,9 +5332,10 @@
                                 <i class="fas fa-user-plus"></i> ${currentLanguage === 'ar' ? 'الانضمام للكورس' : 'Join Course'}
                             </button>
                         ` : `
-                            <button class="btn btn-danger" onclick="unenrollFromCourse('${courseId}'); closeModal();">
-                                <i class="fas fa-user-minus"></i> ${currentLanguage === 'ar' ? 'إلغاء الانضمام' : 'Unenroll'}
-                            </button>
+                            <span class="btn" style="background:rgba(34,197,94,.15);color:#22c55e;cursor:default;">
+                                <i class="fas fa-circle-check"></i> ${currentLanguage === 'ar' ? 'أنت مشترك بهذا الكورس' : 'You are enrolled in this course'}
+                            </span>
+
                         `}
                         <button class="btn btn-outline" onclick="closeCourseModal()">
                             <i class="fas fa-times"></i> ${currentLanguage === 'ar' ? 'إغلاق' : 'Close'}
@@ -6492,9 +6570,13 @@
                             <button class="btn btn-sm" data-action="view" data-course-id="${course.id}">
                                 <i class="fas fa-eye"></i>
                             </button>
+                            <button class="btn btn-sm" data-action="students" data-course-id="${course.id}" title="${currentLanguage === 'ar' ? 'المشتركون' : 'Students'}">
+                                <i class="fas fa-user-graduate"></i>
+                            </button>
                             <button class="btn btn-sm" data-action="addLesson" data-course-id="${course.id}">
                                 <i class="fas fa-plus"></i>
                             </button>
+
                             <button class="btn btn-sm" data-action="editCourse" data-course-id="${course.id}">
                                 <i class="fas fa-edit"></i>
                             </button>
@@ -7898,6 +7980,114 @@
         window.createNewCourseFromModal = createNewCourseFromModal;
         window.enrollInCourse = enrollInCourse;
         window.unenrollFromCourse = unenrollFromCourse;
+
+        // ============================================================
+        // COURSE STUDENTS (owner / admin)
+        // ============================================================
+        (function courseStudentsModule(){
+            function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
+            function T(ar,en){ return currentLanguage === 'ar' ? ar : en; }
+            var cache = { courseId: null, list: [] };
+
+            function rowsHtml(list, courseId){
+                if (!list.length) return '<div style="padding:16px;opacity:.75;">' + T('لا يوجد مشتركون','No enrolled students') + '</div>';
+                return '<ul style="list-style:none;padding:0;margin:0;">' + list.map(function(u){
+                    var d = u.enrolled_at ? new Date(u.enrolled_at).toLocaleDateString(currentLanguage === 'ar' ? 'ar-EG' : 'en-US') : '';
+                    return '<li style="display:flex;align-items:center;gap:10px;padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">'
+                        + '<div style="flex:1;min-width:0;">'
+                        + '<div style="font-weight:800;">' + esc(u.name || '') + '</div>'
+                        + '<div style="font-size:.82rem;opacity:.75;">' + T('المعرف','ID') + ': <bdi dir="ltr">' + esc(u.public_id || '-') + '</bdi> • ' + esc(u.email || '') + '</div>'
+                        + '<div style="font-size:.78rem;opacity:.6;">' + T('تاريخ الاشتراك','Enrolled') + ': ' + d + '</div>'
+                        + '</div>'
+                        + '<button class="btn btn-sm" title="' + T('تفاصيل التقدم','Progress details') + '" onclick="openStudentProgress(\'' + courseId + '\',\'' + u.user_id + '\')"><i class="fas fa-info"></i></button>'
+                        + '</li>';
+                }).join('') + '</ul>';
+            }
+
+            function filterList(term){
+                var q = String(term || '').trim().toLowerCase();
+                var list = !q ? cache.list : cache.list.filter(function(u){
+                    return (u.name || '').toLowerCase().indexOf(q) !== -1
+                        || (u.email || '').toLowerCase().indexOf(q) !== -1
+                        || String(u.public_id || '').indexOf(q) !== -1;
+                });
+                var box = document.getElementById('courseStudentsList');
+                if (box) box.innerHTML = rowsHtml(list, cache.courseId);
+            }
+            window.filterCourseStudents = filterList;
+
+            async function openCourseStudents(courseId){
+                var course = courses.find(function(c){ return c.id === courseId; });
+                showModal('<h3 style="margin:0 0 12px;"><i class="fas fa-user-graduate"></i> ' + T('مشتركو الكورس','Course students') + '</h3>'
+                    + '<div style="opacity:.8;margin-bottom:10px;">' + esc(course ? course.title : '') + '</div>'
+                    + '<input id="courseStudentsSearch" class="form-input" autocomplete="off" placeholder="' + T('ابحث بالاسم أو البريد أو المعرف','Search by name, email or ID') + '" oninput="filterCourseStudents(this.value)" style="margin-bottom:10px;">'
+                    + '<div id="courseStudentsList" style="max-height:55vh;overflow:auto;"><div style="text-align:center;padding:24px;"><div class="loading-spinner"></div></div></div>');
+                try {
+                    var r = await sb.rpc('course_enrollees', { _course_id: courseId });
+                    if (r.error) throw r.error;
+                    cache.courseId = courseId;
+                    cache.list = r.data || [];
+                    filterList(document.getElementById('courseStudentsSearch') ? document.getElementById('courseStudentsSearch').value : '');
+                } catch(e){
+                    console.error('course_enrollees', e);
+                    var box = document.getElementById('courseStudentsList');
+                    if (box) box.innerHTML = '<div style="padding:16px;color:#ef4444;">' + T('تعذر تحميل المشتركين','Failed to load students') + '</div>';
+                }
+            }
+            window.openCourseStudents = openCourseStudents;
+
+            async function openStudentProgress(courseId, userId){
+                showModal('<div style="text-align:center;padding:24px;"><div class="loading-spinner"></div></div>');
+                try {
+                    var r = await sb.rpc('course_student_progress', { _course_id: courseId, _user_id: userId });
+                    if (r.error) throw r.error;
+                    var d = r.data || {};
+                    var p = d.profile || {};
+                    var lessons = d.lessons || [];
+                    var html = '<h3 style="margin:0 0 4px;"><i class="fas fa-chart-line"></i> ' + T('تقدم الطالب','Student progress') + '</h3>'
+                        + '<div style="font-weight:800;">' + esc(p.name || '') + '</div>'
+                        + '<div style="font-size:.85rem;opacity:.75;margin-bottom:12px;">' + T('المعرف','ID') + ': <bdi dir="ltr">' + esc(p.public_id || '-') + '</bdi> • ' + esc(p.email || '') + '</div>'
+                        + '<div style="background:rgba(255,255,255,.06);border-radius:12px;padding:12px;margin-bottom:12px;">'
+                        + '<div style="display:flex;justify-content:space-between;font-weight:800;margin-bottom:6px;"><span>' + T('نسبة الإنجاز','Completion') + '</span><span><bdi dir="ltr">' + Number(d.progress || 0) + '%</bdi></span></div>'
+                        + '<div class="progress-bar"><div class="progress-fill" style="width:' + Number(d.progress || 0) + '%"></div></div>'
+                        + '<div style="font-size:.85rem;opacity:.8;margin-top:6px;">' + T('المحاضرات المكتملة','Completed lessons') + ': ' + Number(d.completed_lessons || 0) + ' / ' + Number(d.total_lessons || 0) + '</div>'
+                        + '</div>'
+                        + '<div style="max-height:50vh;overflow:auto;">';
+                    if (!lessons.length) {
+                        html += '<div style="padding:14px;opacity:.75;">' + T('لا توجد محاضرات','No lessons') + '</div>';
+                    } else {
+                        html += lessons.map(function(l){
+                            function chip(ok, label){
+                                return '<span style="font-size:.75rem;padding:3px 8px;border-radius:999px;margin-inline-end:6px;background:' + (ok ? 'rgba(34,197,94,.18);color:#22c55e' : 'rgba(148,163,184,.18);color:#94a3b8') + ';">'
+                                    + '<i class="fas fa-' + (ok ? 'check' : 'xmark') + '"></i> ' + label + '</span>';
+                            }
+                            var exams = (l.exam_results || []).map(function(x){
+                                return '<div style="font-size:.78rem;opacity:.85;margin-top:4px;">'
+                                    + T('امتحان','Exam') + ': <bdi dir="ltr">' + Number(x.score || 0) + '</bdi> — '
+                                    + (x.passed ? '<span style="color:#22c55e;">' + T('ناجح','Passed') + '</span>' : '<span style="color:#ef4444;">' + T('راسب','Failed') + '</span>')
+                                    + '</div>';
+                            }).join('');
+                            return '<div style="padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">'
+                                + '<div style="font-weight:700;margin-bottom:6px;">' + esc(l.title || '') + (l.is_free ? ' <span style="font-size:.7rem;color:#22c55e;">(' + T('مجانية','Free') + ')</span>' : '') + '</div>'
+                                + chip(!!l.video_watched, T('الفيديو','Video'))
+                                + chip(!!l.pdf_opened, T('الملفات','Files'))
+                                + (l.has_exam ? chip(!!l.exam_completed, T('الامتحان','Exam')) : '')
+                                + exams
+                                + '</div>';
+                        }).join('');
+                    }
+                    html += '</div><div style="display:flex;gap:8px;margin-top:14px;">'
+                        + '<button class="btn btn-outline" onclick="openCourseStudents(\'' + courseId + '\')"><i class="fas fa-arrow-left"></i> ' + T('رجوع','Back') + '</button>'
+                        + '<button class="btn btn-outline" onclick="closeModal()">' + T('إغلاق','Close') + '</button></div>';
+                    showModal(html);
+                } catch(e){
+                    console.error('course_student_progress', e);
+                    showModal('<div style="padding:16px;color:#ef4444;">' + T('تعذر تحميل التقدم','Failed to load progress') + '</div>');
+                }
+            }
+            window.openStudentProgress = openStudentProgress;
+        })();
+
         window.toggleFavorite = toggleFavorite;
         window.removeFromFavorites = removeFromFavorites;
         window.showAddCourseModal = showAddCourseModal;
@@ -7949,9 +8139,17 @@
             function isAdmin(){
                 return currentUser && currentUser.roles && currentUser.roles.includes('admin');
             }
+            // Always Latin digits + LTR isolation so the minus sign never gets
+            // reordered/hidden inside RTL layout.
             function fmt(n){
                 var v = Number(n || 0);
-                return v.toLocaleString(currentLanguage === 'ar' ? 'ar-EG' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                var abs = Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                return '<bdi dir="ltr">' + (v < 0 ? '\u2212' : '') + abs + '</bdi>';
+            }
+            function fmtSigned(n){
+                var v = Number(n || 0);
+                var abs = Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                return '<bdi dir="ltr">' + (v < 0 ? '\u2212' : '+') + abs + '</bdi>';
             }
             function t(ar, en){ return currentLanguage === 'ar' ? ar : en; }
 
@@ -7974,7 +8172,7 @@
                 if (!currentUser) { if (badge) badge.textContent = ''; return; }
                 var bal = await fetchMyBalance();
                 walletState.balance = bal;
-                if (badge && bal !== null) badge.textContent = fmt(bal);
+                if (badge && bal !== null) { badge.setAttribute('dir','ltr'); badge.innerHTML = fmt(bal); }
             }
             window.refreshWalletBadge = refreshWalletBadge;
 
@@ -8012,12 +8210,16 @@
                 var txHtml = txs.length === 0
                     ? '<div style="padding:16px;opacity:.75;">' + t('لا توجد عمليات بعد', 'No transactions yet') + '</div>'
                     : '<ul style="list-style:none;padding:0;margin:0;">' + txs.map(function(x){
-                        var pos = Number(x.amount) > 0;
+                        var amt = Number(x.amount);
+                        var pos = amt > 0;
                         var d = new Date(x.created_at).toLocaleString(currentLanguage === 'ar' ? 'ar-EG' : 'en-US');
-                        return '<li style="display:flex;justify-content:space-between;padding:12px;border-bottom:1px solid rgba(255,255,255,.08);">'
-                            + '<div><div style="font-weight:800;">' + (x.note ? escapeHtml(x.note) : (pos ? t('شحن رصيد','Top up') : t('تعديل رصيد','Adjustment'))) + '</div>'
-                            + '<div style="font-size:.85rem;opacity:.7;">' + d + '</div></div>'
-                            + '<div style="font-weight:900;color:' + (pos ? '#22c55e' : '#ef4444') + ';">' + (pos ? '+' : '') + fmt(x.amount) + '</div>'
+                        var kind = x.type === 'purchase' || (!pos && x.note)
+                            ? (pos ? t('إضافة رصيد','Credit') : t('خصم','Debit'))
+                            : (pos ? t('شحن رصيد','Top up') : t('خصم رصيد','Debit'));
+                        return '<li style="display:flex;justify-content:space-between;align-items:center;padding:12px;border-bottom:1px solid rgba(255,255,255,.08);">'
+                            + '<div><div style="font-weight:800;">' + (x.note ? escapeHtml(x.note) : kind) + '</div>'
+                            + '<div style="font-size:.85rem;opacity:.7;">' + kind + ' • ' + d + '</div></div>'
+                            + '<div style="font-weight:900;white-space:nowrap;color:' + (pos ? '#22c55e' : '#ef4444') + ';">' + fmtSigned(amt) + '</div>'
                             + '</li>';
                     }).join('') + '</ul>';
 
