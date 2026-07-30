@@ -568,6 +568,22 @@ export type Database = {
           public_id: string
         }[]
       }
+      can_access_lesson: { Args: { _lesson_id: string }; Returns: boolean }
+      course_enrollees: {
+        Args: { _course_id: string }
+        Returns: {
+          avatar_url: string
+          email: string
+          enrolled_at: string
+          name: string
+          public_id: string
+          user_id: string
+        }[]
+      }
+      course_student_progress: {
+        Args: { _course_id: string; _user_id: string }
+        Returns: Json
+      }
       generate_public_id: { Args: never; Returns: string }
       get_course_creators_public: {
         Args: never
