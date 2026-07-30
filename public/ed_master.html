@@ -4776,6 +4776,10 @@
                                     ${currentLanguage === 'ar' ? 'عرض' : 'View'}
                                 </button>
                                 ${canEdit ? `
+                                    <button class="card-btn" data-action="students" data-course-id="${course.id}">
+                                        <i class="fas fa-user-graduate"></i>
+                                        ${currentLanguage === 'ar' ? 'المشتركون' : 'Students'}
+                                    </button>
                                     <button class="card-btn" data-action="editCourse" data-course-id="${course.id}">
                                         <i class="fas fa-edit"></i>
                                         ${currentLanguage === 'ar' ? 'تعديل' : 'Edit'}
