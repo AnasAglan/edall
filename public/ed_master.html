@@ -6485,9 +6485,13 @@
                             <button class="btn btn-sm" data-action="view" data-course-id="${course.id}">
                                 <i class="fas fa-eye"></i>
                             </button>
+                            <button class="btn btn-sm" data-action="students" data-course-id="${course.id}" title="${currentLanguage === 'ar' ? 'المشتركون' : 'Students'}">
+                                <i class="fas fa-user-graduate"></i>
+                            </button>
                             <button class="btn btn-sm" data-action="addLesson" data-course-id="${course.id}">
                                 <i class="fas fa-plus"></i>
                             </button>
+
                             <button class="btn btn-sm" data-action="editCourse" data-course-id="${course.id}">
                                 <i class="fas fa-edit"></i>
                             </button>
