@@ -8020,12 +8020,16 @@
                 var txHtml = txs.length === 0
                     ? '<div style="padding:16px;opacity:.75;">' + t('لا توجد عمليات بعد', 'No transactions yet') + '</div>'
                     : '<ul style="list-style:none;padding:0;margin:0;">' + txs.map(function(x){
-                        var pos = Number(x.amount) > 0;
+                        var amt = Number(x.amount);
+                        var pos = amt > 0;
                         var d = new Date(x.created_at).toLocaleString(currentLanguage === 'ar' ? 'ar-EG' : 'en-US');
-                        return '<li style="display:flex;justify-content:space-between;padding:12px;border-bottom:1px solid rgba(255,255,255,.08);">'
-                            + '<div><div style="font-weight:800;">' + (x.note ? escapeHtml(x.note) : (pos ? t('شحن رصيد','Top up') : t('تعديل رصيد','Adjustment'))) + '</div>'
-                            + '<div style="font-size:.85rem;opacity:.7;">' + d + '</div></div>'
-                            + '<div style="font-weight:900;color:' + (pos ? '#22c55e' : '#ef4444') + ';">' + (pos ? '+' : '') + fmt(x.amount) + '</div>'
+                        var kind = x.type === 'purchase' || (!pos && x.note)
+                            ? (pos ? t('إضافة رصيد','Credit') : t('خصم','Debit'))
+                            : (pos ? t('شحن رصيد','Top up') : t('خصم رصيد','Debit'));
+                        return '<li style="display:flex;justify-content:space-between;align-items:center;padding:12px;border-bottom:1px solid rgba(255,255,255,.08);">'
+                            + '<div><div style="font-weight:800;">' + (x.note ? escapeHtml(x.note) : kind) + '</div>'
+                            + '<div style="font-size:.85rem;opacity:.7;">' + kind + ' • ' + d + '</div></div>'
+                            + '<div style="font-weight:900;white-space:nowrap;color:' + (pos ? '#22c55e' : '#ef4444') + ';">' + fmtSigned(amt) + '</div>'
                             + '</li>';
                     }).join('') + '</ul>';
 
