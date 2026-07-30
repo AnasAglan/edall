@@ -7949,9 +7949,17 @@
             function isAdmin(){
                 return currentUser && currentUser.roles && currentUser.roles.includes('admin');
             }
+            // Always Latin digits + LTR isolation so the minus sign never gets
+            // reordered/hidden inside RTL layout.
             function fmt(n){
                 var v = Number(n || 0);
-                return v.toLocaleString(currentLanguage === 'ar' ? 'ar-EG' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                var abs = Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                return '<bdi dir="ltr">' + (v < 0 ? '\u2212' : '') + abs + '</bdi>';
+            }
+            function fmtSigned(n){
+                var v = Number(n || 0);
+                var abs = Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                return '<bdi dir="ltr">' + (v < 0 ? '\u2212' : '+') + abs + '</bdi>';
             }
             function t(ar, en){ return currentLanguage === 'ar' ? ar : en; }
 
