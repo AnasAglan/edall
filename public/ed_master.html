@@ -5257,9 +5257,10 @@
                                 <i class="fas fa-user-plus"></i> ${currentLanguage === 'ar' ? 'الانضمام للكورس' : 'Join Course'}
                             </button>
                         ` : `
-                            <button class="btn btn-danger" onclick="unenrollFromCourse('${courseId}'); closeModal();">
-                                <i class="fas fa-user-minus"></i> ${currentLanguage === 'ar' ? 'إلغاء الانضمام' : 'Unenroll'}
-                            </button>
+                            <span class="btn" style="background:rgba(34,197,94,.15);color:#22c55e;cursor:default;">
+                                <i class="fas fa-circle-check"></i> ${currentLanguage === 'ar' ? 'أنت مشترك بهذا الكورس' : 'You are enrolled in this course'}
+                            </span>
+
                         `}
                         <button class="btn btn-outline" onclick="closeCourseModal()">
                             <i class="fas fa-times"></i> ${currentLanguage === 'ar' ? 'إغلاق' : 'Close'}
