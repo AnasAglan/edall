@@ -7982,7 +7982,7 @@
                 if (!currentUser) { if (badge) badge.textContent = ''; return; }
                 var bal = await fetchMyBalance();
                 walletState.balance = bal;
-                if (badge && bal !== null) badge.textContent = fmt(bal);
+                if (badge && bal !== null) { badge.setAttribute('dir','ltr'); badge.innerHTML = fmt(bal); }
             }
             window.refreshWalletBadge = refreshWalletBadge;
 
