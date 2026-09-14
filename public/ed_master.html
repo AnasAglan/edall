@@ -4984,8 +4984,15 @@
                 
                 let imageUrl = null;
                 if (courseImageFile) {
-                    const filePath = `${currentUser.id}/${Date.now()}_${courseImageFile.name}`;
-                    imageUrl = await uploadImageToStorage('course-images', filePath, courseImageFile);
+                    try {
+                        const safeImgName = (typeof sanitizeStorageFileName === 'function') ? sanitizeStorageFileName(courseImageFile.name) : courseImageFile.name;
+                        const filePath = `${currentUser.id}/${Date.now()}_${safeImgName}`;
+                        imageUrl = await uploadImageToStorage('course-images', filePath, courseImageFile);
+                    } catch (imgErr) {
+                        console.error('Course image upload failed:', imgErr);
+                        showToast(currentLanguage === 'ar' ? 'تعذر رفع صورة الكورس، سيتم إنشاء الكورس بدون صورة' : 'Course image upload failed; creating course without image', 'warning');
+                        imageUrl = null;
+                    }
                 }
                 
                 const isFreeChk = document.getElementById('newCourseFree');
