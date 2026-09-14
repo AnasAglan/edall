@@ -7685,7 +7685,13 @@
                     showToast(currentLanguage === 'ar' ? 'المدرس غير موجود' : 'Teacher not found', 'error');
                     return;
                 }
-                if (!skipPushState) updateURL('mainPage', { page: 'teacher', id: teacherId });
+                if (!skipPushState) {
+                    try {
+                        const _act = document.querySelector('.page.active');
+                        if (_act && _act.id) window._modalReturnPage = _act.id;
+                    } catch (e) {}
+                    updateURL('mainPage', { page: 'teacher', id: teacherId });
+                }
                 
                 const teacherCourses = courses.filter(c => c.createdBy === teacherId);
                 
