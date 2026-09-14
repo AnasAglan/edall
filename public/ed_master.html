@@ -4819,19 +4819,15 @@
         function renderManageCoursesPage() {
             try {
                 const grid = document.getElementById('manageCoursesGrid');
-                let coursesToShow = courses;
-                
-                if (currentUser && currentUser.roles && currentUser.roles.includes('teacher') && !currentUser.roles.includes('admin')) {
-                    coursesToShow = courses.filter(course => course.createdBy === currentUser.id);
-                }
+                // Only the current user's own courses (admins manage all from the Admin Panel)
+                let coursesToShow = currentUser ? courses.filter(course => course.createdBy === currentUser.id) : [];
                 
                 if (coursesToShow.length === 0) {
                     grid.innerHTML = `
                         <div style="text-align: center; padding: 40px; color: var(--text-muted); grid-column: 1 / -1;">
                             <i class="fas fa-book-open" style="font-size: 3rem; margin-bottom: 16px;"></i>
-                            <h3>لا توجد كورسات</h3>
-                            <p>${currentUser && currentUser.roles && currentUser.roles.includes('teacher') && !currentUser.roles.includes('admin') ? 
-                                'لم تقم بإنشاء أي كورسات بعد.' : 'لا توجد كورسات متاحة حاليًا.'}</p>
+                            <h3>${currentLanguage === 'ar' ? 'لا توجد كورسات' : 'No courses'}</h3>
+                            <p>${currentLanguage === 'ar' ? 'لم تقم بإنشاء أي كورسات بعد.' : 'You have not created any courses yet.'}</p>
                         </div>
                     `;
                     return;
