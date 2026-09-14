@@ -5226,6 +5226,12 @@
                     course = courses.find(c => c.id === courseId);
                 }
                 
+                // Remember the page the course was opened from
+                try {
+                    const _act = document.querySelector('.page.active');
+                    if (_act && _act.id) window._modalReturnPage = _act.id;
+                } catch (e) {}
+
                 // Update URL with course ID
                 updateURL('mainPage', { page: 'course', id: courseId });
                 
