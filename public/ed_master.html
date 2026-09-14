@@ -2801,18 +2801,23 @@
             }
         };
 
+        window._modalReturnPage = 'mainPage';
+        function _returnToStoredPage() {
+            const pageId = window._modalReturnPage || 'mainPage';
+            const route = pageToRoute[pageId];
+            const newUrl = window.location.pathname + (route ? '?page=' + route : '');
+            history.replaceState({ pageId }, '', newUrl);
+            showPage(pageId, true);
+        }
+
         window.closeCourseModal = function() {
             closeModal();
-            const newUrl = window.location.pathname;
-            history.replaceState({ pageId: 'mainPage' }, '', newUrl);
-            showPage('mainPage', true);
+            _returnToStoredPage();
         };
 
         window.closeTeacherModal = function() {
             closeModal();
-            const newUrl = window.location.pathname;
-            history.replaceState({ pageId: 'mainPage' }, '', newUrl);
-            showPage('mainPage', true);
+            _returnToStoredPage();
         };
 
         window.showModal = function(content, options) {
