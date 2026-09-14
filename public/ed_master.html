@@ -2595,6 +2595,7 @@
                     strikes++;
                     wm = buildWatermarkLayer(text);
                     wrap.appendChild(wm);
+                    try { applyWatermarkScale(wrap); } catch (e) {}
                 }
                 return true;
             };
