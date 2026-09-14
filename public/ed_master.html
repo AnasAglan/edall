@@ -5183,9 +5183,15 @@
                 
                 const updateData = { title, description: desc };
                 if (courseImageFile) {
-                    const filePath = `${currentUser.id}/${Date.now()}_${courseImageFile.name}`;
-                    const imageUrl = await uploadImageToStorage('course-images', filePath, courseImageFile);
-                    updateData.image_url = imageUrl;
+                    try {
+                        const safeImgName = (typeof sanitizeStorageFileName === 'function') ? sanitizeStorageFileName(courseImageFile.name) : courseImageFile.name;
+                        const filePath = `${currentUser.id}/${Date.now()}_${safeImgName}`;
+                        const imageUrl = await uploadImageToStorage('course-images', filePath, courseImageFile);
+                        updateData.image_url = imageUrl;
+                    } catch (imgErr) {
+                        console.error('Course image upload failed:', imgErr);
+                        showToast(currentLanguage === 'ar' ? 'تعذر رفع صورة الكورس، تم حفظ باقي التعديلات' : 'Course image upload failed; other changes saved', 'warning');
+                    }
                 }
                 
                 const isFreeChk = document.getElementById('editCourseFree');
