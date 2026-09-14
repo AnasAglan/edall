@@ -2595,6 +2595,7 @@
                     strikes++;
                     wm = buildWatermarkLayer(text);
                     wrap.appendChild(wm);
+                    try { applyWatermarkScale(wrap); } catch (e) {}
                 }
                 return true;
             };
@@ -2621,6 +2622,32 @@
             }, 4000);
         }
 
+        function isElementFullscreen(el) {
+            const fs = document.fullscreenElement || document.webkitFullscreenElement;
+            return !!fs && (fs === el || el.contains(fs) || fs.contains(el));
+        }
+
+        function applyWatermarkScale(wrap) {
+            const wm = wrap.querySelector('.video-watermark');
+            if (!wm) return;
+            const full = isElementFullscreen(wrap);
+            wm.style.fontSize = full ? '1.8rem' : '.9rem';
+        }
+
+        function toggleVideoFullscreen(wrap, iframe, btn) {
+            const inFs = isElementFullscreen(wrap);
+            if (inFs) {
+                (document.exitFullscreen || document.webkitExitFullscreen || function(){}).call(document);
+            } else {
+                const req = wrap.requestFullscreen || wrap.webkitRequestFullscreen;
+                if (req) {
+                    req.call(wrap).catch(() => {});
+                } else {
+                    showToast(currentLanguage === 'ar' ? 'ملء الشاشة غير مدعوم في هذا المتصفح' : 'Fullscreen not supported in this browser', 'warning');
+                }
+            }
+        }
+
         function toggleLessonVideo(btn, containerId, encodedUrl, num) {
             const container = document.getElementById(containerId);
             if (!container) return;
@@ -2629,19 +2656,47 @@
             if (container.style.display === 'none' || !container.style.display) {
                 const src = decodeURIComponent(encodedUrl);
                 const wrap = document.createElement('div');
-                wrap.style.cssText = 'position:relative;border-radius:var(--radius);overflow:hidden;';
+                wrap.style.cssText = 'position:relative;border-radius:var(--radius);overflow:hidden;background:#000;';
                 const iframe = document.createElement('iframe');
                 iframe.setAttribute('width', '100%');
                 iframe.setAttribute('height', '315');
                 iframe.setAttribute('frameborder', '0');
-                iframe.setAttribute('allowfullscreen', 'true');
                 iframe.style.cssText = 'width:100%;height:315px;border:0;display:block;';
                 iframe.src = src;
                 wrap.appendChild(iframe);
                 const text = getWatermarkText();
                 if (text) {
+                    // Custom fullscreen so the watermark stays visible over the video
+                    const fsBtn = document.createElement('button');
+                    fsBtn.type = 'button';
+                    fsBtn.className = 'video-fs-btn';
+                    fsBtn.innerHTML = '<i class="fas fa-expand"></i>';
+                    fsBtn.title = currentLanguage === 'ar' ? 'ملء الشاشة' : 'Fullscreen';
+                    fsBtn.style.cssText = 'position:absolute;bottom:10px;inset-inline-end:10px;z-index:11;'
+                        + 'background:rgba(0,0,0,.6);color:#fff;border:0;border-radius:8px;'
+                        + 'padding:8px 10px;cursor:pointer;font-size:1rem;';
+                    fsBtn.onclick = function(){ toggleVideoFullscreen(wrap, iframe, fsBtn); };
+                    wrap.appendChild(fsBtn);
+
                     wrap.appendChild(buildWatermarkLayer(text));
                     guardWatermark(wrap, text);
+
+                    const onFsChange = () => {
+                        if (!document.body.contains(wrap)) {
+                            document.removeEventListener('fullscreenchange', onFsChange);
+                            document.removeEventListener('webkitfullscreenchange', onFsChange);
+                            return;
+                        }
+                        const full = isElementFullscreen(wrap);
+                        iframe.style.height = full ? '100%' : '315px';
+                        wrap.style.height = full ? '100%' : '';
+                        fsBtn.innerHTML = full ? '<i class="fas fa-compress"></i>' : '<i class="fas fa-expand"></i>';
+                        applyWatermarkScale(wrap);
+                    };
+                    document.addEventListener('fullscreenchange', onFsChange);
+                    document.addEventListener('webkitfullscreenchange', onFsChange);
+                } else {
+                    iframe.setAttribute('allowfullscreen', 'true');
                 }
                 container.innerHTML = '';
                 container.appendChild(wrap);
@@ -2801,18 +2856,23 @@
             }
         };
 
+        window._modalReturnPage = 'mainPage';
+        function _returnToStoredPage() {
+            const pageId = window._modalReturnPage || 'mainPage';
+            const route = pageToRoute[pageId];
+            const newUrl = window.location.pathname + (route ? '?page=' + route : '');
+            history.replaceState({ pageId }, '', newUrl);
+            showPage(pageId, true);
+        }
+
         window.closeCourseModal = function() {
             closeModal();
-            const newUrl = window.location.pathname;
-            history.replaceState({ pageId: 'mainPage' }, '', newUrl);
-            showPage('mainPage', true);
+            _returnToStoredPage();
         };
 
         window.closeTeacherModal = function() {
             closeModal();
-            const newUrl = window.location.pathname;
-            history.replaceState({ pageId: 'mainPage' }, '', newUrl);
-            showPage('mainPage', true);
+            _returnToStoredPage();
         };
 
         window.showModal = function(content, options) {
@@ -4814,19 +4874,15 @@
         function renderManageCoursesPage() {
             try {
                 const grid = document.getElementById('manageCoursesGrid');
-                let coursesToShow = courses;
-                
-                if (currentUser && currentUser.roles && currentUser.roles.includes('teacher') && !currentUser.roles.includes('admin')) {
-                    coursesToShow = courses.filter(course => course.createdBy === currentUser.id);
-                }
+                // Only the current user's own courses (admins manage all from the Admin Panel)
+                let coursesToShow = currentUser ? courses.filter(course => course.createdBy === currentUser.id) : [];
                 
                 if (coursesToShow.length === 0) {
                     grid.innerHTML = `
                         <div style="text-align: center; padding: 40px; color: var(--text-muted); grid-column: 1 / -1;">
                             <i class="fas fa-book-open" style="font-size: 3rem; margin-bottom: 16px;"></i>
-                            <h3>لا توجد كورسات</h3>
-                            <p>${currentUser && currentUser.roles && currentUser.roles.includes('teacher') && !currentUser.roles.includes('admin') ? 
-                                'لم تقم بإنشاء أي كورسات بعد.' : 'لا توجد كورسات متاحة حاليًا.'}</p>
+                            <h3>${currentLanguage === 'ar' ? 'لا توجد كورسات' : 'No courses'}</h3>
+                            <p>${currentLanguage === 'ar' ? 'لم تقم بإنشاء أي كورسات بعد.' : 'You have not created any courses yet.'}</p>
                         </div>
                     `;
                     return;
@@ -4983,8 +5039,15 @@
                 
                 let imageUrl = null;
                 if (courseImageFile) {
-                    const filePath = `${currentUser.id}/${Date.now()}_${courseImageFile.name}`;
-                    imageUrl = await uploadImageToStorage('course-images', filePath, courseImageFile);
+                    try {
+                        const safeImgName = (typeof sanitizeStorageFileName === 'function') ? sanitizeStorageFileName(courseImageFile.name) : courseImageFile.name;
+                        const filePath = `${currentUser.id}/${Date.now()}_${safeImgName}`;
+                        imageUrl = await uploadImageToStorage('course-images', filePath, courseImageFile);
+                    } catch (imgErr) {
+                        console.error('Course image upload failed:', imgErr);
+                        showToast(currentLanguage === 'ar' ? 'تعذر رفع صورة الكورس، سيتم إنشاء الكورس بدون صورة' : 'Course image upload failed; creating course without image', 'warning');
+                        imageUrl = null;
+                    }
                 }
                 
                 const isFreeChk = document.getElementById('newCourseFree');
@@ -5044,8 +5107,15 @@
                 
                 let imageUrl = null;
                 if (courseImageFile) {
-                    const filePath = `${currentUser.id}/${Date.now()}_${courseImageFile.name}`;
-                    imageUrl = await uploadImageToStorage('course-images', filePath, courseImageFile);
+                    try {
+                        const safeImgName = (typeof sanitizeStorageFileName === 'function') ? sanitizeStorageFileName(courseImageFile.name) : courseImageFile.name;
+                        const filePath = `${currentUser.id}/${Date.now()}_${safeImgName}`;
+                        imageUrl = await uploadImageToStorage('course-images', filePath, courseImageFile);
+                    } catch (imgErr) {
+                        console.error('Course image upload failed:', imgErr);
+                        showToast(currentLanguage === 'ar' ? 'تعذر رفع صورة الكورس، سيتم إنشاء الكورس بدون صورة' : 'Course image upload failed; creating course without image', 'warning');
+                        imageUrl = null;
+                    }
                 }
                 
                 const { data: newCourseData, error } = await sb.from('courses').insert({
@@ -5168,9 +5238,15 @@
                 
                 const updateData = { title, description: desc };
                 if (courseImageFile) {
-                    const filePath = `${currentUser.id}/${Date.now()}_${courseImageFile.name}`;
-                    const imageUrl = await uploadImageToStorage('course-images', filePath, courseImageFile);
-                    updateData.image_url = imageUrl;
+                    try {
+                        const safeImgName = (typeof sanitizeStorageFileName === 'function') ? sanitizeStorageFileName(courseImageFile.name) : courseImageFile.name;
+                        const filePath = `${currentUser.id}/${Date.now()}_${safeImgName}`;
+                        const imageUrl = await uploadImageToStorage('course-images', filePath, courseImageFile);
+                        updateData.image_url = imageUrl;
+                    } catch (imgErr) {
+                        console.error('Course image upload failed:', imgErr);
+                        showToast(currentLanguage === 'ar' ? 'تعذر رفع صورة الكورس، تم حفظ باقي التعديلات' : 'Course image upload failed; other changes saved', 'warning');
+                    }
                 }
                 
                 const isFreeChk = document.getElementById('editCourseFree');
@@ -5221,6 +5297,12 @@
                     course = courses.find(c => c.id === courseId);
                 }
                 
+                // Remember the page the course was opened from
+                try {
+                    const _act = document.querySelector('.page.active');
+                    if (_act && _act.id) window._modalReturnPage = _act.id;
+                } catch (e) {}
+
                 // Update URL with course ID
                 updateURL('mainPage', { page: 'course', id: courseId });
                 
@@ -7674,7 +7756,13 @@
                     showToast(currentLanguage === 'ar' ? 'المدرس غير موجود' : 'Teacher not found', 'error');
                     return;
                 }
-                if (!skipPushState) updateURL('mainPage', { page: 'teacher', id: teacherId });
+                if (!skipPushState) {
+                    try {
+                        const _act = document.querySelector('.page.active');
+                        if (_act && _act.id) window._modalReturnPage = _act.id;
+                    } catch (e) {}
+                    updateURL('mainPage', { page: 'teacher', id: teacherId });
+                }
                 
                 const teacherCourses = courses.filter(c => c.createdBy === teacherId);
                 
