@@ -2621,6 +2621,32 @@
             }, 4000);
         }
 
+        function isElementFullscreen(el) {
+            const fs = document.fullscreenElement || document.webkitFullscreenElement;
+            return !!fs && (fs === el || el.contains(fs) || fs.contains(el));
+        }
+
+        function applyWatermarkScale(wrap) {
+            const wm = wrap.querySelector('.video-watermark');
+            if (!wm) return;
+            const full = isElementFullscreen(wrap);
+            wm.style.fontSize = full ? '1.8rem' : '.9rem';
+        }
+
+        function toggleVideoFullscreen(wrap, iframe, btn) {
+            const inFs = isElementFullscreen(wrap);
+            if (inFs) {
+                (document.exitFullscreen || document.webkitExitFullscreen || function(){}).call(document);
+            } else {
+                const req = wrap.requestFullscreen || wrap.webkitRequestFullscreen;
+                if (req) {
+                    req.call(wrap).catch(() => {});
+                } else {
+                    showToast(currentLanguage === 'ar' ? 'ملء الشاشة غير مدعوم في هذا المتصفح' : 'Fullscreen not supported in this browser', 'warning');
+                }
+            }
+        }
+
         function toggleLessonVideo(btn, containerId, encodedUrl, num) {
             const container = document.getElementById(containerId);
             if (!container) return;
@@ -2629,19 +2655,47 @@
             if (container.style.display === 'none' || !container.style.display) {
                 const src = decodeURIComponent(encodedUrl);
                 const wrap = document.createElement('div');
-                wrap.style.cssText = 'position:relative;border-radius:var(--radius);overflow:hidden;';
+                wrap.style.cssText = 'position:relative;border-radius:var(--radius);overflow:hidden;background:#000;';
                 const iframe = document.createElement('iframe');
                 iframe.setAttribute('width', '100%');
                 iframe.setAttribute('height', '315');
                 iframe.setAttribute('frameborder', '0');
-                iframe.setAttribute('allowfullscreen', 'true');
                 iframe.style.cssText = 'width:100%;height:315px;border:0;display:block;';
                 iframe.src = src;
                 wrap.appendChild(iframe);
                 const text = getWatermarkText();
                 if (text) {
+                    // Custom fullscreen so the watermark stays visible over the video
+                    const fsBtn = document.createElement('button');
+                    fsBtn.type = 'button';
+                    fsBtn.className = 'video-fs-btn';
+                    fsBtn.innerHTML = '<i class="fas fa-expand"></i>';
+                    fsBtn.title = currentLanguage === 'ar' ? 'ملء الشاشة' : 'Fullscreen';
+                    fsBtn.style.cssText = 'position:absolute;bottom:10px;inset-inline-end:10px;z-index:11;'
+                        + 'background:rgba(0,0,0,.6);color:#fff;border:0;border-radius:8px;'
+                        + 'padding:8px 10px;cursor:pointer;font-size:1rem;';
+                    fsBtn.onclick = function(){ toggleVideoFullscreen(wrap, iframe, fsBtn); };
+                    wrap.appendChild(fsBtn);
+
                     wrap.appendChild(buildWatermarkLayer(text));
                     guardWatermark(wrap, text);
+
+                    const onFsChange = () => {
+                        if (!document.body.contains(wrap)) {
+                            document.removeEventListener('fullscreenchange', onFsChange);
+                            document.removeEventListener('webkitfullscreenchange', onFsChange);
+                            return;
+                        }
+                        const full = isElementFullscreen(wrap);
+                        iframe.style.height = full ? '100%' : '315px';
+                        wrap.style.height = full ? '100%' : '';
+                        fsBtn.innerHTML = full ? '<i class="fas fa-compress"></i>' : '<i class="fas fa-expand"></i>';
+                        applyWatermarkScale(wrap);
+                    };
+                    document.addEventListener('fullscreenchange', onFsChange);
+                    document.addEventListener('webkitfullscreenchange', onFsChange);
+                } else {
+                    iframe.setAttribute('allowfullscreen', 'true');
                 }
                 container.innerHTML = '';
                 container.appendChild(wrap);
