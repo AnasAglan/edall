@@ -5375,6 +5375,9 @@
                                     <strong>
                                         ${isLocked ? '<i class="fas fa-lock lock-icon"></i>' : ''}
                                         ${currentLanguage === 'ar' ? 'المحاضرة' : 'Lesson'} ${index + 1}: ${lesson.title}
+                                        ${(Number(course.price || 0) <= 0 || lesson.isFree)
+                                            ? `<span style="display:inline-block;font-size:.72rem;font-weight:800;padding:2px 9px;border-radius:999px;margin-inline-start:6px;background:rgba(34,197,94,.15);color:#22c55e;vertical-align:middle;">${currentLanguage === 'ar' ? 'مجانية' : 'Free'}</span>`
+                                            : `<span style="display:inline-block;font-size:.72rem;font-weight:800;padding:2px 9px;border-radius:999px;margin-inline-start:6px;background:rgba(249,115,22,.15);color:#f97316;vertical-align:middle;">${currentLanguage === 'ar' ? 'مدفوعة' : 'Paid'}</span>`}
                                     </strong>
                                     ${isLocked ? `<div style="color:var(--danger);font-size:0.85rem;"><i class="fas fa-exclamation-triangle"></i> ${currentLanguage === 'ar' ? 'يجب النجاح في امتحان المحاضرة السابقة أولاً' : 'Must pass previous lesson exam first'}</div>` : ''}
                                     <div style="color:var(--text-muted);font-size:0.9rem;">
