@@ -8,6 +8,13 @@
       "when": 1789420668913,
       "tag": "0000_course_images_user_folder_policy",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790450399790,
+      "tag": "0001_tighten_profiles_roles_storage",
+      "breakpoints": true
     }
   ]
 }
