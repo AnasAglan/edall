@@ -3089,9 +3089,10 @@
             try {
                 // Load top 5 courses sorted by enrollment + profiles + roles + notifications
                 const isGuest = !currentUser;
-                const profilesQuery = isGuest
-                    ? sb.rpc('get_course_creators_public')
-                    : sb.from('profiles').select('*');
+                const isAdminUser = !!(currentUser && currentUser.roles && currentUser.roles.includes('admin'));
+                const profilesQuery = isAdminUser
+                    ? sb.from('profiles').select('*')
+                    : sb.rpc('get_course_creators_public');
                 const [
                     { data: coursesData },
                     { data: profilesData },
@@ -3100,7 +3101,7 @@
                 ] = await Promise.all([
                     sb.rpc('get_courses_sorted_by_enrollment', { _offset: 0, _limit: 5 }),
                     profilesQuery,
-                    isGuest ? Promise.resolve({ data: [] }) : sb.from('user_roles').select('*'),
+                    isAdminUser ? sb.from('user_roles').select('*') : Promise.resolve({ data: [] }),
                     isGuest ? Promise.resolve({ data: [] }) : sb.from('notifications').select('*').order('created_at', { ascending: false }).limit(50)
                 ]);
 
