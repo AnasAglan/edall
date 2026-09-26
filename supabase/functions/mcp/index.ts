@@ -6,7 +6,7 @@
 import { auth, defineMcp } from "npm:@lovable.dev/mcp-js@0.22.2";
 
 // src/lib/mcp/tools/list-courses.ts
-import { createClient } from "npm:@supabase/supabase-js@^2.99.3";
+import { createClient } from "npm:@supabase/supabase-js@^2.117.2";
 import { defineTool } from "npm:@lovable.dev/mcp-js@0.22.2";
 import { z } from "npm:zod@^3.25.76";
 function db(ctx) {
@@ -38,7 +38,7 @@ var list_courses_default = defineTool({
 });
 
 // src/lib/mcp/tools/my-enrollments.ts
-import { createClient as createClient2 } from "npm:@supabase/supabase-js@^2.99.3";
+import { createClient as createClient2 } from "npm:@supabase/supabase-js@^2.117.2";
 import { defineTool as defineTool2 } from "npm:@lovable.dev/mcp-js@0.22.2";
 function db2(ctx) {
   return createClient2(process.env.SUPABASE_URL, process.env.SUPABASE_PUBLISHABLE_KEY, {
@@ -64,7 +64,7 @@ var my_enrollments_default = defineTool2({
 });
 
 // src/lib/mcp/tools/wallet-balance.ts
-import { createClient as createClient3 } from "npm:@supabase/supabase-js@^2.99.3";
+import { createClient as createClient3 } from "npm:@supabase/supabase-js@^2.117.2";
 import { defineTool as defineTool3 } from "npm:@lovable.dev/mcp-js@0.22.2";
 function db3(ctx) {
   return createClient3(process.env.SUPABASE_URL, process.env.SUPABASE_PUBLISHABLE_KEY, {
@@ -94,7 +94,7 @@ var wallet_balance_default = defineTool3({
 });
 
 // src/lib/mcp/tools/my-notifications.ts
-import { createClient as createClient4 } from "npm:@supabase/supabase-js@^2.99.3";
+import { createClient as createClient4 } from "npm:@supabase/supabase-js@^2.117.2";
 import { defineTool as defineTool4 } from "npm:@lovable.dev/mcp-js@0.22.2";
 import { z as z2 } from "npm:zod@^3.25.76";
 function db4(ctx) {
@@ -126,7 +126,7 @@ var my_notifications_default = defineTool4({
 });
 
 // src/lib/mcp/tools/list-lessons.ts
-import { createClient as createClient5 } from "npm:@supabase/supabase-js@^2.99.3";
+import { createClient as createClient5 } from "npm:@supabase/supabase-js@^2.117.2";
 import { defineTool as defineTool5 } from "npm:@lovable.dev/mcp-js@0.22.2";
 import { z as z3 } from "npm:zod@^3.25.76";
 function db5(ctx) {
