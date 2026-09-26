@@ -27,7 +27,10 @@ var list_courses_default = defineTool({
   handler: async ({ search, limit }, ctx) => {
     if (!ctx.isAuthenticated()) return { content: [{ type: "text", text: "Not authenticated" }], isError: true };
     let q = db(ctx).from("courses").select("id,title,description,price,image_url,created_at").limit(limit ?? 20);
-    if (search && search.trim()) q = q.or(`title.ilike.%${search}%,description.ilike.%${search}%`);
+    if (search && search.trim()) {
+      const term = search.replace(/[(),."\\%_]/g, " ").replace(/\s+/g, " ").trim().slice(0, 100);
+      if (term) q = q.or(`title.ilike.%${term}%,description.ilike.%${term}%`);
+    }
     const { data, error } = await q;
     if (error) return { content: [{ type: "text", text: error.message }], isError: true };
     return {
