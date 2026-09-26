@@ -5375,6 +5375,9 @@
                                     <strong>
                                         ${isLocked ? '<i class="fas fa-lock lock-icon"></i>' : ''}
                                         ${currentLanguage === 'ar' ? 'المحاضرة' : 'Lesson'} ${index + 1}: ${lesson.title}
+                                        ${(Number(course.price || 0) <= 0 || lesson.isFree)
+                                            ? `<span style="display:inline-block;font-size:.72rem;font-weight:800;padding:2px 9px;border-radius:999px;margin-inline-start:6px;background:rgba(34,197,94,.15);color:#22c55e;vertical-align:middle;">${currentLanguage === 'ar' ? 'مجانية' : 'Free'}</span>`
+                                            : `<span style="display:inline-block;font-size:.72rem;font-weight:800;padding:2px 9px;border-radius:999px;margin-inline-start:6px;background:rgba(249,115,22,.15);color:#f97316;vertical-align:middle;">${currentLanguage === 'ar' ? 'مدفوعة' : 'Paid'}</span>`}
                                     </strong>
                                     ${isLocked ? `<div style="color:var(--danger);font-size:0.85rem;"><i class="fas fa-exclamation-triangle"></i> ${currentLanguage === 'ar' ? 'يجب النجاح في امتحان المحاضرة السابقة أولاً' : 'Must pass previous lesson exam first'}</div>` : ''}
                                     <div style="color:var(--text-muted);font-size:0.9rem;">
@@ -6952,25 +6955,25 @@
                     pdfInput.addEventListener('change', function(e) {
                         const preview = document.getElementById('lessonPdfPreview');
                         const progressContainer = document.getElementById('pdfUploadProgress');
-                        preview.innerHTML = '';
-                        progressContainer.innerHTML = '';
-                        
                         const files = Array.from(e.target.files);
                         if (files.length === 0) return;
+                        const _base = _activePdfUploads.length;
                         
-                        files.forEach((f, idx) => {
-                            preview.innerHTML += `<div style="padding:5px;color:var(--text-muted);"><i class="fas fa-file-pdf" style="color:var(--danger);"></i> ${f.name} <span style="font-size:0.8rem;">(${(f.size / 1024 / 1024).toFixed(1)} MB)</span></div>`;
+                        files.forEach((f, i) => {
+                            const idx = _base + i;
+                            preview.insertAdjacentHTML('beforeend', `<div style="padding:5px;color:var(--text-muted);"><i class="fas fa-file-pdf" style="color:var(--danger);"></i> ${f.name} <span style="font-size:0.8rem;">(${(f.size / 1024 / 1024).toFixed(1)} MB)</span></div>`);
                             
                             // Add progress bar for each file
-                            progressContainer.innerHTML += `
+                            progressContainer.insertAdjacentHTML('beforeend', `
                                 <div id="pdfProgress_${idx}" style="display:flex;align-items:center;gap:8px;margin:5px 0;">
                                     <div style="flex:1;background:var(--bg-lighter);border-radius:8px;height:8px;overflow:hidden;">
                                         <div id="pdfProgressBar_${idx}" style="width:0%;height:100%;background:var(--primary);border-radius:8px;transition:width 0.3s;"></div>
                                     </div>
                                     <span id="pdfProgressText_${idx}" style="font-size:0.8rem;color:var(--text-muted);min-width:40px;">0%</span>
                                     <button onclick="cancelPdfUpload(${idx})" style="background:var(--danger);color:white;border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:0.8rem;display:flex;align-items:center;justify-content:center;" title="${currentLanguage === 'ar' ? 'إلغاء' : 'Cancel'}">✕</button>
-                                </div>`;
+                                </div>`);
                         });
+                        e.target.value = '';
                         
                         // Disable save button until uploads complete
                         const saveBtn = document.getElementById('saveLessonBtn');
@@ -6988,13 +6991,14 @@
         }
         
         async function startPdfPreUploads(courseId, files, buttonId = 'saveLessonBtn') {
-            _activePdfUploads = files.map((file, idx) => ({
+            const _base = _activePdfUploads.length;
+            files.forEach((file, j) => _activePdfUploads.push({
                 filePath: null,
                 fileName: file.name,
                 publicUrl: null,
                 cancelled: false,
                 error: false,
-                idx,
+                idx: _base + j,
                 xhr: null
             }));
             const tempLessonId = 'temp_' + Date.now();
@@ -7002,8 +7006,9 @@
             if (saveBtn) { saveBtn.disabled = true; saveBtn.style.opacity = '0.5'; }
             _pdfUploadComplete = false;
             
-            for (let i = 0; i < files.length; i++) {
-                const file = files[i];
+            for (let j = 0; j < files.length; j++) {
+                const file = files[j];
+                const i = _base + j;
                 const uploadInfo = _activePdfUploads[i];
                 if (!uploadInfo || uploadInfo.cancelled) continue;
 
@@ -7095,9 +7100,18 @@
                 }
             }
             
-            _pdfUploadComplete = true;
-            const remainingSaveBtn = document.getElementById(buttonId);
-            if (remainingSaveBtn) { remainingSaveBtn.disabled = false; remainingSaveBtn.style.opacity = '1'; }
+            _checkPdfUploadsDone();
+        }
+
+        function _checkPdfUploadsDone() {
+            const pending = _activePdfUploads.filter(u => !u.cancelled && !u.error && !u.publicUrl);
+            if (pending.length === 0) {
+                _pdfUploadComplete = true;
+                ['saveLessonBtn', 'updateLessonBtn'].forEach(id => {
+                    const b = document.getElementById(id);
+                    if (b) { b.disabled = false; b.style.opacity = '1'; }
+                });
+            }
         }
         
         function cancelPdfUpload(idx) {
@@ -7112,14 +7126,7 @@
                 const progressEl = document.getElementById(`pdfProgress_${idx}`);
                 if (progressEl) progressEl.innerHTML = `<span style="color:var(--danger);font-size:0.85rem;"><i class="fas fa-times-circle"></i> ${currentLanguage === 'ar' ? 'تم الإلغاء' : 'Cancelled'}</span>`;
             }
-            
-            // Check if all remaining are done
-            const pending = _activePdfUploads.filter(u => !u.cancelled && !u.publicUrl);
-            if (pending.length === 0) {
-                _pdfUploadComplete = true;
-                const saveBtn = document.getElementById('saveLessonBtn');
-                if (saveBtn) { saveBtn.disabled = false; saveBtn.style.opacity = '1'; }
-            }
+            _checkPdfUploadsDone();
         }
         
         async function cancelLessonCreation() {
@@ -7890,20 +7897,21 @@
                     pdfInput.addEventListener('change', function(e) {
                         const preview = document.getElementById('editLessonPdfPreview');
                         const progressContainer = document.getElementById('editPdfUploadProgress');
-                        preview.innerHTML = '';
-                        if (progressContainer) progressContainer.innerHTML = '';
                         const files = Array.from(e.target.files);
-                        files.forEach((f, idx) => {
-                            preview.innerHTML += `<div style="padding:5px;color:var(--text-muted);"><i class="fas fa-file-pdf" style="color:var(--danger);"></i> ${f.name} <span style="font-size:0.8rem;">(${(f.size / 1024 / 1024).toFixed(1)} MB)</span></div>`;
-                            if (progressContainer) progressContainer.innerHTML += `
+                        const _base = _activePdfUploads.length;
+                        files.forEach((f, i) => {
+                            const idx = _base + i;
+                            preview.insertAdjacentHTML('beforeend', `<div style="padding:5px;color:var(--text-muted);"><i class="fas fa-file-pdf" style="color:var(--danger);"></i> ${f.name} <span style="font-size:0.8rem;">(${(f.size / 1024 / 1024).toFixed(1)} MB)</span></div>`);
+                            if (progressContainer) progressContainer.insertAdjacentHTML('beforeend', `
                                 <div id="pdfProgress_${idx}" style="display:flex;align-items:center;gap:8px;margin:5px 0;">
                                     <div style="flex:1;background:var(--bg-lighter);border-radius:8px;height:8px;overflow:hidden;">
                                         <div id="pdfProgressBar_${idx}" style="width:0%;height:100%;background:var(--primary);border-radius:8px;transition:width 0.3s;"></div>
                                     </div>
                                     <span id="pdfProgressText_${idx}" style="font-size:0.8rem;color:var(--text-muted);min-width:40px;">0%</span>
                                     <button onclick="cancelPdfUpload(${idx})" style="background:var(--danger);color:white;border:none;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:0.8rem;display:flex;align-items:center;justify-content:center;" title="${currentLanguage === 'ar' ? 'إلغاء' : 'Cancel'}">✕</button>
-                                </div>`;
+                                </div>`);
                         });
+                        e.target.value = '';
                         if (files.length > 0) startPdfPreUploads(courseId, files, 'updateLessonBtn');
                     });
                 }
