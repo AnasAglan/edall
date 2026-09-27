@@ -76,6 +76,51 @@ export type Database = {
           },
         ]
       }
+      exam_attempts: {
+        Row: {
+          exam_id: string
+          expires_at: string | null
+          id: string
+          result_id: string | null
+          started_at: string
+          submitted_at: string | null
+          user_id: string
+        }
+        Insert: {
+          exam_id: string
+          expires_at?: string | null
+          id?: string
+          result_id?: string | null
+          started_at?: string
+          submitted_at?: string | null
+          user_id: string
+        }
+        Update: {
+          exam_id?: string
+          expires_at?: string | null
+          id?: string
+          result_id?: string | null
+          started_at?: string
+          submitted_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exam_attempts_exam_id_fkey"
+            columns: ["exam_id"]
+            isOneToOne: false
+            referencedRelation: "exams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exam_attempts_result_id_fkey"
+            columns: ["result_id"]
+            isOneToOne: false
+            referencedRelation: "exam_results"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       exam_questions: {
         Row: {
           correct_option: number | null
@@ -164,6 +209,7 @@ export type Database = {
           created_at: string
           id: string
           lesson_id: string
+          max_attempts: number | null
           passing_grade: number
           required_to_progress: boolean
           time_limit: number | null
@@ -174,6 +220,7 @@ export type Database = {
           created_at?: string
           id?: string
           lesson_id: string
+          max_attempts?: number | null
           passing_grade?: number
           required_to_progress?: boolean
           time_limit?: number | null
@@ -184,6 +231,7 @@ export type Database = {
           created_at?: string
           id?: string
           lesson_id?: string
+          max_attempts?: number | null
           passing_grade?: number
           required_to_progress?: boolean
           time_limit?: number | null
@@ -553,6 +601,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _finalize_exam_attempt: {
+        Args: { _answers: Json; _attempt_id: string }
+        Returns: Json
+      }
+      abandon_exam_attempt: {
+        Args: { _attempt_id: string }
+        Returns: undefined
+      }
       admin_credit_wallet: {
         Args: { _amount: number; _note?: string; _user_id: string }
         Returns: number
@@ -584,7 +640,23 @@ export type Database = {
         Args: { _course_id: string; _user_id: string }
         Returns: Json
       }
+      exam_grading_list: {
+        Args: { _exam_id: string }
+        Returns: {
+          answers: Json
+          essay_graded: boolean
+          has_essay: boolean
+          name: string
+          passed: boolean
+          public_id: string
+          result_id: string
+          score: number
+          submitted_at: string
+          user_id: string
+        }[]
+      }
       generate_public_id: { Args: never; Returns: string }
+      get_active_exam_attempt: { Args: never; Returns: Json }
       get_course_creators_public: {
         Args: never
         Returns: {
@@ -656,6 +728,11 @@ export type Database = {
             }
             Returns: undefined
           }
+      start_exam_attempt: { Args: { _exam_id: string }; Returns: Json }
+      submit_exam_attempt: {
+        Args: { _answers: Json; _attempt_id: string }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "admin" | "teacher" | "student"
