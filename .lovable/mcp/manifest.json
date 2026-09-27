@@ -11,9 +11,9 @@
   },
   "mcp": {
     "server": {
-      "name": "ed-master-mcp",
+      "name": "ed-all-mcp",
       "version": "0.1.0",
-      "title": "ED MASTER"
+      "title": "ED ALL"
     },
     "tools": [
       {

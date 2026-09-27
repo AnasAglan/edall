@@ -121,7 +121,7 @@ export default function OAuthConsent() {
     <div style={wrap}><div style={card}>
       <h1 style={{ fontSize: 22, marginBottom: 8 }}>ربط {clientName} بحسابك</h1>
       <p style={{ color: "#475569", marginBottom: 8 }}>
-        سيتمكن <strong>{clientName}</strong> من استخدام أدوات ED MASTER بالنيابة عنك أثناء تسجيل دخولك.
+        سيتمكن <strong>{clientName}</strong> من استخدام أدوات ED ALL بالنيابة عنك أثناء تسجيل دخولك.
       </p>
       <p style={{ color: "#64748b", fontSize: 14, marginBottom: 20 }}>
         هذا لا يتجاوز صلاحيات حسابك أو سياسات المنصة. الأدوات تصل فقط إلى بياناتك المسموح بها.
