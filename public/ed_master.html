@@ -3189,6 +3189,7 @@
 
                 ensureLocalStorageKeys();
                 _dataLoaded = true;
+                if (currentUser) setTimeout(checkActiveExamAttempt, 400);
             } catch (error) {
                 console.error('Error loading data from Supabase:', error);
                 showToast('حدث خطأ في تحميل البيانات', 'error');
@@ -3295,6 +3296,7 @@
                                 id: e.id, title: e.title, questions: eQuestions,
                                 passingGrade: e.passing_grade, timeLimit: e.time_limit,
                                 allowRetake: e.allow_retake, requiredToProgress: e.required_to_progress,
+                                maxAttempts: e.max_attempts,
                                 createdAt: new Date(e.created_at).getTime()
                             };
                         });
@@ -5550,6 +5552,12 @@
                         const examResults = JSON.parse(localStorage.getItem(LS_KEYS.EXAM_RESULTS)) || {};
                         const userExamKey = currentUser ? `${currentUser.id}_${courseId}_${lessonId}_${examIndex}` : null;
                         const previousResult = userExamKey ? examResults[userExamKey] : null;
+                        const _myAttempts = getUserExamAttempts(exam.id);
+                        const _attemptsUsed = _myAttempts.length;
+                        const _maxAtt = exam.allowRetake ? (exam.maxAttempts || null) : 1;
+                        const _canStart = !_maxAtt || _attemptsUsed < _maxAtt;
+                        const _gradedAtt = _myAttempts.filter(r => !r.has_essay || r.essay_graded);
+                        const _avg = _gradedAtt.length ? Math.round(_gradedAtt.reduce((a, r) => a + (r.score || 0), 0) / _gradedAtt.length) : null;
                         
                         modalContent += `
                             <div style="background:var(--card-light);border-radius:var(--radius);padding:15px;margin:10px 0;border-right:4px solid var(--primary);">
@@ -5565,18 +5573,19 @@
                                             (currentLanguage === 'ar' ? '✅ ناجح' : '✅ Passed') : 
                                             (currentLanguage === 'ar' ? '❌ راسب' : '❌ Failed')
                                         } - ${previousResult.score}%
+                                        ${_attemptsUsed > 1 ? `<div style="font-size:0.95rem;margin-top:6px;"><i class="fas fa-chart-line"></i> ${currentLanguage === 'ar' ? 'متوسط نتائجك' : 'Your average'}: <strong>${_avg !== null ? _avg + '%' : '—'}</strong> (${currentLanguage === 'ar' ? 'عدد المحاولات' : 'Attempts'}: ${_attemptsUsed}${_maxAtt ? ' / ' + _maxAtt : ''})</div>` : ''}
                                         ${previousResult.hasEssay && !previousResult.essayGraded ? 
                                             '<div style="font-size:0.9rem;margin-top:5px;color:var(--warning);">' + (currentLanguage === 'ar' ? '⏳ بانتظار تصحيح الأسئلة المقالية' : '⏳ Waiting for essay grading') + '</div>' : ''}
                                     </div>
                                 ` : ''}
                                 <div style="display:flex;gap:10px;flex-wrap:wrap;">
-                                    ${!previousResult || exam.allowRetake ? `
+                                    ${_canStart ? `
                                         <button class="btn btn-success btn-sm" onclick="takeExam('${courseId}', '${lessonId}', ${examIndex})">
                                             <i class="fas fa-play"></i> ${currentLanguage === 'ar' ? 'بدء الامتحان' : 'Start Exam'}
                                         </button>
                                     ` : `
                                         <button class="btn btn-sm" disabled style="opacity:0.5;">
-                                            <i class="fas fa-ban"></i> ${currentLanguage === 'ar' ? 'لا يُسمح بالإعادة' : 'No Retake Allowed'}
+                                            <i class="fas fa-ban"></i> ${_maxAtt && _maxAtt > 1 ? (currentLanguage === 'ar' ? 'استنفدت عدد المحاولات' : 'No attempts left') : (currentLanguage === 'ar' ? 'لا يُسمح بالإعادة' : 'No Retake Allowed')}
                                         </button>
                                     `}
                                     ${canEdit ? `
@@ -5686,6 +5695,10 @@
                     <div style="margin-bottom:15px;">
                         <label style="font-weight:bold;display:block;margin-bottom:5px;">${currentLanguage === 'ar' ? 'وقت الامتحان (بالدقائق، اتركه فارغاً بدون وقت)' : 'Exam Time (minutes, leave empty for no limit)'}</label>
                         <input type="number" id="examTimeLimit" value="" min="1" placeholder="${currentLanguage === 'ar' ? 'بدون حد زمني' : 'No time limit'}" style="width:180px;">
+                    </div>
+                    <div style="margin-bottom:15px;">
+                        <label style="font-weight:bold;display:block;margin-bottom:5px;">${currentLanguage === 'ar' ? 'عدد مرات دخول الامتحان المسموحة (عند السماح بالإعادة)' : 'Allowed attempts (when retake is allowed)'}</label>
+                        <input type="number" id="examMaxAttempts" value="" min="1" placeholder="${currentLanguage === 'ar' ? 'غير محدود' : 'Unlimited'}" style="width:180px;">
                     </div>
                     
                     <div style="margin-bottom:15px;">
@@ -5852,6 +5865,9 @@
                 const timeLimitVal = document.getElementById('examTimeLimit').value.trim();
                 const timeLimit = timeLimitVal ? parseInt(timeLimitVal) : null;
                 const allowRetake = document.getElementById('examAllowRetake').checked;
+                const _maEl = document.getElementById('examMaxAttempts');
+                const _maVal = _maEl && _maEl.value.trim() ? parseInt(_maEl.value) : null;
+                const maxAttempts = allowRetake && _maVal && _maVal > 0 ? _maVal : null;
                 const requiredToProgress = document.getElementById('examRequiredToProgress') ? document.getElementById('examRequiredToProgress').checked : false;
                 
                 if (!lesson.exams) lesson.exams = [];
@@ -5861,7 +5877,7 @@
                     const existingExam = lesson.exams[editIndex];
                     await sb.from('exams').update({
                         title: examTitle, passing_grade: passingGrade, time_limit: timeLimit,
-                        allow_retake: allowRetake, required_to_progress: requiredToProgress
+                        allow_retake: allowRetake, required_to_progress: requiredToProgress, max_attempts: maxAttempts
                     }).eq('id', existingExam.id);
                     
                     // Delete old questions and re-insert
@@ -5876,13 +5892,13 @@
                     lesson.exams[editIndex] = {
                         ...existingExam, title: examTitle,
                         questions: questions.map(q => ({ text: q.text, type: q.type, options: q.type === 'multiple' ? q.options : [], correctOption: q.correctOption })),
-                        passingGrade, timeLimit, allowRetake, requiredToProgress
+                        passingGrade, timeLimit, allowRetake, requiredToProgress, maxAttempts
                     };
                 } else {
                     // Create new exam
                     const { data: examData, error } = await sb.from('exams').insert({
                         lesson_id: lessonId, title: examTitle, passing_grade: passingGrade,
-                        time_limit: timeLimit, allow_retake: allowRetake, required_to_progress: requiredToProgress
+                        time_limit: timeLimit, allow_retake: allowRetake, required_to_progress: requiredToProgress, max_attempts: maxAttempts
                     }).select().single();
                     
                     if (error) { showToast('حدث خطأ في حفظ الامتحان', 'error'); return; }
@@ -5897,7 +5913,7 @@
                     lesson.exams.push({
                         id: examData.id, title: examTitle,
                         questions: questions.map(q => ({ text: q.text, type: q.type, options: q.type === 'multiple' ? q.options : [], correctOption: q.correctOption })),
-                        passingGrade, timeLimit, allowRetake, requiredToProgress, createdAt: Date.now()
+                        passingGrade, timeLimit, allowRetake, requiredToProgress, maxAttempts, createdAt: Date.now()
                     });
                 }
                 
@@ -5946,6 +5962,10 @@
                     <div style="margin-bottom:15px;">
                         <label style="font-weight:bold;display:block;margin-bottom:5px;">${currentLanguage === 'ar' ? 'وقت الامتحان (بالدقائق)' : 'Exam Time (minutes)'}</label>
                         <input type="number" id="examTimeLimit" value="${exam.timeLimit || ''}" min="1" placeholder="${currentLanguage === 'ar' ? 'بدون حد زمني' : 'No time limit'}" style="width:180px;">
+                    </div>
+                    <div style="margin-bottom:15px;">
+                        <label style="font-weight:bold;display:block;margin-bottom:5px;">${currentLanguage === 'ar' ? 'عدد مرات دخول الامتحان المسموحة (عند السماح بالإعادة)' : 'Allowed attempts (when retake is allowed)'}</label>
+                        <input type="number" id="examMaxAttempts" value="${exam.maxAttempts || ''}" min="1" placeholder="${currentLanguage === 'ar' ? 'غير محدود' : 'Unlimited'}" style="width:180px;">
                     </div>
                     
                     <div style="margin-bottom:15px;">
@@ -6007,7 +6027,7 @@
             }
         }
 
-        function takeExam(courseId, lessonId, examIndex) {
+        async function takeExam(courseId, lessonId, examIndex) {
             try {
                 const course = courses.find(c => c.id === courseId);
                 const lesson = course.lessons.find(l => l.id === lessonId);
@@ -6023,9 +6043,19 @@
                     return;
                 }
                 
+                const { data: _att, error: _attErr } = await sb.rpc('start_exam_attempt', { _exam_id: exam.id });
+                if (_attErr) {
+                    const _m = _attErr.message || '';
+                    showToast(_m.includes('MAX_ATTEMPTS') ? (currentLanguage === 'ar' ? 'لقد استنفدت عدد مرات دخول هذا الامتحان' : 'You have used all attempts for this exam')
+                        : (currentLanguage === 'ar' ? 'تعذر بدء الامتحان' : 'Could not start the exam'), 'error');
+                    return;
+                }
+                window._examAttempt = { id: _att.attempt_id, examId: exam.id, courseId, lessonId, examIndex,
+                    expiresAt: _att.expires_at ? new Date(_att.expires_at).getTime() : null,
+                    offset: Date.now() - new Date(_att.server_now).getTime() };
                 let timerHTML = '';
-                if (exam.timeLimit) {
-                    examTimeRemaining = exam.timeLimit * 60;
+                if (window._examAttempt.expiresAt) {
+                    examTimeRemaining = _examSecondsLeft();
                     timerHTML = `<div class="exam-timer" id="examTimer"><i class="fas fa-clock"></i> <span id="examTimerText">${formatTime(examTimeRemaining)}</span></div>`;
                 }
                 
@@ -6067,6 +6097,7 @@
                     </div>
                     ${timerHTML}
                     ${navHTML}
+                    ${_att.resumed ? `<div style="padding:10px;margin-bottom:10px;border-radius:var(--radius-sm);background:rgba(245,158,11,0.12);color:var(--warning);"><i class="fas fa-info-circle"></i> ${currentLanguage === 'ar' ? 'لديك امتحان مفتوح، الوقت مستمر منذ بدايته.' : 'You have an open exam; the timer kept running since it started.'}</div>` : ''}
                     <div id="examQuestionsContainer">${questionsHTML}</div>
                     <div class="exam-controls">
                         <button class="btn btn-success" onclick="submitExam('${courseId}', '${lessonId}', ${examIndex})">
@@ -6078,8 +6109,12 @@
                     </div>
                 `);
                 
-                if (exam.timeLimit) {
-                    startExamTimer(courseId, lessonId, examIndex);
+                _restoreExamDraft();
+                const _qc = document.getElementById('examQuestionsContainer');
+                if (_qc) { _qc.addEventListener('input', _saveExamDraft); _qc.addEventListener('change', _saveExamDraft); }
+                if (window._examAttempt.expiresAt) {
+                    if (examTimeRemaining <= 0) { submitExam(courseId, lessonId, examIndex); }
+                    else startExamTimer(courseId, lessonId, examIndex);
                 }
             } catch (error) {
                 console.error('Error taking exam:', error);
@@ -6096,7 +6131,7 @@
         function startExamTimer(courseId, lessonId, examIndex) {
             if (examTimerInterval) clearInterval(examTimerInterval);
             examTimerInterval = setInterval(() => {
-                examTimeRemaining--;
+                examTimeRemaining = _examSecondsLeft();
                 const timerText = document.getElementById('examTimerText');
                 if (timerText) {
                     timerText.textContent = formatTime(examTimeRemaining);
@@ -6109,8 +6144,69 @@
             }, 1000);
         }
 
-        function cancelExam() {
+        function _examSecondsLeft() {
+            const a = window._examAttempt;
+            if (!a || !a.expiresAt) return 0;
+            return Math.max(0, Math.floor((a.expiresAt - (Date.now() - a.offset)) / 1000));
+        }
+        function _examDraftKey() { return window._examAttempt ? 'ed_exam_draft_' + window._examAttempt.id : null; }
+        function _saveExamDraft() {
+            try {
+                const k = _examDraftKey(); if (!k) return;
+                const d = {};
+                document.querySelectorAll('#examQuestionsContainer input[type=radio]:checked').forEach(r => d[r.name] = r.value);
+                document.querySelectorAll('#examQuestionsContainer textarea.essay-answer').forEach(t => d[t.id] = t.value);
+                localStorage.setItem(k, JSON.stringify(d));
+            } catch (e) {}
+        }
+        function _restoreExamDraft() {
+            try {
+                const k = _examDraftKey(); if (!k) return;
+                const d = JSON.parse(localStorage.getItem(k) || '{}');
+                Object.keys(d).forEach(n => {
+                    if (n.startsWith('question_')) { const el = document.querySelector(`input[name="${n}"][value="${d[n]}"]`); if (el) el.checked = true; }
+                    else { const el = document.getElementById(n); if (el) el.value = d[n]; }
+                });
+            } catch (e) {}
+        }
+        function getUserExamAttempts(examId) {
+            if (!currentUser) return [];
+            try {
+                return (JSON.parse(localStorage.getItem('_rawExamResults') || '[]'))
+                    .filter(r => r.exam_id === examId && r.user_id === currentUser.id);
+            } catch (e) { return []; }
+        }
+        let _activeExamChecking = false;
+        async function checkActiveExamAttempt() {
+            if (!currentUser || _activeExamChecking || window._examAttempt) return;
+            _activeExamChecking = true;
+            try {
+                const { data } = await sb.rpc('get_active_exam_attempt');
+                if (!data || !data.attempt_id || window._examAttempt) return;
+                let course = courses.find(c => c.id === data.course_id);
+                if (!course) return;
+                await loadCourseDetails(data.course_id);
+                course = courses.find(c => c.id === data.course_id);
+                const lesson = course && (course.lessons || []).find(l => l.id === data.lesson_id);
+                const idx = lesson ? (lesson.exams || []).findIndex(e => e.id === data.exam_id) : -1;
+                if (idx < 0) return;
+                showToast(currentLanguage === 'ar' ? 'لديك امتحان لم يكتمل، تم تحويلك إليه' : 'You have an unfinished exam — resuming it', 'warning');
+                await takeExam(data.course_id, data.lesson_id, idx);
+            } catch (e) { console.error('active exam check', e); }
+            finally { _activeExamChecking = false; }
+        }
+
+        async function cancelExam() {
+            const a = window._examAttempt;
+            if (a && a.expiresAt) {
+                if (!confirm(currentLanguage === 'ar' ? 'الوقت سيستمر في العد حتى لو أغلقت الامتحان، وسيتم تسليمه تلقائياً عند انتهاء الوقت. هل تريد الإغلاق؟' : 'The timer keeps running even if you close the exam and it will be auto-submitted when time ends. Close anyway?')) return;
+                _saveExamDraft();
+            } else if (a) {
+                try { await sb.rpc('abandon_exam_attempt', { _attempt_id: a.id }); } catch (e) {}
+                try { localStorage.removeItem(_examDraftKey()); } catch (e) {}
+            }
             if (examTimerInterval) clearInterval(examTimerInterval);
+            window._examAttempt = null;
             closeModal();
         }
 
@@ -6148,53 +6244,49 @@
                     }
                 });
                 
-                // Use server-side grading RPC
-                const { data: gradeResult, error: gradeError } = await sb.rpc('grade_exam_submission', {
-                    _exam_id: exam.id,
-                    _answers: rawAnswers
-                });
-                
-                if (gradeError) {
-                    console.error('Server grading error:', gradeError);
+                const _attempt = window._examAttempt;
+                if (!_attempt || _attempt.examId !== exam.id) {
                     hideBtnLoading(_examSubmitBtn);
-                    showToast(currentLanguage === 'ar' ? 'حدث خطأ أثناء تصحيح الامتحان' : 'Error grading exam', 'error');
+                    showToast(currentLanguage === 'ar' ? 'لا توجد محاولة مفتوحة لهذا الامتحان' : 'No open attempt for this exam', 'error');
                     return;
                 }
-                
+                const { data: gradeResult, error: gradeError } = await sb.rpc('submit_exam_attempt', {
+                    _attempt_id: _attempt.id,
+                    _answers: rawAnswers
+                });
+                if (gradeError) {
+                    console.error('Submit error:', gradeError);
+                    hideBtnLoading(_examSubmitBtn);
+                    showToast(currentLanguage === 'ar' ? 'تعذر تسليم الامتحان، تحقق من الاتصال وحاول مرة أخرى' : 'Could not submit, check your connection and try again', 'error');
+                    if (_attempt.expiresAt && _examSecondsLeft() > 0) startExamTimer(courseId, lessonId, examIndex);
+                    return;
+                }
+                try { localStorage.removeItem('ed_exam_draft_' + _attempt.id); } catch (e) {}
+                window._examAttempt = null;
+                if (gradeResult.already_submitted) {
+                    hideBtnLoading(_examSubmitBtn);
+                    closeModal();
+                    showToast(currentLanguage === 'ar' ? 'تم تسليم هذا الامتحان مسبقاً' : 'This exam was already submitted', 'info');
+                    await loadData(); rebuildCourseResultsAndProgress(courseId);
+                    return;
+                }
+                if (gradeResult.late) showToast(currentLanguage === 'ar' ? 'انتهى وقت الامتحان قبل التسليم' : 'Time ran out before submission', 'warning');
                 const mcqCorrect = gradeResult.mcqCorrect;
                 const mcqTotal = gradeResult.mcqTotal;
                 const hasEssay = gradeResult.hasEssay;
-                const answers = gradeResult.gradedAnswers;
-                const totalQuestions = gradeResult.totalQuestions;
-                
-                const mcqScore = mcqTotal > 0 ? Math.round((mcqCorrect / mcqTotal) * 100) : 0;
-                const mcqWeight = mcqTotal / totalQuestions;
-                
-                let finalScore = mcqScore;
-                let essayGraded = !hasEssay;
-                
-                if (hasEssay) {
-                    finalScore = mcqTotal > 0 ? Math.round(mcqScore * mcqWeight) : 0;
-                    essayGraded = false;
-                }
-                
-                const passed = !hasEssay ? (finalScore >= (exam.passingGrade || 50)) : false;
-                
-                // Save to Supabase
-                const { data: resultData, error: resultError } = await sb.from('exam_results').insert({
-                    user_id: currentUser.id,
-                    exam_id: exam.id,
-                    score: finalScore,
-                    passed: passed,
-                    has_essay: hasEssay,
-                    essay_graded: essayGraded,
-                    answers: answers
-                }).select().single();
-                
-                if (resultError) {
-                    console.error('Error saving exam result to DB:', resultError);
-                }
-                
+                const answers = gradeResult.gradedAnswers || [];
+                const mcqScore = gradeResult.mcqScore;
+                const finalScore = gradeResult.score;
+                const passed = gradeResult.passed;
+                const essayGraded = !hasEssay;
+                const resultData = { id: gradeResult.result_id };
+                try {
+                    const raw = JSON.parse(localStorage.getItem('_rawExamResults') || '[]');
+                    raw.push({ id: gradeResult.result_id, user_id: currentUser.id, exam_id: exam.id, score: finalScore, passed,
+                        has_essay: hasEssay, essay_graded: essayGraded, answers, submitted_at: gradeResult.submitted_at || new Date().toISOString() });
+                    localStorage.setItem('_rawExamResults', JSON.stringify(raw));
+                } catch (e) {}
+
                 // Also save to localStorage for local state
                 const examResults = JSON.parse(localStorage.getItem(LS_KEYS.EXAM_RESULTS)) || {};
                 const resultKey = `${currentUser.id}_${courseId}_${lessonId}_${examIndex}`;
@@ -6242,7 +6334,7 @@
                 
                 exam.questions.forEach((question, index) => {
                     const answer = answers[index];
-                    if (question.type === 'multiple') {
+                    if (question.type === 'multiple' && answer) {
                         resultHTML += `
                             <div style="padding:10px;margin:5px 0;background:${answer.isCorrect ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)'};border-radius:var(--radius-sm);border-right:4px solid ${answer.isCorrect ? 'var(--success)' : 'var(--danger)'};">
                                 <div><strong>${currentLanguage === 'ar' ? 'سؤال' : 'Q'} ${index + 1}:</strong> ${question.text}</div>
