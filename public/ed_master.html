@@ -6266,7 +6266,7 @@
                 if (gradeResult.already_submitted) {
                     hideBtnLoading(_examSubmitBtn);
                     closeModal();
-                    showToast(currentLanguage === 'ar' ? 'تم تسليم هذا الامتحان مسبقاً' : 'This exam was already submitted', 'info');
+                    showToast(currentLanguage === 'ar' ? 'تم تسليم هذا الامتحان مسبقاً' : 'This exam was already submitted', 'warning');
                     await loadData(); rebuildCourseResultsAndProgress(courseId);
                     return;
                 }
@@ -6395,223 +6395,159 @@
 
         function getPendingEssayCount(courseId, lessonId, examIndex) {
             try {
-                const examResults = JSON.parse(localStorage.getItem(LS_KEYS.EXAM_RESULTS)) || {};
-                let count = 0;
-                Object.keys(examResults).forEach(key => {
-                    const result = examResults[key];
-                    if (result.courseId === courseId && result.lessonId === lessonId && 
-                        (result.examIndex === examIndex || result.examIndex === undefined) && 
-                        result.hasEssay && !result.essayGraded) {
-                        count++;
-                    }
-                });
-                return count;
-            } catch (error) {
-                return 0;
-            }
+                const course = courses.find(c => c.id === courseId);
+                const lesson = course ? (course.lessons || []).find(l => l.id === lessonId) : null;
+                const exam = lesson && lesson.exams ? lesson.exams[examIndex] : null;
+                if (!exam) return 0;
+                const raw = JSON.parse(localStorage.getItem('_rawExamResults') || '[]');
+                return new Set(raw.filter(r => r.exam_id === exam.id && r.has_essay && !r.essay_graded).map(r => r.user_id)).size;
+            } catch (error) { return 0; }
         }
 
-        function showCorrectionPanel(courseId, lessonId, examIndex) {
+        let _gradingCache = { examId: null, rows: [], ctx: null };
+        const _t = (ar, en) => currentLanguage === 'ar' ? ar : en;
+        const _escHtml = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+        async function showCorrectionPanel(courseId, lessonId, examIndex) {
             try {
                 const course = courses.find(c => c.id === courseId);
                 const lesson = course ? course.lessons.find(l => l.id === lessonId) : null;
                 const exam = lesson && lesson.exams ? lesson.exams[examIndex] : null;
                 if (!exam) return;
-                
-                const examResults = JSON.parse(localStorage.getItem(LS_KEYS.EXAM_RESULTS)) || {};
-                const relevantResults = Object.keys(examResults)
-                    .filter(key => {
-                        const r = examResults[key];
-                        return r.courseId === courseId && r.lessonId === lessonId && 
-                               (r.examIndex === examIndex || (r.examIndex === undefined && examIndex === 0));
-                    })
-                    .map(key => ({ ...examResults[key], resultKey: key }));
-                
-                if (relevantResults.length === 0) {
-                    showModal(`
-                        <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">
-                            <i class="fas fa-check-double"></i> ${currentLanguage === 'ar' ? 'تصحيح الامتحانات' : 'Grade Exams'}
-                        </div>
-                        <div style="text-align:center;padding:30px;color:var(--text-muted);">
-                            <i class="fas fa-clipboard-check" style="font-size:3rem;margin-bottom:15px;"></i>
-                            <p>${currentLanguage === 'ar' ? 'لا توجد امتحانات مسلمة حتى الآن' : 'No exams submitted yet'}</p>
-                        </div>
-                        <button class="btn btn-outline" onclick="closeModal()"><i class="fas fa-times"></i> ${currentLanguage === 'ar' ? 'إغلاق' : 'Close'}</button>
-                    `);
-                    return;
-                }
-                
-                let html = `
-                    <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">
-                        <i class="fas fa-check-double"></i> ${currentLanguage === 'ar' ? 'تصحيح:' : 'Grade:'} ${exam.title || lesson.title}
-                    </div>
-                `;
-                
-                relevantResults.forEach(result => {
-                    const student = users.find(u => u.id === result.userId);
-                    html += `
-                        <div class="student-exam-result" style="border-color:${result.essayGraded || !result.hasEssay ? 'var(--success)' : 'var(--warning)'};">
-                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-                                <strong><i class="fas fa-user"></i> ${student ? student.name : result.userName || 'Unknown'}</strong>
-                                <span class="badge ${result.passed ? 'badge-success' : (result.essayGraded ? 'badge-primary' : 'badge-accent')}">
-                                    ${result.essayGraded || !result.hasEssay ? 
-                                        (result.passed ? (currentLanguage === 'ar' ? 'ناجح' : 'Passed') : (currentLanguage === 'ar' ? 'راسب' : 'Failed')) :
-                                        (currentLanguage === 'ar' ? 'بانتظار التصحيح' : 'Pending')
-                                    }
-                                </span>
-                            </div>
-                            <div style="font-size:0.9rem;color:var(--text-muted);margin-bottom:10px;">
-                                ${currentLanguage === 'ar' ? 'الدرجة الحالية:' : 'Current Score:'} ${result.score}% | 
-                                ${currentLanguage === 'ar' ? 'الاختياري:' : 'MCQ:'} ${result.mcqCorrect}/${result.mcqTotal}
-                                ${result.hasEssay && !result.essayGraded ? ` | <span style="color:var(--warning);">${currentLanguage === 'ar' ? 'المقالي: لم يُصحح بعد' : 'Essay: Not graded'}</span>` : ''}
-                            </div>
-                    `;
-                    
-                    if (result.hasEssay) {
-                        result.answers.forEach((answer, aIdx) => {
-                            if (answer.type === 'essay') {
-                                const question = exam.questions[answer.questionIndex];
-                                html += `
-                                    <div class="essay-grading">
-                                        <div style="font-weight:bold;margin-bottom:5px;">${currentLanguage === 'ar' ? 'سؤال' : 'Q'} ${answer.questionIndex + 1}: ${question ? question.text : ''}</div>
-                                        <div style="background:var(--input-bg);padding:10px;border-radius:var(--radius-sm);margin-bottom:10px;white-space:pre-wrap;">
-                                            ${answer.answer || (currentLanguage === 'ar' ? '<em>لم يُجب</em>' : '<em>No answer</em>')}
-                                        </div>
-                                        <div class="grading-panel">
-                                            <label>${currentLanguage === 'ar' ? 'الدرجة (0-100):' : 'Grade (0-100):'}</label>
-                                            <input type="number" class="grade-input" id="grade_${result.resultKey}_${aIdx}" 
-                                                value="${answer.grade !== null ? answer.grade : ''}" min="0" max="100" style="width:80px;">
-                                        </div>
-                                    </div>
-                                `;
-                            }
-                        });
-                        
-                        if (!result.essayGraded) {
-                            html += `
-                                <button class="btn btn-sm" style="margin-top:10px;background:var(--success);" onclick="saveEssayGrades('${result.resultKey}', '${courseId}', '${lessonId}', ${examIndex})">
-                                    <i class="fas fa-check"></i> ${currentLanguage === 'ar' ? 'حفظ التصحيح' : 'Save Grades'}
-                                </button>
-                            `;
-                        }
-                    }
-                    
-                    html += `</div>`;
-                });
-                
-                html += `
-                    <div style="display:flex;gap:10px;margin-top:20px;">
-                        <button class="btn btn-outline" onclick="closeModal()">
-                            <i class="fas fa-times"></i> ${currentLanguage === 'ar' ? 'إغلاق' : 'Close'}
-                        </button>
-                    </div>
-                `;
-                
-                showModal(html);
+                showModal(`<div style="text-align:center;padding:30px;"><i class="fas fa-spinner fa-spin"></i> ${_t('جاري التحميل...', 'Loading...')}</div>`);
+                const { data, error } = await sb.rpc('exam_grading_list', { _exam_id: exam.id });
+                if (error) throw error;
+                _gradingCache = { examId: exam.id, rows: data || [], ctx: { courseId, lessonId, examIndex } };
+                renderGradingUsers();
             } catch (error) {
                 console.error('Error showing correction panel:', error);
-                showToast('حدث خطأ في عرض لوحة التصحيح', 'error');
+                showToast(_t('حدث خطأ في عرض لوحة التصحيح', 'Failed to load grading panel'), 'error');
             }
         }
 
-        async function saveEssayGrades(resultKey, courseId, lessonId, examIndex) {
+        function _gradingExam() {
+            const { courseId, lessonId, examIndex } = _gradingCache.ctx || {};
+            const course = courses.find(c => c.id === courseId);
+            const lesson = course ? course.lessons.find(l => l.id === lessonId) : null;
+            return { course, lesson, exam: lesson && lesson.exams ? lesson.exams[examIndex] : null };
+        }
+
+        function renderGradingUsers() {
+            const { lesson, exam } = _gradingExam();
+            const groups = {};
+            _gradingCache.rows.forEach(r => {
+                if (!groups[r.user_id]) groups[r.user_id] = { user_id: r.user_id, name: r.name, public_id: r.public_id, rows: [] };
+                groups[r.user_id].rows.push(r);
+            });
+            const list = Object.values(groups).map(g => ({ ...g, pending: g.rows.filter(r => r.has_essay && !r.essay_graded).length }));
+            const pending = list.filter(g => g.pending > 0);
+            const done = list.filter(g => g.pending === 0);
+            const rowHtml = g => `
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px;margin:8px 0;background:var(--card-light);border-radius:var(--radius-sm);border-right:4px solid ${g.pending ? 'var(--warning)' : 'var(--success)'};">
+                    <div>
+                        <strong><i class="fas fa-user"></i> ${_escHtml(g.name || _t('طالب', 'Student'))}</strong>
+                        ${g.public_id ? `<span style="color:var(--text-muted);font-size:0.85rem;"> #${_escHtml(g.public_id)}</span>` : ''}
+                        <div style="font-size:0.85rem;color:var(--text-muted);">${_t('المحاولات', 'Attempts')}: ${g.rows.length}${g.pending ? ` — <span style="color:var(--warning);">${_t('بانتظار التصحيح', 'Pending')}: ${g.pending}</span>` : ''}</div>
+                    </div>
+                    <button class="btn btn-sm" style="background:var(--warning);color:white;" onclick="renderGradingAttempts('${g.user_id}')"><i class="fas fa-check-double"></i> ${_t('تصحيح', 'Grade')}</button>
+                </div>`;
+            let html = `<div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;"><i class="fas fa-check-double"></i> ${_t('تصحيح:', 'Grade:')} ${_escHtml(exam ? (exam.title || lesson.title) : '')}</div>`;
+            html += `<h4 style="margin:10px 0;">${_t('ينتظرون التصحيح', 'Waiting for grading')} (${pending.length})</h4>`;
+            html += pending.length ? pending.map(rowHtml).join('') : `<div style="color:var(--text-muted);padding:10px;">${_t('لا يوجد طلاب ينتظرون التصحيح', 'No students waiting')}</div>`;
+            if (done.length) html += `<h4 style="margin:18px 0 10px;">${_t('تم تصحيحهم', 'Graded')} (${done.length})</h4>` + done.map(rowHtml).join('');
+            html += `<div style="margin-top:20px;"><button class="btn btn-outline" onclick="closeModal()"><i class="fas fa-times"></i> ${_t('إغلاق', 'Close')}</button></div>`;
+            showModal(html);
+        }
+
+        function renderGradingAttempts(userId) {
+            const rows = _gradingCache.rows.filter(r => r.user_id === userId);
+            const name = rows[0] ? rows[0].name : '';
+            let html = `<div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;"><i class="fas fa-user"></i> ${_escHtml(name)} — ${_t('مرات الدخول', 'Attempts')}</div>`;
+            rows.forEach((r, i) => {
+                const waiting = r.has_essay && !r.essay_graded;
+                html += `
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px;margin:8px 0;background:var(--card-light);border-radius:var(--radius-sm);border-right:4px solid ${waiting ? 'var(--warning)' : 'var(--success)'};">
+                    <div>
+                        <strong>${_t('المحاولة', 'Attempt')} ${i + 1}</strong>
+                        <div style="font-size:0.85rem;color:var(--text-muted);">${new Date(r.submitted_at).toLocaleString(currentLanguage === 'ar' ? 'ar-EG' : 'en-US')}</div>
+                        <div style="font-size:0.9rem;">${waiting ? `<span style="color:var(--warning);">⏳ ${_t('بانتظار التصحيح', 'Pending')}</span>` : `${_t('الدرجة', 'Score')}: ${r.score}% ${r.passed ? '✅' : '❌'}`}</div>
+                    </div>
+                    ${r.has_essay ? `<button class="btn btn-sm" style="background:${waiting ? 'var(--warning)' : 'var(--primary)'};color:white;" onclick="renderGradingAttempt('${r.result_id}')"><i class="fas fa-${waiting ? 'check-double' : 'eye'}"></i> ${waiting ? _t('تصحيح', 'Grade') : _t('عرض', 'View')}</button>` : ''}
+                </div>`;
+            });
+            html += `<div style="margin-top:20px;display:flex;gap:10px;"><button class="btn btn-outline" onclick="renderGradingUsers()"><i class="fas fa-arrow-right"></i> ${_t('رجوع', 'Back')}</button></div>`;
+            showModal(html);
+        }
+
+        function renderGradingAttempt(resultId) {
+            const r = _gradingCache.rows.find(x => x.result_id === resultId);
+            const { exam } = _gradingExam();
+            if (!r || !exam) return;
+            const answers = Array.isArray(r.answers) ? r.answers : [];
+            const mcq = answers.filter(a => a.type === 'multiple');
+            let html = `<div style="font-size:1.2rem;font-weight:900;margin-bottom:10px;"><i class="fas fa-check-double"></i> ${_escHtml(r.name || '')}</div>`;
+            if (mcq.length) html += `<div style="margin-bottom:12px;">${_t('الأسئلة الاختيارية', 'MCQ')}: ${mcq.filter(a => a.isCorrect).length} / ${mcq.length}</div>`;
+            answers.forEach((a, aIdx) => {
+                if (a.type !== 'essay') return;
+                const q = exam.questions[a.questionIndex];
+                html += `
+                <div class="essay-grading">
+                    <div style="font-weight:bold;margin-bottom:5px;">${_t('سؤال', 'Q')} ${a.questionIndex + 1}: ${_escHtml(q ? q.text : '')}</div>
+                    <div style="background:var(--input-bg);padding:10px;border-radius:var(--radius-sm);margin-bottom:10px;white-space:pre-wrap;">${a.answer ? _escHtml(a.answer) : `<em>${_t('لم يُجب', 'No answer')}</em>`}</div>
+                    <div class="grading-panel">
+                        <label>${_t('الدرجة (0-100):', 'Grade (0-100):')}</label>
+                        <input type="number" class="grade-input" id="grade_${resultId}_${aIdx}" value="${a.grade !== null && a.grade !== undefined ? a.grade : ''}" min="0" max="100" style="width:80px;">
+                    </div>
+                </div>`;
+            });
+            html += `<div style="margin-top:15px;display:flex;gap:10px;flex-wrap:wrap;">
+                <button class="btn btn-sm" style="background:var(--success);color:white;" onclick="saveEssayGrades('${resultId}')"><i class="fas fa-check"></i> ${_t('حفظ التصحيح', 'Save Grades')}</button>
+                <button class="btn btn-outline btn-sm" onclick="renderGradingAttempts('${r.user_id}')"><i class="fas fa-arrow-right"></i> ${_t('رجوع', 'Back')}</button>
+            </div>`;
+            showModal(html);
+        }
+
+        async function saveEssayGrades(resultId) {
+            const _gradeBtn = (typeof event !== 'undefined' && event) ? event.target.closest('.btn') : null;
             try {
-                const examResults = JSON.parse(localStorage.getItem(LS_KEYS.EXAM_RESULTS)) || {};
-                const result = examResults[resultKey];
-                if (!result) return;
-                
-                const course = courses.find(c => c.id === courseId);
-                const lesson = course ? course.lessons.find(l => l.id === lessonId) : null;
-                const exam = lesson && lesson.exams ? lesson.exams[examIndex] : null;
-                if (!exam) return;
-                
-                let essayTotal = 0;
-                let essayScore = 0;
-                let allGraded = true;
-                
-                result.answers.forEach((answer, aIdx) => {
-                    if (answer.type === 'essay') {
-                        essayTotal++;
-                        const gradeInput = document.getElementById(`grade_${resultKey}_${aIdx}`);
-                        const grade = gradeInput ? parseInt(gradeInput.value) : null;
-                        
-                        if (grade !== null && !isNaN(grade)) {
-                            answer.grade = Math.max(0, Math.min(100, grade));
-                            answer.graded = true;
-                            essayScore += answer.grade;
-                        } else {
-                            allGraded = false;
-                        }
-                    }
+                const r = _gradingCache.rows.find(x => x.result_id === resultId);
+                const { lesson, exam } = _gradingExam();
+                if (!r || !exam) return;
+                const answers = JSON.parse(JSON.stringify(r.answers || []));
+                let essayTotal = 0, essaySum = 0, mcqTotal = 0, mcqCorrect = 0, ok = true;
+                answers.forEach((a, aIdx) => {
+                    if (a.type === 'multiple') { mcqTotal++; if (a.isCorrect) mcqCorrect++; return; }
+                    essayTotal++;
+                    const el = document.getElementById(`grade_${resultId}_${aIdx}`);
+                    const g = el && el.value !== '' ? parseInt(el.value) : NaN;
+                    if (isNaN(g)) { ok = false; return; }
+                    a.grade = Math.max(0, Math.min(100, g)); a.graded = true; essaySum += a.grade;
                 });
-                
-                if (!allGraded) {
-                    showToast(currentLanguage === 'ar' ? 'يرجى تصحيح جميع الأسئلة المقالية' : 'Please grade all essay questions', 'warning');
-                    return;
-                }
-                
-                const _gradeBtn = event ? event.target.closest(".btn") : document.querySelector("#modalHost .btn"); showBtnLoading(_gradeBtn);;
-                
-                const totalQuestions = exam.questions.length;
-                const mcqWeight = result.mcqTotal / totalQuestions;
-                const essayWeight = essayTotal / totalQuestions;
-                const essayAvg = essayTotal > 0 ? essayScore / essayTotal : 0;
-                
-                result.score = Math.round((result.mcqScore * mcqWeight) + (essayAvg * essayWeight));
-                result.essayGraded = true;
-                result.passed = result.score >= (exam.passingGrade || 50);
-                
-                examResults[resultKey] = result;
-                localStorage.setItem(LS_KEYS.EXAM_RESULTS, JSON.stringify(examResults));
-                
-                // Save to Supabase
-                if (result.id) {
-                    await sb.from('exam_results').update({
-                        score: result.score,
-                        passed: result.passed,
-                        essay_graded: true,
-                        answers: result.answers
-                    }).eq('id', result.id);
-                } else if (result.examId) {
-                    // Try to find the result in DB
-                    const { data: dbResult } = await sb.from('exam_results')
-                        .select('id')
-                        .eq('user_id', result.userId)
-                        .eq('exam_id', result.examId)
-                        .order('submitted_at', { ascending: false })
-                        .limit(1)
-                        .maybeSingle();
-                    if (dbResult) {
-                        await sb.from('exam_results').update({
-                            score: result.score,
-                            passed: result.passed,
-                            essay_graded: true,
-                            answers: result.answers
-                        }).eq('id', dbResult.id);
-                    }
-                }
-                
-                trackLessonProgress(courseId, lessonId, 'examScore', result.score);
-                
-                const student = users.find(u => u.id === result.userId);
-                if (student) {
-                    createNotification(
-                        student.id,
-                        currentLanguage === 'ar' ? 'تم تصحيح امتحانك' : 'Your exam has been graded',
-                        currentLanguage === 'ar' ? 
-                            `تم تصحيح امتحان "${lesson.title}". الدرجة النهائية: ${result.score}% - ${result.passed ? 'ناجح ✅' : 'راسب ❌'}` :
-                            `Exam "${lesson.title}" graded. Final score: ${result.score}% - ${result.passed ? 'Passed ✅' : 'Failed ❌'}`,
-                        'exam_result'
-                    );
-                }
-                
+                if (!ok) { showToast(_t('يرجى تصحيح جميع الأسئلة المقالية', 'Please grade all essay questions'), 'warning'); return; }
+                showBtnLoading(_gradeBtn);
+                const total = exam.questions.length || (mcqTotal + essayTotal) || 1;
+                const mcqScore = mcqTotal ? (mcqCorrect / mcqTotal) * 100 : 0;
+                const essayAvg = essayTotal ? essaySum / essayTotal : 0;
+                const score = Math.round(mcqScore * (mcqTotal / total) + essayAvg * (essayTotal / total));
+                const passed = score >= (exam.passingGrade || 50);
+                const { error } = await sb.from('exam_results').update({ score, passed, essay_graded: true, answers }).eq('id', resultId);
+                if (error) throw error;
+                Object.assign(r, { score, passed, essay_graded: true, answers });
+                try {
+                    const raw = JSON.parse(localStorage.getItem('_rawExamResults') || '[]');
+                    const x = raw.find(y => y.id === resultId);
+                    if (x) { Object.assign(x, { score, passed, essay_graded: true, answers }); localStorage.setItem('_rawExamResults', JSON.stringify(raw)); }
+                } catch (e) {}
+                createNotification(r.user_id, _t('تم تصحيح امتحانك', 'Your exam has been graded'),
+                    _t(`تم تصحيح امتحان "${lesson.title}". الدرجة النهائية: ${score}% - ${passed ? 'ناجح ✅' : 'راسب ❌'}`,
+                       `Exam "${lesson.title}" graded. Final score: ${score}% - ${passed ? 'Passed ✅' : 'Failed ❌'}`), 'exam_result');
                 hideBtnLoading(_gradeBtn);
-                showToast(currentLanguage === 'ar' ? 'تم حفظ التصحيح بنجاح' : 'Grades saved successfully', 'success');
-                showCorrectionPanel(courseId, lessonId, examIndex);
+                showToast(_t('تم حفظ التصحيح بنجاح', 'Grades saved successfully'), 'success');
+                renderGradingAttempts(r.user_id);
             } catch (error) {
                 hideBtnLoading(_gradeBtn);
                 console.error('Error saving essay grades:', error);
-                showToast('حدث خطأ في حفظ التصحيح', 'error');
+                showToast(_t('حدث خطأ في حفظ التصحيح', 'Failed to save grades'), 'error');
             }
         }
 
