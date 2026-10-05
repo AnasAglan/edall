@@ -2775,20 +2775,27 @@
                     const controlsBar = wrap.querySelector('.plyr__controls');
                     if (!controlsBar || wrap.querySelector('.edq-btn')) return;
                     const labels = { highres: '2160p', hd2160: '2160p', hd1440: '1440p', hd1080: '1080p', hd720: '720p', large: '480p', medium: '360p', small: '240p', tiny: '144p', auto: (currentLanguage === 'ar' ? 'تلقائي' : 'Auto') };
-                    const levels = (yt.getAvailableQualityLevels() || []).filter(l => l && l !== 'auto' && l !== 'default');
                     const menu = document.createElement('div');
                     menu.className = 'edq-menu';
                     menu.style.cssText = 'position:absolute;bottom:100%;right:0;margin-bottom:8px;background:rgba(0,0,0,.92);border-radius:8px;padding:6px;display:none;z-index:40;min-width:110px;';
-                    ['auto'].concat(levels).forEach(lv => {
-                        const it = document.createElement('button');
-                        it.type = 'button';
-                        it.textContent = labels[lv] || lv;
-                        it.style.cssText = 'display:block;width:100%;text-align:left;background:none;border:none;color:#fff;padding:6px 10px;cursor:pointer;font-size:13px;border-radius:6px;';
-                        it.onmouseenter = () => { it.style.background = 'rgba(255,255,255,.15)'; };
-                        it.onmouseleave = () => { it.style.background = 'none'; };
-                        it.onclick = (e) => { e.stopPropagation(); try { yt.setPlaybackQuality(lv); } catch (err) {} menu.style.display = 'none'; };
-                        menu.appendChild(it);
-                    });
+                    const fillMenu = () => {
+                        let levels = [];
+                        try { levels = (yt.getAvailableQualityLevels() || []).filter(l => l && l !== 'auto' && l !== 'default'); } catch (e) {}
+                        if (!levels.length) levels = ['hd1080', 'hd720', 'large', 'medium', 'small'];
+                        menu.innerHTML = '';
+                        ['auto'].concat(levels).forEach(lv => {
+                            const it = document.createElement('button');
+                            it.type = 'button';
+                            it.textContent = labels[lv] || lv;
+                            it.style.cssText = 'display:block;width:100%;text-align:left;background:none;border:none;color:#fff;padding:6px 10px;cursor:pointer;font-size:13px;border-radius:6px;';
+                            it.onmouseenter = () => { it.style.background = 'rgba(255,255,255,.15)'; };
+                            it.onmouseleave = () => { it.style.background = 'none'; };
+                            it.onclick = (e) => { e.stopPropagation(); try { yt.setPlaybackQuality(lv); } catch (err) {} menu.style.display = 'none'; };
+                            menu.appendChild(it);
+                        });
+                    };
+                    fillMenu();
+                    try { player.on('playing', fillMenu); } catch (e) {}
                     const btn = document.createElement('button');
                     btn.type = 'button';
                     btn.className = 'plyr__control edq-btn';
