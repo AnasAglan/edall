@@ -2724,6 +2724,22 @@
         }
         window.toggleLessonVideo = toggleLessonVideo;
 
+        // Keep YouTube chrome visually hidden; only Plyr controls sit above these masks.
+        if (!document.getElementById('ed-plyr-overrides')) {
+            const style = document.createElement('style');
+            style.id = 'ed-plyr-overrides';
+            style.textContent = `
+                .edv-wrap .plyr__video-embed iframe { pointer-events:none !important; }
+                .edv-wrap .ed-yt-mask { position:absolute;inset-inline:0;background:#000;pointer-events:auto;z-index:4; }
+                .edv-wrap .ed-yt-mask-top { top:0;height:64px; }
+                .edv-wrap .ed-yt-mask-bottom { bottom:0;height:64px; }
+                .edv-wrap .plyr__controls, .edv-wrap .plyr__control--overlaid,
+                .edv-wrap .plyr__menu, .edv-wrap .video-watermark-layer { z-index:10 !important; }
+                .edv-wrap .plyr__menu__container { max-height:min(70vh,420px);overflow-y:auto; }
+            `;
+            document.head.appendChild(style);
+        }
+
         // ---- Plyr + YouTube player with obfuscated source ----------------
         function _edYtId(u) {
             const m = (u || '').match(/(?:youtube(?:-nocookie)?\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
@@ -2765,50 +2781,97 @@
             container.innerHTML = '';
             container.style.display = 'none';
         }
-        // Custom quality menu for YouTube videos (Plyr does not expose it for embeds)
+        // Put YouTube quality inside Plyr's own settings menu.
         function _edAddQualityMenu(player, wrap) {
             if (!player || !player.on) return;
             player.on('ready', () => {
                 try {
                     const yt = player.embed;
-                    if (!yt || !yt.getAvailableQualityLevels) return;
-                    const controlsBar = wrap.querySelector('.plyr__controls');
-                    if (!controlsBar || wrap.querySelector('.edq-btn')) return;
-                    const labels = { highres: '2160p', hd2160: '2160p', hd1440: '1440p', hd1080: '1080p', hd720: '720p', large: '480p', medium: '360p', small: '240p', tiny: '144p', auto: (currentLanguage === 'ar' ? 'تلقائي' : 'Auto') };
-                    const menu = document.createElement('div');
-                    menu.className = 'edq-menu';
-                    menu.style.cssText = 'position:absolute;bottom:100%;right:0;margin-bottom:8px;background:rgba(0,0,0,.92);border-radius:8px;padding:6px;display:none;z-index:40;min-width:110px;';
+                    const menuRoot = wrap.querySelector('.plyr__menu__container > div');
+                    const home = menuRoot && menuRoot.querySelector('[id$="-home"]');
+                    const homeMenu = home && home.querySelector('[role="menu"]');
+                    if (!yt || !menuRoot || !home || !homeMenu || homeMenu.querySelector('[data-ed-quality]')) return;
+
+                    const ar = currentLanguage === 'ar';
+                    const labels = { highres:'2160p', hd2160:'2160p', hd1440:'1440p', hd1080:'1080p', hd720:'720p', large:'480p', medium:'360p', small:'240p', tiny:'144p', auto:(ar ? 'تلقائي' : 'Auto') };
+                    let selected = 'auto';
+                    const qualityHome = document.createElement('button');
+                    qualityHome.type = 'button';
+                    qualityHome.className = 'plyr__control plyr__control--forward';
+                    qualityHome.setAttribute('role', 'menuitem');
+                    qualityHome.setAttribute('aria-haspopup', 'true');
+                    qualityHome.setAttribute('data-ed-quality', '');
+                    qualityHome.innerHTML = '<span>' + (ar ? 'الجودة' : 'Quality') + '<span class="plyr__menu__value">' + labels.auto + '</span></span>';
+                    homeMenu.appendChild(qualityHome);
+
+                    const panel = document.createElement('div');
+                    panel.hidden = true;
+                    const back = document.createElement('button');
+                    back.type = 'button';
+                    back.className = 'plyr__control plyr__control--back';
+                    back.innerHTML = '<span aria-hidden="true">' + (ar ? 'الجودة' : 'Quality') + '</span><span class="plyr__sr-only">' + (ar ? 'رجوع' : 'Go back') + '</span>';
+                    const choices = document.createElement('div');
+                    choices.setAttribute('role', 'menu');
+                    panel.appendChild(back);
+                    panel.appendChild(choices);
+                    menuRoot.appendChild(panel);
+
+                    const resizeMenu = () => {
+                        const box = wrap.querySelector('.plyr__menu__container');
+                        if (!box) return;
+                        requestAnimationFrame(() => {
+                            const shown = panel.hidden ? home : panel;
+                            box.style.width = Math.max(160, shown.scrollWidth) + 'px';
+                            box.style.height = shown.scrollHeight + 'px';
+                        });
+                    };
+                    const showHome = () => { panel.hidden = true; home.hidden = false; resizeMenu(); };
+                    const showQuality = () => { home.hidden = true; panel.hidden = false; fillMenu(); resizeMenu(); };
+                    qualityHome.onclick = (e) => { e.preventDefault(); e.stopPropagation(); showQuality(); };
+                    back.onclick = (e) => { e.preventDefault(); e.stopPropagation(); showHome(); };
+
                     const fillMenu = () => {
                         let levels = [];
-                        try { levels = (yt.getAvailableQualityLevels() || []).filter(l => l && l !== 'auto' && l !== 'default'); } catch (e) {}
-                        if (!levels.length) levels = ['hd1080', 'hd720', 'large', 'medium', 'small'];
-                        menu.innerHTML = '';
-                        ['auto'].concat(levels).forEach(lv => {
-                            const it = document.createElement('button');
-                            it.type = 'button';
-                            it.textContent = labels[lv] || lv;
-                            it.style.cssText = 'display:block;width:100%;text-align:left;background:none;border:none;color:#fff;padding:6px 10px;cursor:pointer;font-size:13px;border-radius:6px;';
-                            it.onmouseenter = () => { it.style.background = 'rgba(255,255,255,.15)'; };
-                            it.onmouseleave = () => { it.style.background = 'none'; };
-                            it.onclick = (e) => { e.stopPropagation(); try { yt.setPlaybackQuality(lv); } catch (err) {} menu.style.display = 'none'; };
-                            menu.appendChild(it);
+                        try { levels = (yt.getAvailableQualityLevels() || []).filter(v => v && v !== 'default' && v !== 'auto'); } catch (e) {}
+                        if (!levels.length) levels = ['hd1080','hd720','large','medium','small','tiny'];
+                        levels = [...new Set(levels)];
+                        choices.innerHTML = '';
+                        ['auto'].concat(levels).forEach(level => {
+                            const item = document.createElement('button');
+                            item.type = 'button';
+                            item.className = 'plyr__control';
+                            item.setAttribute('role', 'menuitemradio');
+                            item.setAttribute('aria-checked', String(level === selected));
+                            item.value = level;
+                            item.innerHTML = '<span>' + (labels[level] || level) + '</span>';
+                            item.onclick = (e) => {
+                                e.preventDefault(); e.stopPropagation();
+                                selected = level;
+                                try {
+                                    if (level === 'auto') {
+                                        if (yt.setPlaybackQualityRange) yt.setPlaybackQualityRange('auto');
+                                        yt.setPlaybackQuality('default');
+                                    } else {
+                                        if (yt.setPlaybackQualityRange) yt.setPlaybackQualityRange(level, level);
+                                        yt.setPlaybackQuality(level);
+                                    }
+                                } catch (err) {}
+                                qualityHome.querySelector('.plyr__menu__value').textContent = labels[level] || level;
+                                choices.querySelectorAll('[role="menuitemradio"]').forEach(el => el.setAttribute('aria-checked', String(el === item)));
+                                showHome();
+                            };
+                            choices.appendChild(item);
                         });
                     };
                     fillMenu();
-                    try { player.on('playing', fillMenu); } catch (e) {}
-                    const btn = document.createElement('button');
-                    btn.type = 'button';
-                    btn.className = 'plyr__control edq-btn';
-                    btn.setAttribute('aria-label', currentLanguage === 'ar' ? 'الجودة' : 'Quality');
-                    btn.innerHTML = '<i class="fas fa-cog"></i>';
-                    const holder = document.createElement('div');
-                    holder.style.cssText = 'position:relative;display:inline-flex;';
-                    holder.appendChild(btn);
-                    holder.appendChild(menu);
-                    btn.onclick = (e) => { e.stopPropagation(); menu.style.display = menu.style.display === 'none' ? 'block' : 'none'; };
-                    document.addEventListener('click', () => { menu.style.display = 'none'; });
-                    const fsBtn = controlsBar.querySelector('[data-plyr="fullscreen"]');
-                    controlsBar.insertBefore(holder, fsBtn || null);
+                    player.on('playing', fillMenu);
+                    player.on('qualitychange', (event) => {
+                        const level = event && event.detail && event.detail.plyr && event.detail.plyr.embed && event.detail.plyr.embed.getPlaybackQuality ? event.detail.plyr.embed.getPlaybackQuality() : '';
+                        if (level && labels[level]) {
+                            selected = level;
+                            qualityHome.querySelector('.plyr__menu__value').textContent = labels[level];
+                        }
+                    });
                 } catch (e) { console.error(e); }
             });
         }
@@ -2840,10 +2903,13 @@
             host.setAttribute('data-plyr-provider', 'youtube');
             host.setAttribute('data-plyr-embed-id', _edUnpack(btn.dataset.k1, btn.dataset.k2, btn.dataset.k3));
             wrap.appendChild(host);
-            // Shield: blocks clicks on YouTube's own top bar (title / share / watch later)
-            const shield = document.createElement('div');
-            shield.style.cssText = 'position:absolute;top:0;left:0;right:0;height:52px;z-index:6;';
-            wrap.appendChild(shield);
+            // Opaque masks cover YouTube's native overlays while Plyr controls remain above them.
+            const ytTopMask = document.createElement('div');
+            ytTopMask.className = 'ed-yt-mask ed-yt-mask-top';
+            const ytBottomMask = document.createElement('div');
+            ytBottomMask.className = 'ed-yt-mask ed-yt-mask-bottom';
+            wrap.appendChild(ytTopMask);
+            wrap.appendChild(ytBottomMask);
             container.innerHTML = '';
             container.appendChild(wrap);
             container.style.display = 'block';
