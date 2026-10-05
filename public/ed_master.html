@@ -2790,13 +2790,15 @@
             wrap.style.cssText = 'position:relative;border-radius:var(--radius);overflow:hidden;background:#000;';
             const host = document.createElement('div');
             host.className = 'plyr__video-embed';
-            const fr = document.createElement('iframe');
-            const h = ['ht','tps:','//www.','you','tube-no','cook','ie.com','/em','bed/'].join('');
-            const q = ['controls=0','disablekb=1','playsinline=1','enablejsapi=1','rel=0','iv_load_policy=3','modestbranding=1'].join('&');
-            fr.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture');
-            fr.src = h + _edUnpack(btn.dataset.k1, btn.dataset.k2, btn.dataset.k3) + '?' + q;
-            host.appendChild(fr);
+            const emb = document.createElement('div');
+            emb.setAttribute('data-plyr-provider', 'youtube');
+            emb.setAttribute('data-plyr-embed-id', _edUnpack(btn.dataset.k1, btn.dataset.k2, btn.dataset.k3));
+            host.appendChild(emb);
             wrap.appendChild(host);
+            // Shield: blocks clicks on YouTube's own top bar (title / share / watch later)
+            const shield = document.createElement('div');
+            shield.style.cssText = 'position:absolute;top:0;left:0;right:0;height:52px;z-index:6;';
+            wrap.appendChild(shield);
             container.innerHTML = '';
             container.appendChild(wrap);
             container.style.display = 'block';
