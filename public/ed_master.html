@@ -2644,7 +2644,7 @@
         function applyWatermarkScale(wrap) {
             const wm = wrap.querySelector('.video-watermark');
             if (!wm) return;
-            const full = isElementFullscreen(wrap);
+            const full = isElementFullscreen(wrap) || wrap.classList.contains('plyr--fullscreen-fallback');
             wm.style.fontSize = full ? '1.8rem' : '.9rem';
         }
 
@@ -2724,18 +2724,32 @@
         }
         window.toggleLessonVideo = toggleLessonVideo;
 
-        // Keep YouTube chrome visually hidden; only Plyr controls sit above these masks.
+        // Hide YouTube chrome by cropping: the iframe is twice as tall as the visible
+        // 16:9 box, so YouTube's title bar (top) and logo/controls (bottom) fall outside.
         if (!document.getElementById('ed-plyr-overrides')) {
             const style = document.createElement('style');
             style.id = 'ed-plyr-overrides';
             style.textContent = `
-                .edv-wrap .plyr__video-embed iframe { pointer-events:none !important; }
-                .edv-wrap .ed-yt-mask { position:absolute;inset-inline:0;background:#000;pointer-events:auto;z-index:4; }
-                .edv-wrap .ed-yt-mask-top { top:0;height:64px; }
-                .edv-wrap .ed-yt-mask-bottom { bottom:0;height:64px; }
+                .edv-wrap { overflow:hidden; }
+                .edv-wrap .plyr__video-embed, .edv-wrap .plyr__video-wrapper { overflow:hidden !important; }
+                .edv-wrap .plyr__video-embed iframe { pointer-events:none !important; top:-50% !important; height:200% !important; }
+                .edv-wrap .ed-yt-cover { position:absolute;inset:0;background:#000 center/cover no-repeat;pointer-events:none;opacity:0;transition:opacity .2s;z-index:1; }
+                .edv-wrap .ed-yt-cover.show { opacity:1; }
+                .edv-wrap .plyr__poster { z-index:1; }
                 .edv-wrap .plyr__controls, .edv-wrap .plyr__control--overlaid,
                 .edv-wrap .plyr__menu, .edv-wrap .video-watermark-layer { z-index:10 !important; }
                 .edv-wrap .plyr__menu__container { max-height:min(70vh,420px);overflow-y:auto; }
+                .edv-wrap .plyr__menu__value small { opacity:.7;margin-inline-start:4px; }
+                /* Fullscreen (native + iOS fallback): fill the screen, keep the whole 16:9 video visible, controls at bottom */
+                .edv-wrap:fullscreen, .edv-wrap.plyr--fullscreen-fallback { width:100vw !important;height:100vh !important;height:100dvh !important;max-width:none !important;border-radius:0 !important;background:#000 !important;display:flex;align-items:center;justify-content:center; }
+                .edv-wrap:-webkit-full-screen { width:100vw !important;height:100vh !important;border-radius:0 !important;background:#000 !important;display:flex;align-items:center;justify-content:center; }
+                .edv-wrap.plyr--fullscreen-fallback { position:fixed !important;inset:0 !important;z-index:2147483000 !important;margin:0 !important; }
+                .edv-wrap:fullscreen > .plyr, .edv-wrap.plyr--fullscreen-fallback > .plyr { width:100% !important;height:100% !important;display:flex !important;align-items:center;justify-content:center;background:#000; }
+                .edv-wrap:-webkit-full-screen > .plyr { width:100% !important;height:100% !important;display:flex !important;align-items:center;justify-content:center;background:#000; }
+                .edv-wrap:fullscreen .plyr__video-wrapper, .edv-wrap.plyr--fullscreen-fallback .plyr__video-wrapper { padding-bottom:0 !important;height:auto !important;width:min(100vw, calc(100dvh * 16 / 9)) !important;aspect-ratio:16/9;max-height:100%;margin:auto;transform:none !important; }
+                .edv-wrap:-webkit-full-screen .plyr__video-wrapper { padding-bottom:0 !important;height:auto !important;width:min(100vw, calc(100vh * 16 / 9)) !important;aspect-ratio:16/9;max-height:100%;margin:auto;transform:none !important; }
+                .edv-wrap:fullscreen .plyr__controls, .edv-wrap.plyr--fullscreen-fallback .plyr__controls { position:absolute !important;left:0;right:0;bottom:0;padding-bottom:max(10px, env(safe-area-inset-bottom)) !important;padding-left:max(10px, env(safe-area-inset-left)) !important;padding-right:max(10px, env(safe-area-inset-right)) !important; }
+                .edv-wrap:-webkit-full-screen .plyr__controls { position:absolute !important;left:0;right:0;bottom:0; }
             `;
             document.head.appendChild(style);
         }
@@ -2782,98 +2796,130 @@
             container.style.display = 'none';
         }
         // Put YouTube quality inside Plyr's own settings menu.
-        function _edAddQualityMenu(player, wrap) {
+        // YouTube ignores setPlaybackQuality alone, so a choice reloads the same video at the
+        // same second while requesting the quality (range lock + suggestedQuality), then re-asserts it.
+        const _edQKey = 'ed_yt_quality';
+        function _edPrefQuality() { try { return localStorage.getItem(_edQKey) || 'auto'; } catch (e) { return 'auto'; } }
+        function _edAddQualityMenu(player, wrap, videoId) {
             if (!player || !player.on) return;
+            const ar = currentLanguage === 'ar';
+            const labels = { highres:'4K', hd2160:'2160p', hd1440:'1440p', hd1080:'1080p', hd720:'720p', large:'480p', medium:'360p', small:'240p', tiny:'144p', auto:(ar ? 'تلقائي' : 'Auto') };
+            const order = ['highres','hd2160','hd1440','hd1080','hd720','large','medium','small','tiny'];
+            let selected = _edPrefQuality();
+            let pending = selected !== 'auto' ? selected : null;
+            let qualityHome = null, choices = null, built = false;
+            const yt = () => player.embed;
+            const actual = () => { try { const q = yt() && yt().getPlaybackQuality && yt().getPlaybackQuality(); return q && q !== 'unknown' ? q : ''; } catch (e) { return ''; } };
+            const lock = (level) => {
+                const e = yt(); if (!e) return;
+                try {
+                    if (level === 'auto') { e.setPlaybackQualityRange && e.setPlaybackQualityRange('auto', 'auto'); e.setPlaybackQuality && e.setPlaybackQuality('default'); }
+                    else { e.setPlaybackQualityRange && e.setPlaybackQualityRange(level, level); e.setPlaybackQuality && e.setPlaybackQuality(level); }
+                } catch (err) {}
+            };
+            const updateLabel = () => {
+                if (!qualityHome) return;
+                const a = actual();
+                const v = qualityHome.querySelector('.plyr__menu__value');
+                if (!v) return;
+                v.innerHTML = labels[selected] || selected;
+                if (a && labels[a] && (selected === 'auto' || a !== selected)) v.innerHTML += '<small>(' + labels[a] + ')</small>';
+                wrap.dataset.edQuality = a || '';
+                wrap.dataset.edSelected = selected;
+            };
+            const applyQuality = (level) => {
+                const e = yt(); if (!e) return;
+                selected = level;
+                try { localStorage.setItem(_edQKey, level); } catch (err) {}
+                let t = 0, st = -1;
+                try { t = e.getCurrentTime ? e.getCurrentTime() : 0; st = e.getPlayerState ? e.getPlayerState() : -1; } catch (err) {}
+                const wasPlaying = st === 1 || st === 3;
+                const q = level === 'auto' ? 'default' : level;
+                pending = level === 'auto' ? null : level;
+                lock(level);
+                try {
+                    if (wasPlaying) e.loadVideoById({ videoId, startSeconds: t, suggestedQuality: q });
+                    else if (st === 2 || t > 0) { e.loadVideoById({ videoId, startSeconds: t, suggestedQuality: q }); setTimeout(() => { try { e.pauseVideo(); } catch (x) {} }, 700); }
+                    else e.cueVideoById({ videoId, startSeconds: t, suggestedQuality: q });
+                } catch (err) {}
+                lock(level);
+                let n = 0;
+                const iv = setInterval(() => { n++; if (pending) lock(pending); updateLabel(); if (n > 8 || !document.body.contains(wrap)) clearInterval(iv); }, 600);
+            };
+            const fillMenu = () => {
+                if (!choices) return;
+                let levels = [];
+                try { levels = (yt().getAvailableQualityLevels() || []).filter(v => v && labels[v] && v !== 'auto'); } catch (e) {}
+                if (!levels.length) levels = ['hd1080','hd720','large','medium','small','tiny'];
+                levels = [...new Set(levels)].sort((a, b) => order.indexOf(a) - order.indexOf(b));
+                choices.innerHTML = '';
+                ['auto'].concat(levels).forEach(level => {
+                    const item = document.createElement('button');
+                    item.type = 'button';
+                    item.className = 'plyr__control';
+                    item.setAttribute('role', 'menuitemradio');
+                    item.setAttribute('aria-checked', String(level === selected));
+                    item.value = level;
+                    item.dataset.edQ = level;
+                    item.innerHTML = '<span>' + (labels[level] || level) + '</span>';
+                    item.onclick = (ev) => {
+                        ev.preventDefault(); ev.stopPropagation();
+                        choices.querySelectorAll('[role="menuitemradio"]').forEach(el => el.setAttribute('aria-checked', String(el === item)));
+                        applyQuality(level);
+                        updateLabel();
+                        if (wrap._edShowHome) wrap._edShowHome();
+                    };
+                    choices.appendChild(item);
+                });
+            };
             player.on('ready', () => {
                 try {
-                    const yt = player.embed;
                     const menuRoot = wrap.querySelector('.plyr__menu__container > div');
                     const home = menuRoot && menuRoot.querySelector('[id$="-home"]');
                     const homeMenu = home && home.querySelector('[role="menu"]');
-                    if (!yt || !menuRoot || !home || !homeMenu || homeMenu.querySelector('[data-ed-quality]')) return;
-
-                    const ar = currentLanguage === 'ar';
-                    const labels = { highres:'2160p', hd2160:'2160p', hd1440:'1440p', hd1080:'1080p', hd720:'720p', large:'480p', medium:'360p', small:'240p', tiny:'144p', auto:(ar ? 'تلقائي' : 'Auto') };
-                    let selected = 'auto';
-                    const qualityHome = document.createElement('button');
+                    if (!menuRoot || !home || !homeMenu || built) return;
+                    built = true;
+                    qualityHome = document.createElement('button');
                     qualityHome.type = 'button';
                     qualityHome.className = 'plyr__control plyr__control--forward';
                     qualityHome.setAttribute('role', 'menuitem');
                     qualityHome.setAttribute('aria-haspopup', 'true');
                     qualityHome.setAttribute('data-ed-quality', '');
-                    qualityHome.innerHTML = '<span>' + (ar ? 'الجودة' : 'Quality') + '<span class="plyr__menu__value">' + labels.auto + '</span></span>';
-                    homeMenu.appendChild(qualityHome);
+                    qualityHome.innerHTML = '<span>' + (ar ? 'الجودة' : 'Quality') + '<span class="plyr__menu__value">' + labels[selected] + '</span></span>';
+                    homeMenu.insertBefore(qualityHome, homeMenu.firstChild);
 
                     const panel = document.createElement('div');
                     panel.hidden = true;
+                    panel.setAttribute('data-ed-quality-panel', '');
                     const back = document.createElement('button');
                     back.type = 'button';
                     back.className = 'plyr__control plyr__control--back';
                     back.innerHTML = '<span aria-hidden="true">' + (ar ? 'الجودة' : 'Quality') + '</span><span class="plyr__sr-only">' + (ar ? 'رجوع' : 'Go back') + '</span>';
-                    const choices = document.createElement('div');
+                    choices = document.createElement('div');
                     choices.setAttribute('role', 'menu');
                     panel.appendChild(back);
                     panel.appendChild(choices);
                     menuRoot.appendChild(panel);
 
-                    const resizeMenu = () => {
-                        const box = wrap.querySelector('.plyr__menu__container');
-                        if (!box) return;
-                        requestAnimationFrame(() => {
-                            const shown = panel.hidden ? home : panel;
-                            box.style.width = Math.max(160, shown.scrollWidth) + 'px';
-                            box.style.height = shown.scrollHeight + 'px';
-                        });
-                    };
-                    const showHome = () => { panel.hidden = true; home.hidden = false; resizeMenu(); };
-                    const showQuality = () => { home.hidden = true; panel.hidden = false; fillMenu(); resizeMenu(); };
-                    qualityHome.onclick = (e) => { e.preventDefault(); e.stopPropagation(); showQuality(); };
-                    back.onclick = (e) => { e.preventDefault(); e.stopPropagation(); showHome(); };
-
-                    const fillMenu = () => {
-                        let levels = [];
-                        try { levels = (yt.getAvailableQualityLevels() || []).filter(v => v && v !== 'default' && v !== 'auto'); } catch (e) {}
-                        if (!levels.length) levels = ['hd1080','hd720','large','medium','small','tiny'];
-                        levels = [...new Set(levels)];
-                        choices.innerHTML = '';
-                        ['auto'].concat(levels).forEach(level => {
-                            const item = document.createElement('button');
-                            item.type = 'button';
-                            item.className = 'plyr__control';
-                            item.setAttribute('role', 'menuitemradio');
-                            item.setAttribute('aria-checked', String(level === selected));
-                            item.value = level;
-                            item.innerHTML = '<span>' + (labels[level] || level) + '</span>';
-                            item.onclick = (e) => {
-                                e.preventDefault(); e.stopPropagation();
-                                selected = level;
-                                try {
-                                    if (level === 'auto') {
-                                        if (yt.setPlaybackQualityRange) yt.setPlaybackQualityRange('auto');
-                                        yt.setPlaybackQuality('default');
-                                    } else {
-                                        if (yt.setPlaybackQualityRange) yt.setPlaybackQualityRange(level, level);
-                                        yt.setPlaybackQuality(level);
-                                    }
-                                } catch (err) {}
-                                qualityHome.querySelector('.plyr__menu__value').textContent = labels[level] || level;
-                                choices.querySelectorAll('[role="menuitemradio"]').forEach(el => el.setAttribute('aria-checked', String(el === item)));
-                                showHome();
-                            };
-                            choices.appendChild(item);
-                        });
-                    };
-                    fillMenu();
-                    player.on('playing', fillMenu);
-                    player.on('qualitychange', (event) => {
-                        const level = event && event.detail && event.detail.plyr && event.detail.plyr.embed && event.detail.plyr.embed.getPlaybackQuality ? event.detail.plyr.embed.getPlaybackQuality() : '';
-                        if (level && labels[level]) {
-                            selected = level;
-                            qualityHome.querySelector('.plyr__menu__value').textContent = labels[level];
-                        }
+                    const box = wrap.querySelector('.plyr__menu__container');
+                    const resizeMenu = () => requestAnimationFrame(() => {
+                        const shown = panel.hidden ? home : panel;
+                        if (box) { box.style.width = Math.max(170, shown.scrollWidth) + 'px'; box.style.height = shown.scrollHeight + 'px'; }
                     });
+                    const showHome = () => { panel.hidden = true; home.hidden = false; resizeMenu(); };
+                    wrap._edShowHome = showHome;
+                    qualityHome.onclick = (e) => { e.preventDefault(); e.stopPropagation(); fillMenu(); home.hidden = true; panel.hidden = false; resizeMenu(); };
+                    back.onclick = (e) => { e.preventDefault(); e.stopPropagation(); showHome(); };
+                    // When Plyr opens the settings menu, always start from the home page.
+                    const settingsBtn = wrap.querySelector('[data-plyr="settings"]');
+                    if (settingsBtn) settingsBtn.addEventListener('click', () => { panel.hidden = true; }, true);
+                    fillMenu();
+                    if (selected !== 'auto') lock(selected);
+                    updateLabel();
                 } catch (e) { console.error(e); }
             });
+            player.on('playing', () => { if (pending) lock(pending); fillMenu(); updateLabel(); });
+            player.on('qualitychange', () => { if (pending && actual() && actual() !== pending) lock(pending); updateLabel(); });
         }
         async function _edOpen(btn, containerId, num) {
             const container = document.getElementById(containerId);
@@ -2894,6 +2940,7 @@
                 return;
             }
             btn.disabled = false;
+            const vid = _edUnpack(btn.dataset.k1, btn.dataset.k2, btn.dataset.k3);
             const cls = 'edv-' + Math.random().toString(36).slice(2, 9);
             const wrap = document.createElement('div');
             wrap.className = 'edv-wrap ' + cls;
@@ -2901,18 +2948,14 @@
             const host = document.createElement('div');
             host.className = 'plyr__video-embed';
             host.setAttribute('data-plyr-provider', 'youtube');
-            host.setAttribute('data-plyr-embed-id', _edUnpack(btn.dataset.k1, btn.dataset.k2, btn.dataset.k3));
+            host.setAttribute('data-plyr-embed-id', vid);
             wrap.appendChild(host);
-            // Opaque masks cover YouTube's native overlays while Plyr controls remain above them.
-            const ytTopMask = document.createElement('div');
-            ytTopMask.className = 'ed-yt-mask ed-yt-mask-top';
-            const ytBottomMask = document.createElement('div');
-            ytBottomMask.className = 'ed-yt-mask ed-yt-mask-bottom';
-            wrap.appendChild(ytTopMask);
-            wrap.appendChild(ytBottomMask);
             container.innerHTML = '';
             container.appendChild(wrap);
             container.style.display = 'block';
+            const pref = _edPrefQuality();
+            const ytVars = { noCookie: true, rel: 0, showinfo: 0, iv_load_policy: 3, modestbranding: 1, controls: 0, disablekb: 1, playsinline: 1, fs: 0 };
+            if (pref !== 'auto') ytVars.vq = pref;
             try {
                 container._p = new Plyr(host, {
                     controls: ['play-large','rewind','play','fast-forward','progress','current-time','mute','volume','captions','settings','pip','fullscreen'],
@@ -2925,9 +2968,33 @@
                     keyboard: { focused: true, global: false },
                     tooltips: { controls: true, seek: true },
                     fullscreen: { enabled: true, fallback: true, iosNative: false, container: '.' + cls },
-                    youtube: { noCookie: true, rel: 0, showinfo: 0, iv_load_policy: 3, modestbranding: 1, controls: 0, disablekb: 1, playsinline: 1 }
+                    youtube: ytVars
                 });
-                _edAddQualityMenu(container._p, wrap);
+                const p = container._p;
+                _edAddQualityMenu(p, wrap, vid);
+                // Cover YouTube's pause/end suggestions with the video thumbnail.
+                p.on('ready', () => {
+                    const vw = wrap.querySelector('.plyr__video-wrapper') || wrap.querySelector('.plyr__video-embed');
+                    if (!vw || vw.querySelector('.ed-yt-cover')) return;
+                    const cover = document.createElement('div');
+                    cover.className = 'ed-yt-cover';
+                    cover.style.backgroundImage = 'url("https://i.ytimg.com/vi/' + vid + '/hqdefault.jpg")';
+                    vw.appendChild(cover);
+                    const show = (on) => cover.classList.toggle('show', on);
+                    p.on('pause', () => show(true));
+                    p.on('ended', () => show(true));
+                    p.on('playing', () => show(false));
+                    p.on('play', () => setTimeout(() => { if (p.playing) show(false); }, 250));
+                });
+                // Phones: rotate to landscape in fullscreen when the browser allows it.
+                p.on('enterfullscreen', () => {
+                    try { screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape').catch(() => {}); } catch (e) {}
+                    applyWatermarkScale(wrap);
+                });
+                p.on('exitfullscreen', () => {
+                    try { screen.orientation && screen.orientation.unlock && screen.orientation.unlock(); } catch (e) {}
+                    applyWatermarkScale(wrap);
+                });
             } catch (e) { console.error(e); }
             const text = getWatermarkText();
             if (text) {
@@ -2939,7 +3006,6 @@
                 };
                 document.addEventListener('fullscreenchange', onFs);
                 document.addEventListener('webkitfullscreenchange', onFs);
-                try { container._p && container._p.on('enterfullscreen', () => applyWatermarkScale(wrap)); container._p && container._p.on('exitfullscreen', () => applyWatermarkScale(wrap)); } catch (e) {}
             }
             btn.innerHTML = '<i class="fas fa-eye-slash"></i> ' + hideLbl + ' (' + num + ')';
         }
