@@ -2644,7 +2644,7 @@
         function applyWatermarkScale(wrap) {
             const wm = wrap.querySelector('.video-watermark');
             if (!wm) return;
-            const full = isElementFullscreen(wrap);
+            const full = isElementFullscreen(wrap) || wrap.classList.contains('plyr--fullscreen-fallback');
             wm.style.fontSize = full ? '1.8rem' : '.9rem';
         }
 
@@ -2724,18 +2724,32 @@
         }
         window.toggleLessonVideo = toggleLessonVideo;
 
-        // Keep YouTube chrome visually hidden; only Plyr controls sit above these masks.
+        // Hide YouTube chrome by cropping: the iframe is twice as tall as the visible
+        // 16:9 box, so YouTube's title bar (top) and logo/controls (bottom) fall outside.
         if (!document.getElementById('ed-plyr-overrides')) {
             const style = document.createElement('style');
             style.id = 'ed-plyr-overrides';
             style.textContent = `
-                .edv-wrap .plyr__video-embed iframe { pointer-events:none !important; }
-                .edv-wrap .ed-yt-mask { position:absolute;inset-inline:0;background:#000;pointer-events:auto;z-index:4; }
-                .edv-wrap .ed-yt-mask-top { top:0;height:64px; }
-                .edv-wrap .ed-yt-mask-bottom { bottom:0;height:64px; }
+                .edv-wrap { overflow:hidden; }
+                .edv-wrap .plyr__video-embed, .edv-wrap .plyr__video-wrapper { overflow:hidden !important; }
+                .edv-wrap .plyr__video-embed iframe { pointer-events:none !important; top:-50% !important; height:200% !important; }
+                .edv-wrap .ed-yt-cover { position:absolute;inset:0;background:#000 center/cover no-repeat;pointer-events:none;opacity:0;transition:opacity .2s;z-index:1; }
+                .edv-wrap .ed-yt-cover.show { opacity:1; }
+                .edv-wrap .plyr__poster { z-index:1; }
                 .edv-wrap .plyr__controls, .edv-wrap .plyr__control--overlaid,
                 .edv-wrap .plyr__menu, .edv-wrap .video-watermark-layer { z-index:10 !important; }
                 .edv-wrap .plyr__menu__container { max-height:min(70vh,420px);overflow-y:auto; }
+                .edv-wrap .plyr__menu__value small { opacity:.7;margin-inline-start:4px; }
+                /* Fullscreen (native + iOS fallback): fill the screen, keep the whole 16:9 video visible, controls at bottom */
+                .edv-wrap:fullscreen, .edv-wrap.plyr--fullscreen-fallback { width:100vw !important;height:100vh !important;height:100dvh !important;max-width:none !important;border-radius:0 !important;background:#000 !important;display:flex;align-items:center;justify-content:center; }
+                .edv-wrap:-webkit-full-screen { width:100vw !important;height:100vh !important;border-radius:0 !important;background:#000 !important;display:flex;align-items:center;justify-content:center; }
+                .edv-wrap.plyr--fullscreen-fallback { position:fixed !important;inset:0 !important;z-index:2147483000 !important;margin:0 !important; }
+                .edv-wrap:fullscreen > .plyr, .edv-wrap.plyr--fullscreen-fallback > .plyr { width:100% !important;height:100% !important;display:flex !important;align-items:center;justify-content:center;background:#000; }
+                .edv-wrap:-webkit-full-screen > .plyr { width:100% !important;height:100% !important;display:flex !important;align-items:center;justify-content:center;background:#000; }
+                .edv-wrap:fullscreen .plyr__video-wrapper, .edv-wrap.plyr--fullscreen-fallback .plyr__video-wrapper { padding-bottom:0 !important;height:auto !important;width:min(100vw, calc(100dvh * 16 / 9)) !important;aspect-ratio:16/9;max-height:100%;margin:auto;transform:none !important; }
+                .edv-wrap:-webkit-full-screen .plyr__video-wrapper { padding-bottom:0 !important;height:auto !important;width:min(100vw, calc(100vh * 16 / 9)) !important;aspect-ratio:16/9;max-height:100%;margin:auto;transform:none !important; }
+                .edv-wrap:fullscreen .plyr__controls, .edv-wrap.plyr--fullscreen-fallback .plyr__controls { position:absolute !important;left:0;right:0;bottom:0;padding-bottom:max(10px, env(safe-area-inset-bottom)) !important;padding-left:max(10px, env(safe-area-inset-left)) !important;padding-right:max(10px, env(safe-area-inset-right)) !important; }
+                .edv-wrap:-webkit-full-screen .plyr__controls { position:absolute !important;left:0;right:0;bottom:0; }
             `;
             document.head.appendChild(style);
         }
