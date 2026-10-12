@@ -2510,7 +2510,7 @@
             const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]+)/);
             if (ytMatch) return `https://www.youtube.com/embed/${ytMatch[1]}`;
             const dmMatch = url.match(/(?:dailymotion\.com\/(?:embed\/)?video\/|dai\.ly\/|geo\.dailymotion\.com\/player(?:\/[a-zA-Z0-9]+)?\.html\?video=)([a-zA-Z0-9]+)/);
-            if (dmMatch) return `https://www.dailymotion.com/embed/video/${dmMatch[1]}?ui-logo=0&ui-start-screen-info=0&sharing-enable=0&queue-enable=0&queue-autoplay-next=0&ui-highlight=3b82f6`;
+            if (dmMatch) return `https://geo.dailymotion.com/player/x8lr5.html?video=${dmMatch[1]}&ui-logo=0&ui-start-screen-info=0&sharing-enable=0&queue-enable=0&queue-autoplay-next=0&ui-highlight=3b82f6`;
             return url;
         }
 
