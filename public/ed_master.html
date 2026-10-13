@@ -2793,6 +2793,7 @@
             return _edLibP;
         }
         function _edClose(container) {
+            if (container._desktopCleanup) { container._desktopCleanup(); container._desktopCleanup = null; }
             try { container._p && container._p.destroy(); } catch (e) {}
             container._p = null;
             container.innerHTML = '';
@@ -2924,6 +2925,129 @@
             player.on('playing', () => { if (pending) lock(pending); fillMenu(); updateLabel(); });
             player.on('qualitychange', () => { if (pending && actual() && actual() !== pending) lock(pending); updateLabel(); });
         }
+        // Desktop-only HTML5 playback. The browser continues to use the official YouTube embed.
+        async function _edDesktopOpen(container, vid) {
+            const bridge = window.edallDesktop;
+            const wrap = document.createElement('div');
+            wrap.className = 'edv-wrap ed-desktop-player';
+            const video = document.createElement('video');
+            video.playsInline = true;
+            video.preload = 'metadata';
+            const audio = document.createElement('audio');
+            audio.preload = 'auto';
+            audio.hidden = true;
+            wrap.append(video, audio);
+            container.replaceChildren(wrap);
+            container.style.display = 'block';
+            let disposed = false, player = null, bundle = null, sequence = 0, switching = false;
+            let refreshTimer = null, renewPromise = null, renewCount = 0, selected = 0;
+            let separate = false;
+            const cleanups = [];
+            const listen = (el, name, fn) => { el.addEventListener(name, fn); cleanups.push(() => el.removeEventListener(name, fn)); };
+            container._desktopCleanup = () => {
+                disposed = true; sequence++; clearTimeout(refreshTimer);
+                cleanups.splice(0).forEach(fn => fn());
+                audio.pause(); audio.removeAttribute('src'); audio.load();
+                video.pause(); video.removeAttribute('src'); video.load();
+            };
+            const fail = () => showToast(currentLanguage === 'ar' ? 'تعذر استخراج الفيديو أو تشغيله؛ يمكنك إغلاقه وفتحه في متصفح عادي.' : 'Extraction or playback failed. Close and open in a normal browser.', 'error');
+            const playAudio = () => {
+                if (!separate || switching || disposed || video.paused) return;
+                audio.playbackRate = video.playbackRate;
+                if (Math.abs(audio.currentTime - video.currentTime) > .25) audio.currentTime = video.currentTime;
+                audio.play().catch(() => { if (!disposed && !video.paused) { video.pause(); fail(); } });
+            };
+            const switchQuality = async height => {
+                if (disposed || !bundle) return;
+                const item = bundle.videos.find(f => f.h === Number(height)) || bundle.videos[0];
+                if (!item) throw new Error('No playable format');
+                selected = item.h;
+                const pos = video.currentTime || 0, wasPlaying = !video.paused;
+                const rate = video.playbackRate, volume = video.volume, muted = video.muted;
+                const token = ++sequence;
+                switching = true; audio.pause(); video.pause();
+                separate = !item.hasAudio;
+                if (separate && !bundle.audio) throw new Error('No audio format');
+                const ready = new Promise((resolve, reject) => {
+                    const timer = setTimeout(() => finish(new Error('Media timeout')), 25000);
+                    const loaded = () => finish();
+                    const error = () => finish(new Error('Media error'));
+                    const finish = err => {
+                        clearTimeout(timer); video.removeEventListener('loadedmetadata', loaded); video.removeEventListener('error', error);
+                        if (err) reject(err); else resolve();
+                    };
+                    video.addEventListener('loadedmetadata', loaded, { once: true });
+                    video.addEventListener('error', error, { once: true });
+                    cleanups.push(() => finish(new Error('Closed')));
+                });
+                if (separate && audio.src !== bundle.audio.url) { audio.src = bundle.audio.url; audio.load(); }
+                if (!separate) { audio.removeAttribute('src'); audio.load(); }
+                video.src = item.url; video.load();
+                try {
+                    await ready;
+                    if (disposed || sequence !== token) return;
+                    video.currentTime = Math.min(pos, Number.isFinite(video.duration) ? Math.max(0, video.duration - .1) : pos);
+                    video.playbackRate = rate; video.volume = volume; video.muted = muted;
+                    audio.volume = volume; audio.muted = muted; audio.playbackRate = rate;
+                    if (separate) audio.currentTime = video.currentTime;
+                    switching = false;
+                    try { localStorage.setItem('ed_desktop_quality', String(selected)); } catch (_) {}
+                    if (wasPlaying) await video.play();
+                } finally { if (sequence === token) switching = false; }
+            };
+            const schedule = () => {
+                clearTimeout(refreshTimer);
+                const delay = bundle.expiresAt ? bundle.expiresAt - Date.now() - 120000 : 60 * 60 * 1000;
+                refreshTimer = setTimeout(() => renew().catch(() => {}), Math.max(60000, delay));
+            };
+            const renew = () => {
+                if (disposed) return Promise.resolve();
+                if (renewPromise) return renewPromise;
+                if (renewCount >= 2) { video.pause(); fail(); return Promise.reject(new Error('Renewal limit')); }
+                renewCount++;
+                renewPromise = bridge.getYoutubeFormats(vid, true).then(async next => {
+                    if (disposed) return;
+                    bundle = next;
+                    await switchQuality(selected);
+                    schedule();
+                }).catch(err => { if (!disposed) { video.pause(); fail(); } throw err; }).finally(() => { renewPromise = null; });
+                return renewPromise;
+            };
+            listen(video, 'playing', () => { renewCount = 0; playAudio(); });
+            listen(video, 'pause', () => audio.pause());
+            listen(video, 'waiting', () => audio.pause());
+            listen(video, 'seeking', () => audio.pause());
+            listen(video, 'seeked', playAudio);
+            listen(video, 'timeupdate', () => { if (separate && !switching && !video.paused && Math.abs(audio.currentTime - video.currentTime) > .25) audio.currentTime = video.currentTime; });
+            listen(video, 'ratechange', () => { audio.playbackRate = video.playbackRate; });
+            listen(video, 'volumechange', () => { audio.volume = video.volume; audio.muted = video.muted; });
+            listen(video, 'ended', () => audio.pause());
+            listen(audio, 'waiting', () => { if (separate && !switching && !video.paused) video.pause(); });
+            listen(video, 'error', () => { if (!switching) renew().catch(() => {}); });
+            listen(audio, 'error', () => { if (separate && !switching) renew().catch(() => {}); });
+            try {
+                bundle = await bridge.getYoutubeFormats(vid, false);
+                if (disposed) return;
+                if (!bundle || !bundle.videos || !bundle.videos.length) throw new Error('No formats');
+                let preferred = 720;
+                try { preferred = Number(localStorage.getItem('ed_desktop_quality')) || 720; } catch (_) {}
+                const initial = bundle.videos.find(f => f.h === preferred) || bundle.videos.find(f => f.h <= preferred) || bundle.videos[0];
+                player = new Plyr(video, {
+                    title: bundle.title,
+                    controls: ['play-large','rewind','play','fast-forward','progress','current-time','mute','volume','captions','settings','fullscreen'],
+                    settings: ['quality','speed'],
+                    quality: { default: initial.h, options: bundle.videos.map(f => f.h), forced: true, onChange: h => switchQuality(h).catch(() => { if (!disposed) renew().catch(() => {}); }) },
+                    speed: { selected: 1, options: [.5,.75,1,1.25,1.5,1.75,2] },
+                    fullscreen: { enabled: true, fallback: true, iosNative: false },
+                    storage: { enabled: false }
+                });
+                container._p = player;
+                const mark = getWatermarkText();
+                if (mark) { wrap.appendChild(buildWatermarkLayer(mark)); guardWatermark(wrap, mark); }
+                await switchQuality(initial.h);
+                schedule();
+            } catch (err) { if (!disposed) { _edClose(container); throw err; } }
+        }
         async function _edOpen(btn, containerId, num) {
             const container = document.getElementById(containerId);
             if (!container) return;
@@ -2944,6 +3068,17 @@
             }
             btn.disabled = false;
             const vid = _edUnpack(btn.dataset.k1, btn.dataset.k2, btn.dataset.k3);
+            if (window.edallDesktop && window.edallDesktop.isDesktop) {
+                btn.disabled = true;
+                try {
+                    await _edDesktopOpen(container, vid);
+                    btn.innerHTML = '<i class="fas fa-eye-slash"></i> ' + hideLbl + ' (' + num + ')';
+                } catch (_) {
+                    btn.innerHTML = '<i class="fas fa-play-circle"></i> ' + showLbl + ' (' + num + ')';
+                    showToast(currentLanguage === 'ar' ? 'تعذر تشغيل الفيديو بالجودات؛ قد يطلب يوتيوب التحقق من المستخدم.' : 'Could not extract video. YouTube may require verification.', 'error');
+                } finally { btn.disabled = false; }
+                return;
+            }
             const cls = 'edv-' + Math.random().toString(36).slice(2, 9);
             const wrap = document.createElement('div');
             wrap.className = 'edv-wrap ' + cls;
