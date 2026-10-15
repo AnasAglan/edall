@@ -1,6 +1,6 @@
 Unicode true
 Name "EdAll"
-OutFile "/tmp/edall-v2/EdAll-Setup-v2.exe"
+OutFile "/tmp/edall-v2/EdAll-Setup.exe"
 InstallDir "$LOCALAPPDATA\Programs\EdAll"
 RequestExecutionLevel user
 SetCompressor /SOLID lzma
@@ -10,7 +10,7 @@ UninstallIcon "/tmp/edall-v2/icon.ico"
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
-!define MUI_FINISHPAGE_RUN "$INSTDIR\EdAll.exe"
+!define MUI_FINISHPAGE_RUN "$INSTDIR\EdAll.exe" "" "$INSTDIR\resources\app\icon.ico"
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
@@ -19,9 +19,9 @@ Section "EdAll"
   SetOutPath "$INSTDIR"
   File /r "/tmp/edall-v2/runtime/*"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
-  CreateShortcut "$DESKTOP\EdAll.lnk" "$INSTDIR\EdAll.exe"
+  CreateShortcut "$DESKTOP\EdAll.lnk" "$INSTDIR\EdAll.exe" "" "$INSTDIR\resources\app\icon.ico"
   CreateDirectory "$SMPROGRAMS\EdAll"
-  CreateShortcut "$SMPROGRAMS\EdAll\EdAll.lnk" "$INSTDIR\EdAll.exe"
+  CreateShortcut "$SMPROGRAMS\EdAll\EdAll.lnk" "$INSTDIR\EdAll.exe" "" "$INSTDIR\resources\app\icon.ico"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\EdAll" "DisplayName" "EdAll"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\EdAll" "UninstallString" '"$INSTDIR\Uninstall.exe"'
 SectionEnd
