@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, protocol, net } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, protocol, net, shell } = require('electron');
 const { execFile } = require('node:child_process');
 const fs = require('node:fs/promises');
 const path = require('node:path');
@@ -9,6 +9,8 @@ const streams = new Map(), jobs = new Map(), cache = new Map();
 let windowRef, toolReady;
 protocol.registerSchemesAsPrivileged([{ scheme: 'edmedia', privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true, corsEnabled: true } }]);
 if (!app.requestSingleInstanceLock()) { app.quit(); }
+// Lets the website open the app through edall:// links.
+app.setAsDefaultProtocolClient('edall');
 const run = (exe, args, timeout = 90000) => new Promise((resolve, reject) => {
   execFile(exe, args, { timeout, maxBuffer: 24 * 1024 * 1024, windowsHide: true }, (err, stdout) => {
     if (err) reject(new Error('Video extraction unavailable; YouTube may require verification.'));
@@ -133,12 +135,21 @@ app.whenReady().then(async () => {
   windowRef = new BrowserWindow({ width: 1280, height: 850, title: 'EdAll', icon: path.join(__dirname,'icon.ico'), autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname,'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, webviewTag: false, devTools: false } });
   windowRef.setContentProtection(true);
-  windowRef.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  windowRef.webContents.on('will-navigate', (event, raw) => { try { if (new URL(raw).origin !== ORIGIN) event.preventDefault(); } catch { event.preventDefault(); } });
+  const openOutside = raw => { try { const u = new URL(raw); if (u.protocol === 'https:' || u.protocol === 'http:') shell.openExternal(u.href); } catch {} };
+  windowRef.webContents.setWindowOpenHandler(({ url }) => { openOutside(url); return { action: 'deny' }; });
+  windowRef.webContents.on('will-navigate', (event, raw) => {
+    if (raw.startsWith('edall-restart:')) { event.preventDefault(); app.relaunch(); app.exit(0); return; }
+    try { const u = new URL(raw); if (u.origin !== ORIGIN || /\.pdf$/i.test(u.pathname)) { event.preventDefault(); openOutside(raw); } } catch { event.preventDefault(); }
+  });
   windowRef.webContents.on('will-frame-navigate', (event, details) => { if (!frameAllowed(details.url)) event.preventDefault(); });
   windowRef.webContents.on('will-attach-webview', event => event.preventDefault());
   windowRef.webContents.on('before-input-event', (event, input) => { if (input.key === 'F12' || (input.control && input.shift && ['i','j','c'].includes(input.key.toLowerCase()))) event.preventDefault(); });
   windowRef.webContents.session.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
+  const showOffline = () => windowRef.loadFile(path.join(__dirname, 'offline.html'));
+  windowRef.webContents.on('did-fail-load', (_e, code, _d, url, isMain) => { if (isMain && code !== -3 && !String(url).startsWith('file:')) showOffline(); });
+  let online = net.isOnline();
+  if (online) { try { const r = await net.fetch(ORIGIN + '/robots.txt', { bypassCustomProtocolHandlers: true, signal: AbortSignal.timeout(8000), cache: 'no-store' }); online = r.ok; } catch { online = false; } }
+  if (!online) return showOffline();
   await windowRef.loadURL(HOME);
 }).catch(() => app.quit());
 app.on('second-instance', () => { if (windowRef) { if (windowRef.isMinimized()) windowRef.restore(); windowRef.focus(); } });
