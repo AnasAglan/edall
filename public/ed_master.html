@@ -2925,7 +2925,8 @@
             player.on('playing', () => { if (pending) lock(pending); fillMenu(); updateLabel(); });
             player.on('qualitychange', () => { if (pending && actual() && actual() !== pending) lock(pending); updateLabel(); });
         }
-        // Desktop-only HTML5 playback. The browser continues to use the official YouTube embed.
+        const EDALL_DOWNLOAD_URL = 'https://github.com/edall-app/edall/releases/latest/download/EdAll-Setup.exe';
+        // Desktop-only HTML5 playback. Normal browsers are asked to install the desktop app.
         async function _edDesktopOpen(container, vid) {
             const bridge = window.edallDesktop;
             const wrap = document.createElement('div');
@@ -3077,6 +3078,18 @@
                     btn.innerHTML = '<i class="fas fa-play-circle"></i> ' + showLbl + ' (' + num + ')';
                     showToast(currentLanguage === 'ar' ? 'تعذر تشغيل الفيديو بالجودات؛ قد يطلب يوتيوب التحقق من المستخدم.' : 'Could not extract video. YouTube may require verification.', 'error');
                 } finally { btn.disabled = false; }
+                return;
+            }
+            {
+                const ar = currentLanguage === 'ar';
+                container.innerHTML = '<div style="padding:28px 16px;text-align:center;border:1px dashed var(--border, #888);border-radius:var(--radius);">'
+                    + '<i class="fas fa-desktop" style="font-size:2rem;margin-bottom:10px;"></i>'
+                    + '<div style="font-weight:800;margin-bottom:14px;">' + (ar ? 'لفتح الفيديو يجب عليك تنزيل البرنامج' : 'To watch this video you must download the app') + '</div>'
+                    + '<a class="btn" href="' + EDALL_DOWNLOAD_URL + '" download style="text-decoration:none;"><i class="fas fa-download"></i> ' + (ar ? 'تنزيل البرنامج' : 'Download the app') + '</a>'
+                    + '</div>';
+                container.style.display = 'block';
+                btn.innerHTML = '<i class="fas fa-eye-slash"></i> ' + hideLbl + ' (' + num + ')';
+                try { const f = document.createElement('iframe'); f.style.display = 'none'; f.src = 'edall://open'; document.body.appendChild(f); setTimeout(() => f.remove(), 3000); } catch (_) {}
                 return;
             }
             const cls = 'edv-' + Math.random().toString(36).slice(2, 9);
@@ -8163,6 +8176,7 @@
         }
 
         function showPdfModal(pdfData) {
+            if (window.edallDesktop && window.edallDesktop.isDesktop && /^https?:/i.test(pdfData || '')) { window.open(pdfData, '_blank'); return; }
             try {
                 showModal(`
                     <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">${currentLanguage === 'ar' ? 'عرض ملف PDF' : 'View PDF File'}</div>
