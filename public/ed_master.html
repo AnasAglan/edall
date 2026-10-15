@@ -7188,45 +7188,90 @@
             }
         }
 
-         function renderUserList(searchTerm = '') {
+        let _adminUsersLimit = 5;
+        let _adminUsersFilter = '';
+        let _adminUsersObserver = null;
+
+        function renderUserSingleCard(user) {
+            const isAdmin = user.roles && user.roles.includes('admin');
+            const isBanned = user.banned;
+            return `
+            <div class="list-item" ${isBanned ? 'style="opacity:0.6;border-right:4px solid var(--danger);"' : ''}>
+                <div>
+                    <strong>${user.name || user.email}</strong>
+                    ${isBanned ? '<span class="badge" style="background:var(--danger);color:white;margin-right:8px;">' + (currentLanguage === 'ar' ? 'محظور' : 'Banned') + '</span>' : ''}
+                    <div style="color: var(--text-muted); font-size: 0.9rem;">
+                        ${user.email} | ${user.roles ? user.roles.join(', ') : 'student'}
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; flex-wrap:wrap;">
+                    <button class="btn btn-sm view-user-btn" data-user-id="${user.id}">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                    <button class="btn btn-sm ${isBanned ? 'btn-success' : ''}" style="${!isBanned ? 'background:var(--warning);' : ''}" onclick="toggleBanUser('${user.id}')">
+                        <i class="fas ${isBanned ? 'fa-unlock' : 'fa-ban'}"></i>
+                    </button>
+                    ${!isAdmin ? `
+                        <button class="btn btn-sm btn-danger delete-user-btn" data-user-id="${user.id}">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    ` : ''}
+                </div>
+            </div>`;
+        }
+
+        function renderUserList(searchTerm = '') {
             try {
                 const usersList = document.getElementById('usersList');
-                let usersToShow = users;
+                if (!usersList) return;
                 
-                if (searchTerm) {
+                if (searchTerm !== _adminUsersFilter) {
+                    _adminUsersFilter = searchTerm;
+                    _adminUsersLimit = 5;
+                }
+                
+                let usersToShow = users;
+                if (_adminUsersFilter) {
+                    const st = _adminUsersFilter.toLowerCase();
                     usersToShow = users.filter(user => 
-                        user.name.toLowerCase().includes(searchTerm) || 
-                        user.email.toLowerCase().includes(searchTerm)
+                        (user.name && user.name.toLowerCase().includes(st)) || 
+                        (user.email && user.email.toLowerCase().includes(st))
                     );
                 }
                 
-                usersList.innerHTML = usersToShow.map(user => {
-                    const isAdmin = user.roles && user.roles.includes('admin');
-                    const isBanned = user.banned;
-                    return `
-                    <div class="list-item" ${isBanned ? 'style="opacity:0.6;border-right:4px solid var(--danger);"' : ''}>
-                        <div>
-                            <strong>${user.name || user.email}</strong>
-                            ${isBanned ? '<span class="badge" style="background:var(--danger);color:white;margin-right:8px;">محظور</span>' : ''}
-                            <div style="color: var(--text-muted); font-size: 0.9rem;">
-                                ${user.email} | ${user.roles ? user.roles.join(', ') : 'student'}
-                            </div>
-                        </div>
-                        <div style="display: flex; gap: 8px; flex-wrap:wrap;">
-                            <button class="btn btn-sm view-user-btn" data-user-id="${user.id}">
-                                <i class="fas fa-eye"></i>
-                            </button>
-                            <button class="btn btn-sm ${isBanned ? 'btn-success' : ''}" style="${!isBanned ? 'background:var(--warning);' : ''}" onclick="toggleBanUser('${user.id}')">
-                                <i class="fas ${isBanned ? 'fa-unlock' : 'fa-ban'}"></i>
-                            </button>
-                            ${!isAdmin ? `
-                                <button class="btn btn-sm btn-danger delete-user-btn" data-user-id="${user.id}">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            ` : ''}
-                        </div>
+                if (usersToShow.length === 0) {
+                    usersList.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-muted);">${currentLanguage === 'ar' ? 'لا يوجد مستخدمون' : 'No users found'}</div>`;
+                    return;
+                }
+                
+                const visibleUsers = usersToShow.slice(0, _adminUsersLimit);
+                const hasMore = _adminUsersLimit < usersToShow.length;
+                
+                usersList.innerHTML = `
+                    <div id="usersContainer">
+                        ${visibleUsers.map(renderUserSingleCard).join('')}
                     </div>
-                `}).join('');
+                    ${hasMore ? `
+                        <div id="usersSentinel" style="text-align:center;padding:16px;color:var(--text-muted);font-size:0.85rem;">
+                            <i class="fas fa-spinner fa-spin"></i> ${currentLanguage === 'ar' ? 'جاري تحميل المزيد من المستخدمين...' : 'Loading more users...'}
+                        </div>
+                    ` : ''}
+                `;
+
+                if (_adminUsersObserver) {
+                    _adminUsersObserver.disconnect();
+                    _adminUsersObserver = null;
+                }
+                const sentinel = document.getElementById('usersSentinel');
+                if (sentinel && hasMore) {
+                    _adminUsersObserver = new IntersectionObserver((entries) => {
+                        if (entries[0].isIntersecting) {
+                            _adminUsersLimit += 5;
+                            renderUserList(_adminUsersFilter);
+                        }
+                    }, { rootMargin: '150px' });
+                    _adminUsersObserver.observe(sentinel);
+                }
             } catch (error) {
                 console.error('Error rendering user list:', error);
             }
@@ -7890,11 +7935,40 @@
             }
         }
 
-        function renderNotificationsPage() {
+        let _notifsLimit = 5;
+        let _notifsObserver = null;
+
+        function renderNotificationSingleCard(notification) {
+            return `
+            <div class="list-item" style="${notification.read ? 'opacity: 0.7;' : ''}">
+                <div>
+                    <strong>${notification.title}</strong>
+                    <div style="color: var(--text-muted); font-size: 0.9rem;">${notification.message}</div>
+                    <div style="color: var(--text-dark); font-size: 0.8rem; margin-top: 5px;">
+                        ${new Date(notification.timestamp).toLocaleString(currentLanguage === 'ar' ? 'ar-EG' : 'en-US')}
+                    </div>
+                </div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                    ${!notification.read ? `
+                        <button class="btn btn-sm" onclick="markNotificationAsRead('${notification.id}')">
+                            <i class="fas fa-check"></i> ${currentLanguage === 'ar' ? 'تحديد كمقروء' : 'Mark as Read'}
+                        </button>
+                    ` : ''}
+                    <button class="btn btn-sm btn-danger" onclick="deleteNotification('${notification.id}')" title="${currentLanguage === 'ar' ? 'حذف' : 'Delete'}">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </div>`;
+        }
+
+        function renderNotificationsPage(resetLimit = false) {
             try {
                 const notificationsList = document.getElementById('notificationsList');
-                let userNotifications = notifications;
+                if (!notificationsList) return;
                 
+                if (resetLimit) _notifsLimit = 5;
+                
+                let userNotifications = notifications;
                 if (currentUser && (!currentUser.roles || !currentUser.roles.includes('admin'))) {
                     userNotifications = notifications.filter(n => n.userId === currentUser.id || n.userId === 'all');
                 }
@@ -7906,38 +7980,44 @@
                 
                 userNotifications.sort((a, b) => b.timestamp - a.timestamp);
                 
+                const visible = userNotifications.slice(0, _notifsLimit);
+                const hasMore = _notifsLimit < userNotifications.length;
+                
                 const headerHtml = `
                     <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px;">
                         <button class="btn btn-sm btn-danger" onclick="deleteAllNotifications()">
                             <i class="fas fa-trash"></i> ${currentLanguage === 'ar' ? 'حذف الكل' : 'Delete All'}
                         </button>
                     </div>`;
-                notificationsList.innerHTML = headerHtml + userNotifications.map(notification => `
-                    <div class="list-item" style="${notification.read ? 'opacity: 0.7;' : ''}">
-                        <div>
-                            <strong>${notification.title}</strong>
-                            <div style="color: var(--text-muted); font-size: 0.9rem;">${notification.message}</div>
-                            <div style="color: var(--text-dark); font-size: 0.8rem; margin-top: 5px;">
-                                ${new Date(notification.timestamp).toLocaleString(currentLanguage === 'ar' ? 'ar-EG' : 'en-US')}
-                            </div>
+                
+                notificationsList.innerHTML = headerHtml 
+                    + `<div id="notificationsContainer">${visible.map(renderNotificationSingleCard).join('')}</div>`
+                    + (hasMore ? `
+                        <div id="notifsSentinel" style="text-align:center;padding:16px;color:var(--text-muted);font-size:0.85rem;">
+                            <i class="fas fa-spinner fa-spin"></i> ${currentLanguage === 'ar' ? 'جاري تحميل المزيد من الإشعارات...' : 'Loading more notifications...'}
                         </div>
-                        <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                            ${!notification.read ? `
-                                <button class="btn btn-sm" onclick="markNotificationAsRead('${notification.id}')">
-                                    <i class="fas fa-check"></i> ${currentLanguage === 'ar' ? 'تحديد كمقروء' : 'Mark as Read'}
-                                </button>
-                            ` : ''}
-                            <button class="btn btn-sm btn-danger" onclick="deleteNotification('${notification.id}')" title="${currentLanguage === 'ar' ? 'حذف' : 'Delete'}">
-                                <i class="fas fa-trash"></i>
-                            </button>
-                        </div>
-                    </div>
-                `).join('');
+                    ` : '');
+
+                if (_notifsObserver) {
+                    _notifsObserver.disconnect();
+                    _notifsObserver = null;
+                }
+                const sentinel = document.getElementById('notifsSentinel');
+                if (sentinel && hasMore) {
+                    _notifsObserver = new IntersectionObserver((entries) => {
+                        if (entries[0].isIntersecting) {
+                            _notifsLimit += 5;
+                            renderNotificationsPage(false);
+                        }
+                    }, { rootMargin: '150px' });
+                    _notifsObserver.observe(sentinel);
+                }
             } catch (error) {
                 console.error('Error rendering notifications page:', error);
                 showToast('حدث خطأ في عرض الإشعارات', 'error');
             }
         }
+
 
         function generateId(prefix) {
             try {
@@ -8560,37 +8640,81 @@
         window.unenrollFromCourse = unenrollFromCourse;
 
         // ============================================================
-        // COURSE STUDENTS (owner / admin)
+        // COURSE STUDENTS (owner / admin) - Infinite Scroll (5 by 5)
         // ============================================================
         (function courseStudentsModule(){
             function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
             function T(ar,en){ return currentLanguage === 'ar' ? ar : en; }
-            var cache = { courseId: null, list: [] };
+            var cache = { courseId: null, list: [], filtered: [], visibleCount: 5 };
 
-            function rowsHtml(list, courseId){
-                if (!list.length) return '<div style="padding:16px;opacity:.75;">' + T('لا يوجد مشتركون','No enrolled students') + '</div>';
-                return '<ul style="list-style:none;padding:0;margin:0;">' + list.map(function(u){
-                    var d = u.enrolled_at ? new Date(u.enrolled_at).toLocaleDateString(currentLanguage === 'ar' ? 'ar-EG' : 'en-US') : '';
-                    return '<li style="display:flex;align-items:center;gap:10px;padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">'
-                        + '<div style="flex:1;min-width:0;">'
-                        + '<div style="font-weight:800;">' + esc(u.name || '') + '</div>'
-                        + '<div style="font-size:.82rem;opacity:.75;">' + T('المعرف','ID') + ': <bdi dir="ltr">' + esc(u.public_id || '-') + '</bdi> • ' + esc(u.email || '') + '</div>'
-                        + '<div style="font-size:.78rem;opacity:.6;">' + T('تاريخ الاشتراك','Enrolled') + ': ' + d + '</div>'
-                        + '</div>'
-                        + '<button class="btn btn-sm" title="' + T('تفاصيل التقدم','Progress details') + '" onclick="openStudentProgress(\'' + courseId + '\',\'' + u.user_id + '\')"><i class="fas fa-info"></i></button>'
-                        + '</li>';
-                }).join('') + '</ul>';
+            function singleRowHtml(u, courseId){
+                var d = u.enrolled_at ? new Date(u.enrolled_at).toLocaleDateString(currentLanguage === 'ar' ? 'ar-EG' : 'en-US') : '';
+                return '<li style="display:flex;align-items:center;gap:10px;padding:10px;border-bottom:1px solid rgba(255,255,255,.08);">'
+                    + '<div style="flex:1;min-width:0;">'
+                    + '<div style="font-weight:800;">' + esc(u.name || '') + '</div>'
+                    + '<div style="font-size:.82rem;opacity:.75;">' + T('المعرف','ID') + ': <bdi dir="ltr">' + esc(u.public_id || '-') + '</bdi> • ' + esc(u.email || '') + '</div>'
+                    + '<div style="font-size:.78rem;opacity:.6;">' + T('تاريخ الاشتراك','Enrolled') + ': ' + d + '</div>'
+                    + '</div>'
+                    + '<button class="btn btn-sm" title="' + T('تفاصيل التقدم','Progress details') + '" onclick="openStudentProgress(\'' + courseId + '\',\'' + u.user_id + '\')"><i class="fas fa-info"></i></button>'
+                    + '</li>';
             }
+
+            function renderVisible(){
+                var box = document.getElementById('courseStudentsList');
+                if (!box) return;
+                var list = cache.filtered;
+                if (!list.length) {
+                    box.innerHTML = '<div style="padding:16px;opacity:.75;">' + T('لا يوجد مشتركون','No enrolled students') + '</div>';
+                    return;
+                }
+                var sliced = list.slice(0, cache.visibleCount);
+                var html = '<ul id="courseStudentsUl" style="list-style:none;padding:0;margin:0;">'
+                    + sliced.map(function(u){ return singleRowHtml(u, cache.courseId); }).join('')
+                    + '</ul>';
+                if (cache.visibleCount < list.length) {
+                    html += '<div id="courseStudentsLoader" style="text-align:center;padding:10px;font-size:0.8rem;opacity:0.7;"><i class="fas fa-spinner fa-spin"></i> ' + T('اسحب لتحميل المزيد...','Scroll for more...') + '</div>';
+                }
+                box.innerHTML = html;
+            }
+
+            function appendNextBatch(){
+                var ul = document.getElementById('courseStudentsUl');
+                var loader = document.getElementById('courseStudentsLoader');
+                if (!ul) return;
+                var start = cache.visibleCount;
+                var nextBatch = cache.filtered.slice(start, start + 5);
+                if (nextBatch.length) {
+                    var temp = document.createElement('div');
+                    temp.innerHTML = nextBatch.map(function(u){ return singleRowHtml(u, cache.courseId); }).join('');
+                    while (temp.firstChild) {
+                        ul.appendChild(temp.firstChild);
+                    }
+                    cache.visibleCount += nextBatch.length;
+                }
+                if (loader) {
+                    loader.style.display = (cache.visibleCount < cache.filtered.length) ? 'block' : 'none';
+                }
+            }
+
+            function handleScroll(e){
+                var el = e.target;
+                if (el.scrollTop + el.clientHeight >= el.scrollHeight - 25) {
+                    if (cache.visibleCount < cache.filtered.length) {
+                        appendNextBatch();
+                    }
+                }
+            }
+            window.handleCourseStudentsScroll = handleScroll;
 
             function filterList(term){
                 var q = String(term || '').trim().toLowerCase();
-                var list = !q ? cache.list : cache.list.filter(function(u){
+                cache.filtered = !q ? cache.list : cache.list.filter(function(u){
                     return (u.name || '').toLowerCase().indexOf(q) !== -1
                         || (u.email || '').toLowerCase().indexOf(q) !== -1
                         || String(u.public_id || '').indexOf(q) !== -1;
                 });
-                var box = document.getElementById('courseStudentsList');
-                if (box) box.innerHTML = rowsHtml(list, cache.courseId);
+                cache.visibleCount = 5;
+                renderVisible();
             }
             window.filterCourseStudents = filterList;
 
@@ -8599,12 +8723,13 @@
                 showModal('<h3 style="margin:0 0 12px;"><i class="fas fa-user-graduate"></i> ' + T('مشتركو الكورس','Course students') + '</h3>'
                     + '<div style="opacity:.8;margin-bottom:10px;">' + esc(course ? course.title : '') + '</div>'
                     + '<input id="courseStudentsSearch" class="form-input" autocomplete="off" placeholder="' + T('ابحث بالاسم أو البريد أو المعرف','Search by name, email or ID') + '" oninput="filterCourseStudents(this.value)" style="margin-bottom:10px;">'
-                    + '<div id="courseStudentsList" style="max-height:55vh;overflow:auto;"><div style="text-align:center;padding:24px;"><div class="loading-spinner"></div></div></div>');
+                    + '<div id="courseStudentsList" onscroll="handleCourseStudentsScroll(event)" style="max-height:55vh;overflow:auto;"><div style="text-align:center;padding:24px;"><div class="loading-spinner"></div></div></div>');
                 try {
                     var r = await sb.rpc('course_enrollees', { _course_id: courseId });
                     if (r.error) throw r.error;
                     cache.courseId = courseId;
                     cache.list = r.data || [];
+                    cache.visibleCount = 5;
                     filterList(document.getElementById('courseStudentsSearch') ? document.getElementById('courseStudentsSearch').value : '');
                 } catch(e){
                     console.error('course_enrollees', e);
@@ -8613,6 +8738,7 @@
                 }
             }
             window.openCourseStudents = openCourseStudents;
+        
 
             async function openStudentProgress(courseId, userId){
                 showModal('<div style="text-align:center;padding:24px;"><div class="loading-spinner"></div></div>');
