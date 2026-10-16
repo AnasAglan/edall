@@ -148,7 +148,11 @@ app.whenReady().then(async () => {
   windowRef.webContents.on('will-frame-navigate', (event, details) => { if (!frameAllowed(details.url)) event.preventDefault(); });
   windowRef.webContents.on('will-attach-webview', event => event.preventDefault());
   windowRef.webContents.on('before-input-event', (event, input) => { if (input.key === 'F12' || (input.control && input.shift && ['i','j','c'].includes(input.key.toLowerCase()))) event.preventDefault(); });
-  windowRef.webContents.session.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
+  windowRef.webContents.session.setPermissionRequestHandler((_wc, permission, callback) => {
+  if (permission === 'fullscreen') return callback(true);
+  callback(false);
+});
+
   const showOffline = () => windowRef.loadFile(path.join(__dirname, 'offline.html'));
   windowRef.webContents.on('did-fail-load', (_e, code, _d, url, isMain) => { if (isMain && code !== -3 && !String(url).startsWith('file:')) showOffline(); });
   let online = net.isOnline();
