@@ -112,11 +112,15 @@ app.whenReady().then(async () => {
   });
   protocol.handle('https', async request => {
     const url = new URL(request.url);
+    if (url.searchParams.has('desktop-update')) {
+      return net.fetch(request, { bypassCustomProtocolHandlers: true });
+    }
     if (url.origin === ORIGIN && (url.pathname === '/ed_master.html' || url.pathname === '/')) {
       return new Response(await platformSnapshot(), { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
     }
     return net.fetch(request, { bypassCustomProtocolHandlers: true });
   });
+
   protocol.handle('edmedia', async request => {
     const url = new URL(request.url);
     const stream = url.hostname === 'stream' && streams.get(url.pathname.slice(1));
