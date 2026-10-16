@@ -83,28 +83,42 @@ async function extract(id, force) {
   try { return await task; } finally { jobs.delete(id); }
 }
 async function platformSnapshot() {
-  const bundled = await fs.readFile(path.join(__dirname, 'platform', 'ed_master.html'), 'utf8');
   const dest = path.join(app.getPath('userData'), 'platform.html');
-  let content = bundled;
+  // 1. Fetch fresh live platform directly if online
   try {
-    const saved = await fs.readFile(dest, 'utf8');
-    if (saved.includes('async function _edDesktopOpen')) content = saved;
-  } catch {}
-  try {
-    const response = await net.fetch(HOME + '?desktop-update=2', { bypassCustomProtocolHandlers: true, signal: AbortSignal.timeout(12000), cache: 'no-store' });
+    const liveUrl = HOME + '?live_sync=' + Date.now();
+    const response = await net.fetch(liveUrl, { bypassCustomProtocolHandlers: true, signal: AbortSignal.timeout(7000), cache: 'no-store' });
     if (response.ok) {
       const next = await response.text();
-      if (next.length > 100000 && next.length < 5000000 && next.includes('async function _edDesktopOpen') && next.includes('</html>')) {
-        await fs.writeFile(dest + '.tmp', next);
-        await fs.rename(dest + '.tmp', dest);
-        content = next;
+      if (next.length > 100000 && next.includes('async function _edDesktopOpen') && next.includes('</html>')) {
+        await fs.writeFile(dest, next);
+        return next;
       }
     }
-  } catch {}
-  return content;
+  } catch (_) {}
+
+  // 2. Fallback to cached version if offline or slow connection
+  try {
+    const saved = await fs.readFile(dest, 'utf8');
+    if (saved.includes('async function _edDesktopOpen')) return saved;
+  } catch (_) {}
+
+  // 3. Fallback to bundled snapshot
+  return await fs.readFile(path.join(__dirname, 'platform', 'ed_master.html'), 'utf8');
 }
+
 app.whenReady().then(async () => {
-  Menu.setApplicationMenu(null);
+const editMenu = Menu.buildFromTemplate([
+  {
+    label: 'Edit',
+    submenu: [
+      { role: 'undo' }, { role: 'redo' }, { type: 'separator' },
+      { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }
+    ]
+  }
+]);
+Menu.setApplicationMenu(editMenu);
+
   toolReady = prepareTools();
   ipcMain.handle('edall:formats', (event, id, force) => {
     if (!windowRef || event.sender !== windowRef.webContents || event.senderFrame !== event.sender.mainFrame || new URL(event.senderFrame.url).origin !== ORIGIN || !/^[a-zA-Z0-9_-]{11}$/.test(id)) throw new Error('Access denied');
