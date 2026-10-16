@@ -6495,15 +6495,43 @@
                     return;
                 }
 
-                // 1) تأكيد قبل بدء الامتحان
-                const questionsCount = (exam.questions || []).length;
-                const durationText = exam.duration ? (currentLanguage === 'ar' ? `المدة: ${exam.duration} دقيقة` : `Duration: ${exam.duration} mins`) : (currentLanguage === 'ar' ? 'بدون وقت محدد' : 'Untimed');
-                const startConfirmMsg = currentLanguage === 'ar'
-                    ? `هل أنت مستعد لبدء امتحان "${exam.title || lesson.title}"؟\n- عدد الأسئلة: ${questionsCount}\n- ${durationText}\n\nتنبيه: سيبدأ احتساب محاولتك ووقت الامتحان فور الضغط على موافق.`
-                    : `Are you ready to start the exam "${exam.title || lesson.title}"?\n- Questions: ${questionsCount}\n- ${durationText}\n\nNote: Your attempt and timer will start immediately.`;
-                
-                if (!confirm(startConfirmMsg)) {
-                    return;
+                // فحص حاسم: التحقق من وجود أي امتحان آخر مفتوح وجاري حالياً ومنع فتحه
+                let _isResuming = false;
+                try {
+                    const { data: _activeAtt } = await sb.rpc('get_active_exam_attempt');
+                    if (_activeAtt && _activeAtt.attempt_id) {
+                        if (_activeAtt.exam_id !== exam.id) {
+                            showToast(currentLanguage === 'ar' 
+                                ? 'لا يمكنك دخول هذا الامتحان! لديك امتحان آخر قيد التشغيل حالياً.' 
+                                : 'Cannot enter this exam! You have another active exam running.', 'error');
+                            
+                            const _resume = confirm(currentLanguage === 'ar'
+                                ? '⚠️ تنبيه حاسم:\nلديك بالفعل امتحان آخر قيد التشغيل حالياً ولم ينتهِ وقته بعد!\n\nلا يُسمح بالنظام بفتح أكثر من امتحان في نفس الوقت.\n\nهل تريد الانتقال إلى امتحانك المفتوح الآن لمتابعته وتسليمه؟'
+                                : '⚠️ Alert:\nYou already have another exam currently in progress!\n\nTaking multiple exams at once is not allowed.\n\nDo you want to switch to your running exam now?');
+                            
+                            if (_resume) {
+                                await checkActiveExamAttempt();
+                            }
+                            return; // إيقاف العملية ومنع دخول الامتحان الجديد
+                        } else {
+                            _isResuming = true; // استئناف نفس الامتحان الجاري
+                        }
+                    }
+                } catch (_chkErr) {
+                    console.warn('Error verifying active exam attempts:', _chkErr);
+                }
+
+                // 1) تأكيد قبل بدء الامتحان (إذا لم تكن المحاولة جارية ومستأنفة بالفعل)
+                if (!_isResuming) {
+                    const questionsCount = (exam.questions || []).length;
+                    const durationText = exam.duration ? (currentLanguage === 'ar' ? `المدة: ${exam.duration} دقيقة` : `Duration: ${exam.duration} mins`) : (currentLanguage === 'ar' ? 'بدون وقت محدد' : 'Untimed');
+                    const startConfirmMsg = currentLanguage === 'ar'
+                        ? `هل أنت مستعد لبدء امتحان "${exam.title || lesson.title}"؟\n- عدد الأسئلة: ${questionsCount}\n- ${durationText}\n\nتنبيه: سيبدأ احتساب محاولتك ووقت الامتحان فور الضغط على موافق.`
+                        : `Are you ready to start the exam "${exam.title || lesson.title}"?\n- Questions: ${questionsCount}\n- ${durationText}\n\nNote: Your attempt and timer will start immediately.`;
+                    
+                    if (!confirm(startConfirmMsg)) {
+                        return;
+                    }
                 }
                 
                 const { data: _att, error: _attErr } = await sb.rpc('start_exam_attempt', { _exam_id: exam.id });
@@ -6635,53 +6663,6 @@
             }
         }
 
-        function formatTime(seconds) {
-            const m = Math.floor(seconds / 60);
-            const s = seconds % 60;
-            return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-        }
-
-        function startExamTimer(courseId, lessonId, examIndex) {
-            if (examTimerInterval) clearInterval(examTimerInterval);
-            examTimerInterval = setInterval(() => {
-                examTimeRemaining = _examSecondsLeft();
-                const timerText = document.getElementById('examTimerText');
-                if (timerText) {
-                    timerText.textContent = formatTime(examTimeRemaining);
-                }
-                if (examTimeRemaining <= 0) {
-                    clearInterval(examTimerInterval);
-                    showToast(currentLanguage === 'ar' ? 'انتهى الوقت! يتم تسليم الامتحان تلقائياً' : 'Time is up! Auto-submitting...', 'warning');
-                    submitExam(courseId, lessonId, examIndex);
-                }
-            }, 1000);
-        }
-
-        function _examSecondsLeft() {
-            const a = window._examAttempt;
-            if (!a || !a.expiresAt) return 0;
-            return Math.max(0, Math.floor((a.expiresAt - (Date.now() - a.offset)) / 1000));
-        }
-        function _examDraftKey() { return window._examAttempt ? 'ed_exam_draft_' + window._examAttempt.id : null; }
-        function _saveExamDraft() {
-            try {
-                const k = _examDraftKey(); if (!k) return;
-                const d = {};
-                document.querySelectorAll('#examQuestionsContainer input[type=radio]:checked').forEach(r => d[r.name] = r.value);
-                document.querySelectorAll('#examQuestionsContainer textarea.essay-answer').forEach(t => d[t.id] = t.value);
-                localStorage.setItem(k, JSON.stringify(d));
-            } catch (e) {}
-        }
-        function _restoreExamDraft() {
-            try {
-                const k = _examDraftKey(); if (!k) return;
-                const d = JSON.parse(localStorage.getItem(k) || '{}');
-                Object.keys(d).forEach(n => {
-                    if (n.startsWith('question_')) { const el = document.querySelector(`input[name="${n}"][value="${d[n]}"]`); if (el) el.checked = true; }
-                    else { const el = document.getElementById(n); if (el) el.value = d[n]; }
-                });
-            } catch (e) {}
-        }
         function getUserExamAttempts(examId) {
             if (!currentUser) return [];
             try {
@@ -6689,6 +6670,7 @@
                     .filter(r => r.exam_id === examId && r.user_id === currentUser.id);
             } catch (e) { return []; }
         }
+
         let _activeExamChecking = false;
         async function checkActiveExamAttempt() {
             if (!currentUser || _activeExamChecking || window._examAttempt) return;
@@ -6697,9 +6679,14 @@
                 const { data } = await sb.rpc('get_active_exam_attempt');
                 if (!data || !data.attempt_id || window._examAttempt) return;
                 let course = courses.find(c => c.id === data.course_id);
+                if (!course) {
+                    await loadCourseDetails(data.course_id);
+                    course = courses.find(c => c.id === data.course_id);
+                }
                 if (!course) return;
-                await loadCourseDetails(data.course_id);
-                course = courses.find(c => c.id === data.course_id);
+                if (!course.lessons) {
+                    await loadCourseDetails(data.course_id);
+                }
                 const lesson = course && (course.lessons || []).find(l => l.id === data.lesson_id);
                 const idx = lesson ? (lesson.exams || []).findIndex(e => e.id === data.exam_id) : -1;
                 if (idx < 0) return;
@@ -6712,7 +6699,9 @@
         async function cancelExam() {
             const a = window._examAttempt;
             if (a && a.expiresAt) {
-                if (!confirm(currentLanguage === 'ar' ? 'الوقت سيستمر في العد حتى لو أغلقت الامتحان، وسيتم تسليمه تلقائياً عند انتهاء الوقت. هل تريد الإغلاق؟' : 'The timer keeps running even if you close the exam and it will be auto-submitted when time ends. Close anyway?')) return;
+                if (!confirm(currentLanguage === 'ar' 
+                    ? '⚠️ تنبيه هام:\nالوقت سيستمر في العد على السيرفر حتى لو أغلقت الامتحان، ولن يسمح لك النظام بدخول أي امتحان آخر حتى ينتهي وقته أو تقوم بتسليمه!\n\nهل ما زلت متأكداً من رغبتك في الإغلاق؟' 
+                    : '⚠️ Warning:\nThe timer keeps running on the server even if you close this exam, and you cannot enter any other exam until time ends or you submit it.\n\nAre you sure you want to close?')) return;
                 _saveExamDraft();
             } else if (a) {
                 try { await sb.rpc('abandon_exam_attempt', { _attempt_id: a.id }); } catch (e) {}
