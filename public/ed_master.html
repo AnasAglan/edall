@@ -6884,6 +6884,86 @@
             return { course, lesson, exam: lesson && lesson.exams ? lesson.exams[examIndex] : null };
         }
 
+        let _gradingScrollState = { all: [], filtered: [], visibleCount: 5, activeTab: 'all', search: '' };
+
+        function _gradingStudentRowHtml(g) {
+            const isPending = g.pending > 0;
+            return `
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px;margin:8px 0;background:var(--card-light);border-radius:var(--radius-sm);border-right:4px solid ${isPending ? 'var(--warning)' : 'var(--success)'};">
+                    <div>
+                        <strong><i class="fas fa-user"></i> ${_escHtml(g.name || _t('طالب', 'Student'))}</strong>
+                        ${g.public_id ? `<span style="color:var(--text-muted);font-size:0.85rem;"> #${_escHtml(g.public_id)}</span>` : ''}
+                        <div style="font-size:0.85rem;color:var(--text-muted);">
+                            ${_t('المحاولات', 'Attempts')}: ${g.rows.length}
+                            ${isPending 
+                                ? ` — <span style="color:var(--warning);font-weight:bold;">${_t('بانتظار التصحيح', 'Pending')}: ${g.pending}</span>` 
+                                : ` — <span style="color:var(--success);">${_t('تم التصحيح', 'Graded')} ✅</span>`}
+                        </div>
+                    </div>
+                    <button class="btn btn-sm" style="background:${isPending ? 'var(--warning)' : 'var(--primary)'};color:white;" onclick="renderGradingAttempts('${g.user_id}')">
+                        <i class="fas fa-${isPending ? 'check-double' : 'eye'}"></i> ${isPending ? _t('تصحيح', 'Grade') : _t('عرض', 'View')}
+                    </button>
+                </div>`;
+        }
+
+        function _renderGradingVisibleList() {
+            const ul = document.getElementById('gradingUsersUl');
+            const loader = document.getElementById('gradingUsersLoader');
+            if (!ul) return;
+            const items = _gradingScrollState.filtered.slice(0, _gradingScrollState.visibleCount);
+            if (!items.length) {
+                ul.innerHTML = `<div style="color:var(--text-muted);padding:16px;text-align:center;">${_t('لا يوجد طلاب مطابقون للبحث', 'No matching students found')}</div>`;
+                if (loader) loader.style.display = 'none';
+                return;
+            }
+            ul.innerHTML = items.map(_gradingStudentRowHtml).join('');
+            if (loader) {
+                loader.style.display = (_gradingScrollState.visibleCount < _gradingScrollState.filtered.length) ? 'block' : 'none';
+            }
+        }
+
+        function _applyGradingFilter() {
+            const { all, activeTab, search } = _gradingScrollState;
+            const q = (search || '').trim().toLowerCase();
+            _gradingScrollState.filtered = all.filter(g => {
+                if (activeTab === 'pending' && g.pending === 0) return false;
+                if (activeTab === 'done' && g.pending > 0) return false;
+                if (q) {
+                    const name = (g.name || '').toLowerCase();
+                    const pid = String(g.public_id || '').toLowerCase();
+                    return name.includes(q) || pid.includes(q);
+                }
+                return true;
+            });
+            _gradingScrollState.visibleCount = 5;
+            _renderGradingVisibleList();
+        }
+
+        window.setGradingTab = function(tab) {
+            _gradingScrollState.activeTab = tab;
+            document.querySelectorAll('.grading-tab-btn').forEach(btn => {
+                const isActive = btn.dataset.tab === tab;
+                btn.style.background = isActive ? 'var(--primary)' : 'var(--card-light)';
+                btn.style.color = isActive ? '#fff' : 'inherit';
+            });
+            _applyGradingFilter();
+        };
+
+        window.searchGradingStudents = function(term) {
+            _gradingScrollState.search = term;
+            _applyGradingFilter();
+        };
+
+        window.handleGradingScroll = function(e) {
+            const el = e.target;
+            if (el.scrollTop + el.clientHeight >= el.scrollHeight - 30) {
+                if (_gradingScrollState.visibleCount < _gradingScrollState.filtered.length) {
+                    _gradingScrollState.visibleCount += 5;
+                    _renderGradingVisibleList();
+                }
+            }
+        };
+
         function renderGradingUsers() {
             const { lesson, exam } = _gradingExam();
             const groups = {};
@@ -6891,24 +6971,52 @@
                 if (!groups[r.user_id]) groups[r.user_id] = { user_id: r.user_id, name: r.name, public_id: r.public_id, rows: [] };
                 groups[r.user_id].rows.push(r);
             });
-            const list = Object.values(groups).map(g => ({ ...g, pending: g.rows.filter(r => r.has_essay && !r.essay_graded).length }));
-            const pending = list.filter(g => g.pending > 0);
-            const done = list.filter(g => g.pending === 0);
-            const rowHtml = g => `
-                <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px;margin:8px 0;background:var(--card-light);border-radius:var(--radius-sm);border-right:4px solid ${g.pending ? 'var(--warning)' : 'var(--success)'};">
-                    <div>
-                        <strong><i class="fas fa-user"></i> ${_escHtml(g.name || _t('طالب', 'Student'))}</strong>
-                        ${g.public_id ? `<span style="color:var(--text-muted);font-size:0.85rem;"> #${_escHtml(g.public_id)}</span>` : ''}
-                        <div style="font-size:0.85rem;color:var(--text-muted);">${_t('المحاولات', 'Attempts')}: ${g.rows.length}${g.pending ? ` — <span style="color:var(--warning);">${_t('بانتظار التصحيح', 'Pending')}: ${g.pending}</span>` : ''}</div>
+            const list = Object.values(groups).map(g => ({
+                ...g,
+                pending: g.rows.filter(r => r.has_essay && !r.essay_graded).length
+            }));
+
+            // ترتيب القائمة بحيث يظهر الطلاب المنتظرون للتصحيح في البداية
+            const sorted = list.sort((a, b) => (b.pending - a.pending));
+            const pendingCount = list.filter(g => g.pending > 0).length;
+            const doneCount = list.filter(g => g.pending === 0).length;
+
+            _gradingScrollState = {
+                all: sorted,
+                filtered: sorted,
+                visibleCount: 5,
+                activeTab: 'all',
+                search: ''
+            };
+
+            let html = `
+                <div style="font-size:1.2rem;font-weight:900;margin-bottom:12px;">
+                    <i class="fas fa-check-double"></i> ${_t('تصحيح:', 'Grade:')} ${_escHtml(exam ? (exam.title || lesson.title) : '')}
+                </div>
+                <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+                    <button class="btn btn-sm grading-tab-btn" data-tab="all" onclick="setGradingTab('all')" style="background:var(--primary);color:#fff;border-radius:20px;padding:4px 12px;">
+                        ${_t('الكل', 'All')} (${list.length})
+                    </button>
+                    <button class="btn btn-sm grading-tab-btn" data-tab="pending" onclick="setGradingTab('pending')" style="background:var(--card-light);color:inherit;border-radius:20px;padding:4px 12px;">
+                        ⏳ ${_t('بانتظار التصحيح', 'Pending')} (${pendingCount})
+                    </button>
+                    <button class="btn btn-sm grading-tab-btn" data-tab="done" onclick="setGradingTab('done')" style="background:var(--card-light);color:inherit;border-radius:20px;padding:4px 12px;">
+                        ✅ ${_t('تم تصحيحهم', 'Graded')} (${doneCount})
+                    </button>
+                </div>
+                <input type="text" class="form-input" autocomplete="off" placeholder="${_t('ابحث باسم الطالب أو المعرف...', 'Search by name or ID...')}" oninput="searchGradingStudents(this.value)" style="margin-bottom:10px;font-size:0.9rem;">
+                <div id="gradingUsersScroll" onscroll="handleGradingScroll(event)" style="max-height:50vh;overflow-y:auto;padding-inline-end:4px;">
+                    <div id="gradingUsersUl"></div>
+                    <div id="gradingUsersLoader" style="display:none;text-align:center;padding:12px;font-size:0.85rem;color:var(--text-muted);">
+                        <i class="fas fa-spinner fa-spin"></i> ${_t('اسحب لتحميل المزيد...', 'Scroll for more...')}
                     </div>
-                    <button class="btn btn-sm" style="background:var(--warning);color:white;" onclick="renderGradingAttempts('${g.user_id}')"><i class="fas fa-check-double"></i> ${_t('تصحيح', 'Grade')}</button>
+                </div>
+                <div style="margin-top:16px;">
+                    <button class="btn btn-outline" onclick="closeModal()"><i class="fas fa-times"></i> ${_t('إغلاق', 'Close')}</button>
                 </div>`;
-            let html = `<div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;"><i class="fas fa-check-double"></i> ${_t('تصحيح:', 'Grade:')} ${_escHtml(exam ? (exam.title || lesson.title) : '')}</div>`;
-            html += `<h4 style="margin:10px 0;">${_t('ينتظرون التصحيح', 'Waiting for grading')} (${pending.length})</h4>`;
-            html += pending.length ? pending.map(rowHtml).join('') : `<div style="color:var(--text-muted);padding:10px;">${_t('لا يوجد طلاب ينتظرون التصحيح', 'No students waiting')}</div>`;
-            if (done.length) html += `<h4 style="margin:18px 0 10px;">${_t('تم تصحيحهم', 'Graded')} (${done.length})</h4>` + done.map(rowHtml).join('');
-            html += `<div style="margin-top:20px;"><button class="btn btn-outline" onclick="closeModal()"><i class="fas fa-times"></i> ${_t('إغلاق', 'Close')}</button></div>`;
+
             showModal(html);
+            _renderGradingVisibleList();
         }
 
         function renderGradingAttempts(userId) {
