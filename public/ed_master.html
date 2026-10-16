@@ -2593,9 +2593,11 @@
             wm.className = 'video-watermark';
             wm.setAttribute('dir', 'ltr');
             wm.textContent = text;
-            wm.style.cssText = 'position:absolute;top:8%;left:8%;pointer-events:none;z-index:20;'
-                + 'color:rgba(255,255,255,.55);text-shadow:0 1px 4px rgba(0,0,0,.85);'
-                + 'font-weight:800;font-size:.9rem;letter-spacing:.5px;'
+            wm.style.cssText = 'position:absolute;top:8%;left:8%;pointer-events:none;z-index:25;'
+                + 'color:#ffffff;background:rgba(0,0,0,0.5);padding:4px 10px;border-radius:6px;'
+                + 'text-shadow:0 1px 3px rgba(0,0,0,.9);font-weight:800;font-size:.85rem;letter-spacing:.5px;'
+                + 'white-space:nowrap;max-width:80%;overflow:hidden;text-overflow:ellipsis;'
+                + 'box-shadow:0 2px 8px rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.15);'
                 + 'transition:top 3s linear,left 3s linear;user-select:none;';
             return wm;
         }
@@ -2626,8 +2628,9 @@
             });
             observer.observe(wrap, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
 
-            // Float the watermark slowly between corners.
-            const spots = [['8%','8%'], ['8%','62%'], ['72%','62%'], ['72%','8%'], ['40%','38%']];
+            // Float the watermark safely within bounds so it never escapes the iframe
+            const spots = [['8%','6%'], ['8%','42%'], ['68%','42%'], ['68%','6%'], ['38%','22%']];
+
             let i = 0;
             const timer = setInterval(() => {
                 if (!document.body.contains(wrap)) { clearInterval(timer); observer.disconnect(); return; }
