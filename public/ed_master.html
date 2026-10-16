@@ -1083,14 +1083,28 @@
 
         .essay-answer {
             width: 100%;
-            min-height: 100px;
-            padding: 12px;
-            background: var(--input-bg);
-            border: 1px solid var(--accent);
+            min-height: 110px;
+            padding: 12px 14px;
+            background: var(--input-bg) !important;
+            border: 1.5px solid var(--accent);
             border-radius: var(--radius-sm);
-            color: var(--text);
+            color: var(--text) !important;
             margin-top: 10px;
+            font-family: inherit;
+            font-size: 1rem;
+            line-height: 1.6;
+            cursor: text !important;
+            pointer-events: auto !important;
+            user-select: text !important;
+            -webkit-user-select: text !important;
+            box-sizing: border-box;
+            outline: none;
         }
+        .essay-answer:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(99,102,241,0.25);
+        }
+
 
         .exam-results {
             margin-top: 20px;
@@ -2652,15 +2666,20 @@
         }
 
         function toggleVideoFullscreen(wrap, iframe, btn) {
-            const inFs = isElementFullscreen(wrap);
+            const inFs = isElementFullscreen(wrap) || wrap.classList.contains('plyr--fullscreen-fallback');
             if (inFs) {
-                (document.exitFullscreen || document.webkitExitFullscreen || function(){}).call(document);
+                if (document.fullscreenElement) {
+                    (document.exitFullscreen || document.webkitExitFullscreen || function(){}).call(document);
+                }
+                wrap.classList.remove('plyr--fullscreen-fallback');
             } else {
                 const req = wrap.requestFullscreen || wrap.webkitRequestFullscreen;
                 if (req) {
-                    req.call(wrap).catch(() => {});
+                    req.call(wrap).catch(() => {
+                        wrap.classList.add('plyr--fullscreen-fallback');
+                    });
                 } else {
-                    showToast(currentLanguage === 'ar' ? 'ملء الشاشة غير مدعوم في هذا المتصفح' : 'Fullscreen not supported in this browser', 'warning');
+                    wrap.classList.add('plyr--fullscreen-fallback');
                 }
             }
         }
