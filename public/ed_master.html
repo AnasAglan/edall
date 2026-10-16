@@ -6482,8 +6482,8 @@
         async function takeExam(courseId, lessonId, examIndex) {
             try {
                 const course = courses.find(c => c.id === courseId);
-                const lesson = course.lessons.find(l => l.id === lessonId);
-                const exam = lesson.exams ? lesson.exams[examIndex] : null;
+                const lesson = course ? course.lessons.find(l => l.id === lessonId) : null;
+                const exam = lesson && lesson.exams ? lesson.exams[examIndex] : null;
                 
                 if (!exam) {
                     showToast(currentLanguage === 'ar' ? 'لا يوجد امتحان لهذه المحاضرة' : 'No exam for this lesson', 'error');
@@ -6492,6 +6492,17 @@
                 
                 if (!currentUser) {
                     showToast(currentLanguage === 'ar' ? 'يرجى تسجيل الدخول أولاً' : 'Please login first', 'error');
+                    return;
+                }
+
+                // 1) تأكيد قبل بدء الامتحان
+                const questionsCount = (exam.questions || []).length;
+                const durationText = exam.duration ? (currentLanguage === 'ar' ? `المدة: ${exam.duration} دقيقة` : `Duration: ${exam.duration} mins`) : (currentLanguage === 'ar' ? 'بدون وقت محدد' : 'Untimed');
+                const startConfirmMsg = currentLanguage === 'ar'
+                    ? `هل أنت مستعد لبدء امتحان "${exam.title || lesson.title}"؟\n- عدد الأسئلة: ${questionsCount}\n- ${durationText}\n\nتنبيه: سيبدأ احتساب محاولتك ووقت الامتحان فور الضغط على موافق.`
+                    : `Are you ready to start the exam "${exam.title || lesson.title}"?\n- Questions: ${questionsCount}\n- ${durationText}\n\nNote: Your attempt and timer will start immediately.`;
+                
+                if (!confirm(startConfirmMsg)) {
                     return;
                 }
                 
@@ -6552,7 +6563,7 @@
                     ${_att.resumed ? `<div style="padding:10px;margin-bottom:10px;border-radius:var(--radius-sm);background:rgba(245,158,11,0.12);color:var(--warning);"><i class="fas fa-info-circle"></i> ${currentLanguage === 'ar' ? 'لديك امتحان مفتوح، الوقت مستمر منذ بدايته.' : 'You have an open exam; the timer kept running since it started.'}</div>` : ''}
                     <div id="examQuestionsContainer">${questionsHTML}</div>
                     <div class="exam-controls">
-                        <button class="btn btn-success" onclick="submitExam('${courseId}', '${lessonId}', ${examIndex})">
+                        <button class="btn btn-success" onclick="confirmAndSubmitExam('${courseId}', '${lessonId}', ${examIndex})">
                             <i class="fas fa-paper-plane"></i> ${currentLanguage === 'ar' ? 'تسليم الامتحان' : 'Submit Exam'}
                         </button>
                         <button class="btn btn-outline" onclick="cancelExam()">
@@ -6571,6 +6582,56 @@
             } catch (error) {
                 console.error('Error taking exam:', error);
                 showToast('حدث خطأ في بدء الامتحان', 'error');
+            }
+        }
+
+        // دالة التأكيد المزدوج عند التسليم اليدوي
+        async function confirmAndSubmitExam(courseId, lessonId, examIndex) {
+            try {
+                const course = courses.find(c => c.id === courseId);
+                const lesson = course ? course.lessons.find(l => l.id === lessonId) : null;
+                const exam = lesson && lesson.exams ? lesson.exams[examIndex] : null;
+                if (!exam) return submitExam(courseId, lessonId, examIndex);
+
+                // فحص الأسئلة المتروكة بدون إجابة
+                let unansweredCount = 0;
+                exam.questions.forEach((q, idx) => {
+                    if (q.type === 'multiple') {
+                        if (!document.querySelector(`input[name="question_${idx}"]:checked`)) unansweredCount++;
+                    } else {
+                        const val = (document.getElementById(`essay_${idx}`)?.value || '').trim();
+                        if (!val) unansweredCount++;
+                    }
+                });
+
+                // التأكيد الأول (مع التنبيه بالأسئلة غير المحلولة)
+                let firstMsg = currentLanguage === 'ar'
+                    ? 'هل أنت متأكد من رغبتك في تسليم الامتحان الآن؟'
+                    : 'Are you sure you want to submit the exam now?';
+                if (unansweredCount > 0) {
+                    firstMsg = currentLanguage === 'ar'
+                        ? `تنبيه: لديك (${unansweredCount}) سؤال/أسئلة لم تقم بالإجابة عليها بعد!\n\nهل ما زلت ترغب في التسليم؟`
+                        : `Warning: You have ${unansweredCount} unanswered question(s)!\n\nDo you still want to proceed with submission?`;
+                }
+
+                if (!confirm(firstMsg)) {
+                    return;
+                }
+
+                // التأكيد الثاني (الحاسم والنهائي)
+                const secondMsg = currentLanguage === 'ar'
+                    ? '⚠️ تأكيد نهائي وحاسم:\nبمجرد التسليم لن تتمكن من العودة للامتحان أو تغيير أي إجابة إطلاقاً وسيتم تصحيحها فوراً.\n\nهل تريد الإرسال النهائي الآن؟'
+                    : '⚠️ Final Confirmation:\nOnce submitted, you cannot change any answers and your attempt will be graded immediately.\n\nDo you confirm final submission?';
+
+                if (!confirm(secondMsg)) {
+                    return;
+                }
+
+                // تنفيذ التسليم الفعلي
+                submitExam(courseId, lessonId, examIndex);
+            } catch (e) {
+                console.error('Confirm submit error:', e);
+                submitExam(courseId, lessonId, examIndex);
             }
         }
 
