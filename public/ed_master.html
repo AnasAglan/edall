@@ -1675,10 +1675,12 @@
             font-size: 0.9rem;
             box-shadow: none;
         }
+       
         .topbar .actions .btn i { font-size: 0.9rem; }
         body { padding-top: 64px; }
         .breadcrumb { top: 74px; }
         .floating-back-btn { top: 78px; }
+
         @media (max-width: 768px) {
             .topbar { height: 58px; padding: 0 12px; gap: 8px; }
             body { padding-top: 58px; }
@@ -1687,37 +1689,39 @@
             .topbar .actions .btn span:not(.notification-badge) { display: none; }
             .topbar .actions { gap: 6px; }
         }
-        
-.edv-wrap.ed-desktop-fullscreen {
-    position: fixed !important;
-    inset: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
-    max-width: none !important;
-    max-height: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    z-index: 2147483647 !important;
-    background: #000 !important;
-    border: 0 !important;
-    border-radius: 0 !important;
-}
 
-.edv-wrap.ed-desktop-fullscreen .plyr,
-.edv-wrap.ed-desktop-fullscreen video {
-    width: 100% !important;
-    height: 100% !important;
-}
+        /* ملء الشاشة لمشغّل الفيديو */
+        .edv-wrap.ed-desktop-fullscreen {
+            position: fixed !important;
+            inset: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            max-width: none !important;
+            max-height: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            z-index: 2147483647 !important;
+            background: #000 !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+        }
 
-.edv-wrap.ed-desktop-fullscreen video {
-    object-fit: contain !important;
-}
+        .edv-wrap.ed-desktop-fullscreen .plyr,
+        .edv-wrap.ed-desktop-fullscreen video {
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        .edv-wrap.ed-desktop-fullscreen video {
+            object-fit: contain !important;
+        }
 
     </style>
 </head>
 <body class="dark">
     <nav class="topbar" id="topbar">
         <a class="topbar-brand" href="#" onclick="showPage('mainPage'); return false;">
+
             <span class="topbar-brand-logo">ED</span>
             <span>ED ALL</span>
         </a>
