@@ -2610,21 +2610,31 @@
             wm.style.cssText = 'position:absolute;top:8%;left:8%;pointer-events:none !important;z-index:2147483640 !important;'
                 + 'color:#ffffff;background:rgba(0,0,0,0.7);padding:5px 12px;border-radius:6px;'
                 + 'text-shadow:0 1px 3px rgba(0,0,0,.9);font-weight:800;font-size:.85rem;letter-spacing:.5px;'
-                + 'white-space:nowrap;max-width:80%;overflow:hidden;text-overflow:ellipsis;'
+                + 'white-space:nowrap;box-sizing:border-box;max-width:calc(100% - 16px);overflow:hidden;text-overflow:ellipsis;'
                 + 'box-shadow:0 2px 10px rgba(0,0,0,0.7);border:1px solid rgba(255,255,255,0.3);'
                 + 'transition:all 2s ease-in-out;user-select:none !important;';
             return wm;
         }
 
         function guardWatermark(wrap, text) {
+            const layerHost = wrap.querySelector('.plyr__video-wrapper') || wrap;
+
+layerHost.style.position = 'relative';
+layerHost.style.overflow = 'hidden';
+
+const existingWatermark = wrap.querySelector('.video-watermark');
+
+if (existingWatermark && !layerHost.contains(existingWatermark)) {
+    layerHost.appendChild(existingWatermark);
+}
             let strikes = 0;
             const ensure = () => {
                 if (!document.body.contains(wrap)) return false;
-                let wm = wrap.querySelector('.video-watermark');
+                let wm = layerHost.querySelector('.video-watermark');
                 if (!wm) {
                     strikes++;
                     wm = buildWatermarkLayer(text);
-                    wrap.appendChild(wm);
+                    layerHost.appendChild(wm);
                     try { applyWatermarkScale(wrap); } catch (e) {}
                 }
                 return true;
@@ -2640,7 +2650,7 @@
                         : 'Video stopped: watermark tampering detected', 'error');
                 }
             });
-            observer.observe(wrap, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+            observer.observe(layerHost, { childList: true, subtree: true });
 
             // إحداثيات محصورة 100% داخل مساحة الفيديو والـ iframe ولا تخرج أبداً
             const positions = [
@@ -2654,7 +2664,7 @@
             let i = 0;
             const timer = setInterval(() => {
                 if (!document.body.contains(wrap)) { clearInterval(timer); observer.disconnect(); return; }
-                const wm = wrap.querySelector('.video-watermark');
+                const wm = layerHost.querySelector('.video-watermark');
                 if (wm) {
                     i = (i + 1) % positions.length;
                     const p = positions[i];
