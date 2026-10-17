@@ -3127,7 +3127,12 @@ if (existingWatermark && !layerHost.contains(existingWatermark)) {
                     settings: ['quality','speed'],
                     quality: { default: initial.h, options: bundle.videos.map(f => f.h), forced: true, onChange: h => switchQuality(h).catch(() => { if (!disposed) renew().catch(() => {}); }) },
                     speed: { selected: 1, options: [.5,.75,1,1.25,1.5,1.75,2] },
-                    fullscreen: { enabled: true, fallback: true, iosNative: false, },
+                    fullscreen: {
+    enabled: true,
+    fallback: true,
+    iosNative: false,
+    container: '.edv-wrap.ed-desktop-player'
+},
                     storage: { enabled: false }
                 });
                 container._p = player;
