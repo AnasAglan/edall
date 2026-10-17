@@ -3179,6 +3179,7 @@ const originalBodyOverflow = document.body.style.overflow;
                     storage: { enabled: false }
                 });
                 
+
 const setDesktopFullscreen = async (enabled) => {
     desktopFullscreen = enabled;
 
@@ -3201,22 +3202,6 @@ const setDesktopFullscreen = async (enabled) => {
             await bridge.setVideoFullscreen(enabled);
         }
     } catch (error) {
-        console.error('[ED-ALL] Fullscreen request failed:', error);
-    }
-};
-
-    }
-
-    document.body.style.overflow = enabled
-        ? 'hidden'
-        : originalBodyOverflow;
-
-    // طلب ملء الشاشة من Electron نفسه
-    try {
-        if (typeof bridge.setVideoFullscreen === 'function') {
-            await bridge.setVideoFullscreen(enabled);
-        }
-    } catch (error) {
         console.error(
             '[ED-ALL] Fullscreen request failed:',
             error
@@ -3230,7 +3215,6 @@ const fsButton =
 
 if (fsButton) {
     const onFullscreenClick = (event) => {
-        // منع معالج Plyr الأصلي من تنفيذ طلب آخر
         event.preventDefault();
         event.stopPropagation();
         event.stopImmediatePropagation();
@@ -3238,7 +3222,6 @@ if (fsButton) {
         void setDesktopFullscreen(!desktopFullscreen);
     };
 
-    // التقاط النقر قبل معالج Plyr الأصلي
     fsButton.addEventListener(
         'click',
         onFullscreenClick,
@@ -3254,7 +3237,6 @@ if (fsButton) {
     });
 }
 
-// السماح بالخروج باستخدام مفتاح Escape
 const onFullscreenEscape = (event) => {
     if (event.key === 'Escape' && desktopFullscreen) {
         event.preventDefault();
@@ -3275,6 +3257,7 @@ cleanups.push(() => {
         true
     );
 });
+
                 container._p = player;
                 const mark = getWatermarkText();
                 if (mark) { wrap.appendChild(buildWatermarkLayer(mark)); guardWatermark(wrap, mark); }
