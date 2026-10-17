@@ -120,11 +120,27 @@ const editMenu = Menu.buildFromTemplate([
 Menu.setApplicationMenu(editMenu);
 
   toolReady = prepareTools();
+
   ipcMain.handle('edall:formats', (event, id, force) => {
     if (!windowRef || event.sender !== windowRef.webContents || event.senderFrame !== event.sender.mainFrame || new URL(event.senderFrame.url).origin !== ORIGIN || !/^[a-zA-Z0-9_-]{11}$/.test(id)) throw new Error('Access denied');
     return extract(id, force === true);
   });
+
+  ipcMain.handle('edall:video-fullscreen', (event, enabled) => {
+    if (
+      !windowRef ||
+      windowRef.isDestroyed() ||
+      event.sender !== windowRef.webContents
+    ) {
+      return false;
+    }
+
+    windowRef.setFullScreen(enabled === true);
+    return true;
+  });
+
   protocol.handle('https', async request => {
+
     const url = new URL(request.url);
     if (url.searchParams.has('desktop-update')) {
       return net.fetch(request, { bypassCustomProtocolHandlers: true });
