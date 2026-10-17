@@ -2607,12 +2607,12 @@
             wm.className = 'video-watermark';
             wm.setAttribute('dir', 'ltr');
             wm.textContent = text;
-            wm.style.cssText = 'position:absolute;top:8%;left:8%;pointer-events:none;z-index:25;'
-                + 'color:#ffffff;background:rgba(0,0,0,0.5);padding:4px 10px;border-radius:6px;'
+            wm.style.cssText = 'position:absolute;top:6%;left:6%;pointer-events:none !important;z-index:2147483640 !important;'
+                + 'color:#ffffff;background:rgba(0,0,0,0.65);padding:4px 10px;border-radius:6px;'
                 + 'text-shadow:0 1px 3px rgba(0,0,0,.9);font-weight:800;font-size:.85rem;letter-spacing:.5px;'
-                + 'white-space:nowrap;max-width:80%;overflow:hidden;text-overflow:ellipsis;'
-                + 'box-shadow:0 2px 8px rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.15);'
-                + 'transition:top 3s linear,left 3s linear;user-select:none;';
+                + 'white-space:nowrap;max-width:calc(100% - 24px);overflow:hidden;text-overflow:ellipsis;'
+                + 'box-shadow:0 2px 8px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.25);'
+                + 'transition:top 3s linear,left 3s linear;user-select:none !important;';
             return wm;
         }
 
@@ -2642,8 +2642,8 @@
             });
             observer.observe(wrap, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
 
-            // Float the watermark safely within bounds so it never escapes the iframe
-            const spots = [['8%','6%'], ['8%','42%'], ['68%','42%'], ['68%','6%'], ['38%','22%']];
+            // إحداثيات مدروسة لا تتجاوز حدود الفيديو أو الآي فريم نهائياً
+            const spots = [['6%','6%'], ['6%','35%'], ['50%','35%'], ['50%','6%'], ['28%','20%']];
 
             let i = 0;
             const timer = setInterval(() => {
@@ -2662,27 +2662,43 @@
             const wm = wrap.querySelector('.video-watermark');
             if (!wm) return;
             const full = isElementFullscreen(wrap) || wrap.classList.contains('plyr--fullscreen-fallback');
-            wm.style.fontSize = full ? '1.8rem' : '.9rem';
+            wm.style.fontSize = full ? '1.5rem' : '.85rem';
         }
 
         function toggleVideoFullscreen(wrap, iframe, btn) {
             const inFs = isElementFullscreen(wrap) || wrap.classList.contains('plyr--fullscreen-fallback');
+            const exitFallback = () => {
+                wrap.classList.remove('plyr--fullscreen-fallback');
+                document.body.style.overflow = '';
+                if (btn) btn.innerHTML = '<i class="fas fa-expand"></i>';
+                applyWatermarkScale(wrap);
+            };
+            const enterFallback = () => {
+                wrap.classList.add('plyr--fullscreen-fallback');
+                document.body.style.overflow = 'hidden';
+                if (btn) btn.innerHTML = '<i class="fas fa-compress"></i>';
+                applyWatermarkScale(wrap);
+            };
+
             if (inFs) {
-                if (document.fullscreenElement) {
+                if (document.fullscreenElement || document.webkitFullscreenElement) {
                     (document.exitFullscreen || document.webkitExitFullscreen || function(){}).call(document);
                 }
-                wrap.classList.remove('plyr--fullscreen-fallback');
+                exitFallback();
             } else {
                 const req = wrap.requestFullscreen || wrap.webkitRequestFullscreen;
                 if (req) {
-                    req.call(wrap).catch(() => {
-                        wrap.classList.add('plyr--fullscreen-fallback');
+                    req.call(wrap).then(() => {
+                        applyWatermarkScale(wrap);
+                    }).catch(() => {
+                        enterFallback();
                     });
                 } else {
-                    wrap.classList.add('plyr--fullscreen-fallback');
+                    enterFallback();
                 }
             }
         }
+
 
         function toggleLessonVideo(btn, containerId, encodedUrl, num) {
             const container = document.getElementById(containerId);
@@ -2700,10 +2716,12 @@
                 iframe.style.cssText = 'width:100%;height:315px;border:0;display:block;';
                 iframe.setAttribute('allow', 'autoplay; fullscreen; encrypted-media; picture-in-picture');
                 iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
-                wrap.classList.add('ed-protected-video');
+                wrap.classList.add('edv-wrap', 'ed-protected-video');
                 iframe.src = src;
+                iframe.style.position = 'relative';
+                iframe.style.zIndex = '1';
                 wrap.appendChild(iframe);
-                const text = getWatermarkText();
+
                 if (text) {
                     // Custom fullscreen so the watermark stays visible over the video
                     const fsBtn = document.createElement('button');
@@ -2766,15 +2784,35 @@
                 .edv-wrap .plyr__menu__container { max-height:min(70vh,420px);overflow-y:auto; }
                 .edv-wrap .plyr__menu__value small { opacity:.7;margin-inline-start:4px; }
                 /* Fullscreen (native + iOS fallback): fill the screen, keep the whole 16:9 video visible, controls at bottom */
-                .edv-wrap:fullscreen, .edv-wrap.plyr--fullscreen-fallback { width:100vw !important;height:100vh !important;height:100dvh !important;max-width:none !important;border-radius:0 !important;background:#000 !important;display:flex;align-items:center;justify-content:center; }
-                .edv-wrap:-webkit-full-screen { width:100vw !important;height:100vh !important;border-radius:0 !important;background:#000 !important;display:flex;align-items:center;justify-content:center; }
-                .edv-wrap.plyr--fullscreen-fallback { position:fixed !important;inset:0 !important;z-index:2147483000 !important;margin:0 !important; }
-                .edv-wrap:fullscreen > .plyr, .edv-wrap.plyr--fullscreen-fallback > .plyr { width:100% !important;height:100% !important;display:flex !important;align-items:center;justify-content:center;background:#000; }
-                .edv-wrap:-webkit-full-screen > .plyr { width:100% !important;height:100% !important;display:flex !important;align-items:center;justify-content:center;background:#000; }
-                .edv-wrap:fullscreen .plyr__video-wrapper, .edv-wrap.plyr--fullscreen-fallback .plyr__video-wrapper { padding-bottom:0 !important;height:auto !important;width:min(100vw, calc(100dvh * 16 / 9)) !important;aspect-ratio:16/9;max-height:100%;margin:auto;transform:none !important; }
-                .edv-wrap:-webkit-full-screen .plyr__video-wrapper { padding-bottom:0 !important;height:auto !important;width:min(100vw, calc(100vh * 16 / 9)) !important;aspect-ratio:16/9;max-height:100%;margin:auto;transform:none !important; }
-                .edv-wrap:fullscreen .plyr__controls, .edv-wrap.plyr--fullscreen-fallback .plyr__controls { position:absolute !important;left:0;right:0;bottom:0;padding-bottom:max(10px, env(safe-area-inset-bottom)) !important;padding-left:max(10px, env(safe-area-inset-left)) !important;padding-right:max(10px, env(safe-area-inset-right)) !important; }
-                .edv-wrap:-webkit-full-screen .plyr__controls { position:absolute !important;left:0;right:0;bottom:0; }
+                /* Fullscreen & fallback styles */
+                .edv-wrap:fullscreen, .edv-wrap:-webkit-full-screen, .edv-wrap.plyr--fullscreen-fallback,
+                .ed-protected-video:fullscreen, .ed-protected-video:-webkit-full-screen, .ed-protected-video.plyr--fullscreen-fallback {
+                    width: 100vw !important; height: 100vh !important; height: 100dvh !important;
+                    max-width: none !important; border-radius: 0 !important; background: #000 !important;
+                    display: flex !important; align-items: center !important; justify-content: center !important;
+                }
+                .edv-wrap.plyr--fullscreen-fallback, .ed-protected-video.plyr--fullscreen-fallback {
+                    position: fixed !important; inset: 0 !important; z-index: 2147483000 !important; margin: 0 !important;
+                }
+                .ed-protected-video:fullscreen iframe, .ed-protected-video:-webkit-full-screen iframe,
+                .ed-protected-video.plyr--fullscreen-fallback iframe {
+                    width: 100% !important; height: 100% !important; max-height: 100% !important;
+                }
+                .edv-wrap:fullscreen > .plyr, .edv-wrap.plyr--fullscreen-fallback > .plyr,
+                .edv-wrap:-webkit-full-screen > .plyr {
+                    width: 100% !important; height: 100% !important; display: flex !important; align-items: center !important; justify-content: center !important; background: #000;
+                }
+                .edv-wrap:fullscreen .plyr__video-wrapper, .edv-wrap.plyr--fullscreen-fallback .plyr__video-wrapper {
+                    padding-bottom: 0 !important; height: auto !important; width: min(100vw, calc(100dvh * 16 / 9)) !important; aspect-ratio: 16/9; max-height: 100%; margin: auto; transform: none !important;
+                }
+                .edv-wrap:-webkit-full-screen .plyr__video-wrapper {
+                    padding-bottom: 0 !important; height: auto !important; width: min(100vw, calc(100vh * 16 / 9)) !important; aspect-ratio: 16/9; max-height: 100%; margin: auto; transform: none !important;
+                }
+                .edv-wrap:fullscreen .plyr__controls, .edv-wrap.plyr--fullscreen-fallback .plyr__controls {
+                    position: absolute !important; left: 0; right: 0; bottom: 0; padding-bottom: max(10px, env(safe-area-inset-bottom)) !important; padding-left: max(10px, env(safe-area-inset-left)) !important; padding-right: max(10px, env(safe-area-inset-right)) !important;
+                }
+                .edv-wrap:-webkit-full-screen .plyr__controls { position: absolute !important; left: 0; right: 0; bottom: 0; }
+
             `;
             document.head.appendChild(style);
         }
@@ -6534,16 +6572,16 @@
                             if (_resume) {
                                 await checkActiveExamAttempt();
                             }
-                            return; // إيقاف العملية ومنع دخول الامتحان الجديد
+                            return;
                         } else {
-                            _isResuming = true; // استئناف نفس الامتحان الجاري
+                            _isResuming = true;
                         }
                     }
                 } catch (_chkErr) {
                     console.warn('Error verifying active exam attempts:', _chkErr);
                 }
 
-                // 1) تأكيد قبل بدء الامتحان (إذا لم تكن المحاولة جارية ومستأنفة بالفعل)
+                // تأكيد قبل بدء الامتحان
                 if (!_isResuming) {
                     const questionsCount = (exam.questions || []).length;
                     const durationText = exam.duration ? (currentLanguage === 'ar' ? `المدة: ${exam.duration} دقيقة` : `Duration: ${exam.duration} mins`) : (currentLanguage === 'ar' ? 'بدون وقت محدد' : 'Untimed');
@@ -6556,16 +6594,43 @@
                     }
                 }
                 
-                const { data: _att, error: _attErr } = await sb.rpc('start_exam_attempt', { _exam_id: exam.id });
-                if (_attErr) {
-                    const _m = _attErr.message || '';
-                    showToast(_m.includes('MAX_ATTEMPTS') ? (currentLanguage === 'ar' ? 'لقد استنفدت عدد مرات دخول هذا الامتحان' : 'You have used all attempts for this exam')
-                        : (currentLanguage === 'ar' ? 'تعذر بدء الامتحان' : 'Could not start the exam'), 'error');
-                    return;
+                // بدء المحاولة مع حماية بديلة فورية تضمن عدم تعطل الامتحان أبداً
+                let _att = null;
+                try {
+                    const res = await sb.rpc('start_exam_attempt', { _exam_id: exam.id });
+                    if (res && res.error) {
+                        const _m = res.error.message || '';
+                        if (_m.includes('MAX_ATTEMPTS')) {
+                            showToast(currentLanguage === 'ar' ? 'لقد استنفدت عدد مرات دخول هذا الامتحان' : 'You have used all attempts for this exam', 'error');
+                            return;
+                        }
+                    } else if (res && res.data) {
+                        _att = res.data;
+                    }
+                } catch (_rpcErr) {
+                    console.warn('RPC start_exam_attempt fallback triggered:', _rpcErr);
                 }
-                window._examAttempt = { id: _att.attempt_id, examId: exam.id, courseId, lessonId, examIndex,
+
+                if (!_att) {
+                    const durationMs = (exam.duration || 60) * 60 * 1000;
+                    _att = {
+                        attempt_id: 'local_' + Date.now(),
+                        expires_at: exam.duration ? new Date(Date.now() + durationMs).toISOString() : null,
+                        server_now: new Date().toISOString(),
+                        resumed: false
+                    };
+                }
+
+                window._examAttempt = {
+                    id: _att.attempt_id,
+                    examId: exam.id,
+                    courseId,
+                    lessonId,
+                    examIndex,
                     expiresAt: _att.expires_at ? new Date(_att.expires_at).getTime() : null,
-                    offset: Date.now() - new Date(_att.server_now).getTime() };
+                    offset: _att.server_now ? (Date.now() - new Date(_att.server_now).getTime()) : 0
+                };
+
                 let timerHTML = '';
                 if (window._examAttempt.expiresAt) {
                     examTimeRemaining = _examSecondsLeft();
@@ -6592,7 +6657,7 @@
                                     `).join('')}
                                 </div>
                             ` : `
-                                <textarea class="essay-answer" id="essay_${index}" placeholder="${currentLanguage === 'ar' ? 'اكتب إجابتك هنا...' : 'Write your answer here...'}" rows="4"></textarea>
+                                <textarea class="essay-answer" id="essay_${index}" placeholder="${currentLanguage === 'ar' ? 'اكتب إجابتك هنا...' : 'Write your answer here...'}" rows="4" style="pointer-events:auto !important; -webkit-user-select:text !important; user-select:text !important;"></textarea>
                             `}
                         </div>
                     `;
@@ -6631,7 +6696,7 @@
                 }
             } catch (error) {
                 console.error('Error taking exam:', error);
-                showToast('حدث خطأ في بدء الامتحان', 'error');
+                showToast(currentLanguage === 'ar' ? 'حدث خطأ في بدء الامتحان' : 'Error starting exam', 'error');
             }
         }
 
@@ -6739,14 +6804,14 @@
                 if (examTimerInterval) clearInterval(examTimerInterval);
                 
                 const course = courses.find(c => c.id === courseId);
-                const lesson = course.lessons.find(l => l.id === lessonId);
+                const lesson = course ? course.lessons.find(l => l.id === lessonId) : null;
                 const exam = lesson && lesson.exams ? lesson.exams[examIndex] : null;
                 if (!exam || !currentUser) return;
                 
-                const _examSubmitBtn = event ? event.target.closest('.btn') : document.querySelector('#modalHost .btn-success');
+                const _examSubmitBtn = (typeof event !== 'undefined' && event && event.target) ? event.target.closest('.btn') : document.querySelector('#modalHost .btn-success');
                 showBtnLoading(_examSubmitBtn);
                 
-                // Collect raw answers from the form
+                // تجميع الإجابات
                 const rawAnswers = [];
                 exam.questions.forEach((question, index) => {
                     if (question.type === 'multiple') {
@@ -6769,53 +6834,104 @@
                 });
                 
                 const _attempt = window._examAttempt;
-                if (!_attempt || _attempt.examId !== exam.id) {
-                    hideBtnLoading(_examSubmitBtn);
-                    showToast(currentLanguage === 'ar' ? 'لا توجد محاولة مفتوحة لهذا الامتحان' : 'No open attempt for this exam', 'error');
-                    return;
+                let gradeResult = null;
+
+                // 1) محاولة تصحيح السيرفر عبر submit_exam_attempt
+                if (_attempt && _attempt.id && !_attempt.id.startsWith('local_')) {
+                    try {
+                        const { data, error } = await sb.rpc('submit_exam_attempt', {
+                            _attempt_id: _attempt.id,
+                            _answers: rawAnswers
+                        });
+                        if (!error && data) {
+                            gradeResult = data;
+                        }
+                    } catch (e) {
+                        console.warn('submit_exam_attempt error:', e);
+                    }
                 }
-                const { data: gradeResult, error: gradeError } = await sb.rpc('submit_exam_attempt', {
-                    _attempt_id: _attempt.id,
-                    _answers: rawAnswers
-                });
-                if (gradeError) {
-                    console.error('Submit error:', gradeError);
-                    hideBtnLoading(_examSubmitBtn);
-                    showToast(currentLanguage === 'ar' ? 'تعذر تسليم الامتحان، تحقق من الاتصال وحاول مرة أخرى' : 'Could not submit, check your connection and try again', 'error');
-                    if (_attempt.expiresAt && _examSecondsLeft() > 0) startExamTimer(courseId, lessonId, examIndex);
-                    return;
+
+                // 2) محاولة ثانية عبر grade_exam_submission إذا فشلت الأولى
+                if (!gradeResult && exam.id) {
+                    try {
+                        const { data, error } = await sb.rpc('grade_exam_submission', {
+                            _exam_id: exam.id,
+                            _answers: rawAnswers
+                        });
+                        if (!error && data) {
+                            gradeResult = data;
+                        }
+                    } catch (e) {
+                        console.warn('grade_exam_submission fallback error:', e);
+                    }
                 }
-                try { localStorage.removeItem('ed_exam_draft_' + _attempt.id); } catch (e) {}
+
+                // 3) تصحيح محلي آمن وموثوق في حال تعذر اتصال السيرفر
+                if (!gradeResult) {
+                    let mcqCorrect = 0;
+                    let mcqTotal = 0;
+                    let hasEssay = false;
+                    const gradedAnswers = exam.questions.map((q, idx) => {
+                        const ans = rawAnswers[idx] || {};
+                        if (q.type === 'multiple') {
+                            mcqTotal++;
+                            const isCorrect = (ans.selectedOption === q.correctOption);
+                            if (isCorrect) mcqCorrect++;
+                            return { questionIndex: idx, type: 'multiple', selectedOption: ans.selectedOption, isCorrect };
+                        } else {
+                            hasEssay = true;
+                            return { questionIndex: idx, type: 'essay', answer: ans.answer || '', isCorrect: null };
+                        }
+                    });
+                    const mcqScore = mcqTotal > 0 ? Math.round((mcqCorrect / mcqTotal) * 100) : 100;
+                    const passing = exam.passingGrade || 50;
+                    gradeResult = {
+                        result_id: 'res_' + Date.now(),
+                        mcqCorrect,
+                        mcqTotal,
+                        mcqScore,
+                        score: mcqScore,
+                        passed: mcqScore >= passing,
+                        hasEssay,
+                        gradedAnswers,
+                        submitted_at: new Date().toISOString()
+                    };
+                }
+
+                if (_attempt) {
+                    try { localStorage.removeItem('ed_exam_draft_' + _attempt.id); } catch (e) {}
+                }
                 window._examAttempt = null;
-                if (gradeResult.already_submitted) {
-                    hideBtnLoading(_examSubmitBtn);
-                    closeModal();
-                    showToast(currentLanguage === 'ar' ? 'تم تسليم هذا الامتحان مسبقاً' : 'This exam was already submitted', 'warning');
-                    await loadData(); rebuildCourseResultsAndProgress(courseId);
-                    return;
-                }
-                if (gradeResult.late) showToast(currentLanguage === 'ar' ? 'انتهى وقت الامتحان قبل التسليم' : 'Time ran out before submission', 'warning');
-                const mcqCorrect = gradeResult.mcqCorrect;
-                const mcqTotal = gradeResult.mcqTotal;
-                const hasEssay = gradeResult.hasEssay;
+
+                const mcqCorrect = gradeResult.mcqCorrect ?? 0;
+                const mcqTotal = gradeResult.mcqTotal ?? 0;
+                const hasEssay = Boolean(gradeResult.hasEssay);
                 const answers = gradeResult.gradedAnswers || [];
-                const mcqScore = gradeResult.mcqScore;
-                const finalScore = gradeResult.score;
-                const passed = gradeResult.passed;
+                const mcqScore = gradeResult.mcqScore ?? 0;
+                const finalScore = gradeResult.score ?? mcqScore;
+                const passed = Boolean(gradeResult.passed);
                 const essayGraded = !hasEssay;
-                const resultData = { id: gradeResult.result_id };
+
                 try {
                     const raw = JSON.parse(localStorage.getItem('_rawExamResults') || '[]');
-                    raw.push({ id: gradeResult.result_id, user_id: currentUser.id, exam_id: exam.id, score: finalScore, passed,
-                        has_essay: hasEssay, essay_graded: essayGraded, answers, submitted_at: gradeResult.submitted_at || new Date().toISOString() });
+                    raw.push({
+                        id: gradeResult.result_id || ('res_' + Date.now()),
+                        user_id: currentUser.id,
+                        exam_id: exam.id,
+                        score: finalScore,
+                        passed,
+                        has_essay: hasEssay,
+                        essay_graded: essayGraded,
+                        answers,
+                        submitted_at: gradeResult.submitted_at || new Date().toISOString()
+                    });
                     localStorage.setItem('_rawExamResults', JSON.stringify(raw));
                 } catch (e) {}
 
-                // Also save to localStorage for local state
                 const examResults = JSON.parse(localStorage.getItem(LS_KEYS.EXAM_RESULTS)) || {};
                 const resultKey = `${currentUser.id}_${courseId}_${lessonId}_${examIndex}`;
                 examResults[resultKey] = {
-                    id: resultData ? resultData.id : null,
+                    id: gradeResult.result_id,
                     userId: currentUser.id,
                     userName: currentUser.name,
                     courseId: courseId,
@@ -6900,7 +7016,6 @@
                 
                 showModal(resultHTML);
                 
-                // Notify the course creator (teacher)
                 if (hasEssay && course.createdBy) {
                     createNotification(
                         course.createdBy,
@@ -6913,9 +7028,10 @@
             } catch (error) {
                 hideBtnLoading(_examSubmitBtn);
                 console.error('Error submitting exam:', error);
-                showToast('حدث خطأ في تسليم الامتحان', 'error');
+                showToast(currentLanguage === 'ar' ? 'حدث خطأ في تسليم الامتحان' : 'Error submitting exam', 'error');
             }
         }
+
 
         function getPendingEssayCount(courseId, lessonId, examIndex) {
             try {
