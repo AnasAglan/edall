@@ -2607,12 +2607,12 @@
             wm.className = 'video-watermark';
             wm.setAttribute('dir', 'ltr');
             wm.textContent = text;
-            wm.style.cssText = 'position:absolute;top:6%;left:6%;pointer-events:none !important;z-index:2147483640 !important;'
-                + 'color:#ffffff;background:rgba(0,0,0,0.65);padding:4px 10px;border-radius:6px;'
+            wm.style.cssText = 'position:absolute;top:8%;left:8%;pointer-events:none !important;z-index:2147483640 !important;'
+                + 'color:#ffffff;background:rgba(0,0,0,0.7);padding:5px 12px;border-radius:6px;'
                 + 'text-shadow:0 1px 3px rgba(0,0,0,.9);font-weight:800;font-size:.85rem;letter-spacing:.5px;'
-                + 'white-space:nowrap;max-width:calc(100% - 24px);overflow:hidden;text-overflow:ellipsis;'
-                + 'box-shadow:0 2px 8px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.25);'
-                + 'transition:top 3s linear,left 3s linear;user-select:none !important;';
+                + 'white-space:nowrap;max-width:80%;overflow:hidden;text-overflow:ellipsis;'
+                + 'box-shadow:0 2px 10px rgba(0,0,0,0.7);border:1px solid rgba(255,255,255,0.3);'
+                + 'transition:all 2s ease-in-out;user-select:none !important;';
             return wm;
         }
 
@@ -2642,15 +2642,29 @@
             });
             observer.observe(wrap, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
 
-            // إحداثيات مدروسة لا تتجاوز حدود الفيديو أو الآي فريم نهائياً
-            const spots = [['6%','6%'], ['6%','35%'], ['50%','35%'], ['50%','6%'], ['28%','20%']];
+            // إحداثيات محصورة 100% داخل مساحة الفيديو والـ iframe ولا تخرج أبداً
+            const positions = [
+                { top: '8%', left: '8%', right: 'auto', bottom: 'auto', transform: 'none' },
+                { top: '8%', right: '8%', left: 'auto', bottom: 'auto', transform: 'none' },
+                { top: '50%', left: '50%', right: 'auto', bottom: 'auto', transform: 'translate(-50%, -50%)' },
+                { bottom: '15%', left: '8%', top: 'auto', right: 'auto', transform: 'none' },
+                { bottom: '15%', right: '8%', top: 'auto', left: 'auto', transform: 'none' }
+            ];
 
             let i = 0;
             const timer = setInterval(() => {
                 if (!document.body.contains(wrap)) { clearInterval(timer); observer.disconnect(); return; }
                 const wm = wrap.querySelector('.video-watermark');
-                if (wm) { i = (i + 1) % spots.length; wm.style.top = spots[i][0]; wm.style.left = spots[i][1]; }
-            }, 4000);
+                if (wm) {
+                    i = (i + 1) % positions.length;
+                    const p = positions[i];
+                    wm.style.top = p.top;
+                    wm.style.left = p.left;
+                    wm.style.right = p.right;
+                    wm.style.bottom = p.bottom;
+                    wm.style.transform = p.transform;
+                }
+            }, 4500);
         }
 
         function isElementFullscreen(el) {
@@ -2662,7 +2676,7 @@
             const wm = wrap.querySelector('.video-watermark');
             if (!wm) return;
             const full = isElementFullscreen(wrap) || wrap.classList.contains('plyr--fullscreen-fallback');
-            wm.style.fontSize = full ? '1.5rem' : '.85rem';
+            wm.style.fontSize = full ? '1.4rem' : '.85rem';
         }
 
         function toggleVideoFullscreen(wrap, iframe, btn) {
@@ -2670,19 +2684,21 @@
             const exitFallback = () => {
                 wrap.classList.remove('plyr--fullscreen-fallback');
                 document.body.style.overflow = '';
+                if (iframe) iframe.style.height = '315px';
                 if (btn) btn.innerHTML = '<i class="fas fa-expand"></i>';
                 applyWatermarkScale(wrap);
             };
             const enterFallback = () => {
                 wrap.classList.add('plyr--fullscreen-fallback');
                 document.body.style.overflow = 'hidden';
+                if (iframe) iframe.style.height = '100%';
                 if (btn) btn.innerHTML = '<i class="fas fa-compress"></i>';
                 applyWatermarkScale(wrap);
             };
 
             if (inFs) {
                 if (document.fullscreenElement || document.webkitFullscreenElement) {
-                    (document.exitFullscreen || document.webkitExitFullscreen || function(){}).call(document);
+                    try { (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch (e) {}
                 }
                 exitFallback();
             } else {
@@ -2699,7 +2715,6 @@
             }
         }
 
-
         function toggleLessonVideo(btn, containerId, encodedUrl, num) {
             const container = document.getElementById(containerId);
             if (!container) return;
@@ -2708,13 +2723,14 @@
             if (container.style.display === 'none' || !container.style.display) {
                 const src = decodeURIComponent(encodedUrl);
                 const wrap = document.createElement('div');
-                wrap.style.cssText = 'position:relative;border-radius:var(--radius);overflow:hidden;background:#000;';
+                wrap.style.cssText = 'position:relative;border-radius:var(--radius);overflow:hidden;background:#000;width:100%;';
                 const iframe = document.createElement('iframe');
                 iframe.setAttribute('width', '100%');
                 iframe.setAttribute('height', '315');
                 iframe.setAttribute('frameborder', '0');
                 iframe.style.cssText = 'width:100%;height:315px;border:0;display:block;';
                 iframe.setAttribute('allow', 'autoplay; fullscreen; encrypted-media; picture-in-picture');
+                iframe.setAttribute('allowfullscreen', 'true');
                 iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
                 wrap.classList.add('edv-wrap', 'ed-protected-video');
                 iframe.src = src;
@@ -2722,39 +2738,41 @@
                 iframe.style.zIndex = '1';
                 wrap.appendChild(iframe);
 
-                if (text) {
-                    // Custom fullscreen so the watermark stays visible over the video
-                    const fsBtn = document.createElement('button');
-                    fsBtn.type = 'button';
-                    fsBtn.className = 'video-fs-btn';
-                    fsBtn.innerHTML = '<i class="fas fa-expand"></i>';
-                    fsBtn.title = currentLanguage === 'ar' ? 'ملء الشاشة' : 'Fullscreen';
-                    fsBtn.style.cssText = 'position:absolute;bottom:10px;inset-inline-end:10px;z-index:11;'
-                        + 'background:rgba(0,0,0,.6);color:#fff;border:0;border-radius:8px;'
-                        + 'padding:8px 10px;cursor:pointer;font-size:1rem;';
-                    fsBtn.onclick = function(){ toggleVideoFullscreen(wrap, iframe, fsBtn); };
-                    wrap.appendChild(fsBtn);
+                const text = getWatermarkText();
+                // زر التكبير المخصص المضمون
+                const fsBtn = document.createElement('button');
+                fsBtn.type = 'button';
+                fsBtn.className = 'video-fs-btn';
+                fsBtn.innerHTML = '<i class="fas fa-expand"></i>';
+                fsBtn.title = currentLanguage === 'ar' ? 'ملء الشاشة' : 'Fullscreen';
+                fsBtn.style.cssText = 'position:absolute;bottom:10px;inset-inline-end:10px;z-index:2147483645;'
+                    + 'background:rgba(0,0,0,.75);color:#fff;border:1px solid rgba(255,255,255,0.3);border-radius:8px;'
+                    + 'padding:8px 12px;cursor:pointer;font-size:1.1rem;line-height:1;display:flex;align-items:center;justify-content:center;';
+                fsBtn.onclick = function(e){
+                    e.stopPropagation();
+                    toggleVideoFullscreen(wrap, iframe, fsBtn);
+                };
+                wrap.appendChild(fsBtn);
 
+                if (text) {
                     wrap.appendChild(buildWatermarkLayer(text));
                     guardWatermark(wrap, text);
-
-                    const onFsChange = () => {
-                        if (!document.body.contains(wrap)) {
-                            document.removeEventListener('fullscreenchange', onFsChange);
-                            document.removeEventListener('webkitfullscreenchange', onFsChange);
-                            return;
-                        }
-                        const full = isElementFullscreen(wrap);
-                        iframe.style.height = full ? '100%' : '315px';
-                        wrap.style.height = full ? '100%' : '';
-                        fsBtn.innerHTML = full ? '<i class="fas fa-compress"></i>' : '<i class="fas fa-expand"></i>';
-                        applyWatermarkScale(wrap);
-                    };
-                    document.addEventListener('fullscreenchange', onFsChange);
-                    document.addEventListener('webkitfullscreenchange', onFsChange);
-                } else {
-                    iframe.setAttribute('allowfullscreen', 'true');
                 }
+
+                const onFsChange = () => {
+                    if (!document.body.contains(wrap)) {
+                        document.removeEventListener('fullscreenchange', onFsChange);
+                        document.removeEventListener('webkitfullscreenchange', onFsChange);
+                        return;
+                    }
+                    const full = isElementFullscreen(wrap);
+                    iframe.style.height = full ? '100%' : '315px';
+                    fsBtn.innerHTML = full ? '<i class="fas fa-compress"></i>' : '<i class="fas fa-expand"></i>';
+                    applyWatermarkScale(wrap);
+                };
+                document.addEventListener('fullscreenchange', onFsChange);
+                document.addEventListener('webkitfullscreenchange', onFsChange);
+
                 container.innerHTML = '';
                 container.appendChild(wrap);
                 container.style.display = 'block';
@@ -2766,6 +2784,7 @@
             }
         }
         window.toggleLessonVideo = toggleLessonVideo;
+
 
         // Hide YouTube chrome by cropping: the iframe is twice as tall as the visible
         // 16:9 box, so YouTube's title bar (top) and logo/controls (bottom) fall outside.
@@ -6539,10 +6558,80 @@
             }
         }
 
+        // ==================== دوال مؤقت ومسودة الامتحان المكتملة ====================
+        function formatTime(seconds) {
+            const sec = Math.max(0, Number(seconds) || 0);
+            const m = Math.floor(sec / 60);
+            const s = Math.floor(sec % 60);
+            return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        }
+
+        function _examSecondsLeft() {
+            const a = window._examAttempt;
+            if (!a || !a.expiresAt) return 0;
+            const now = Date.now() - (a.offset || 0);
+            return Math.max(0, Math.floor((a.expiresAt - now) / 1000));
+        }
+
+        function _examDraftKey() {
+            return window._examAttempt ? ('ed_exam_draft_' + window._examAttempt.id) : null;
+        }
+
+        function _saveExamDraft() {
+            try {
+                const k = _examDraftKey();
+                if (!k) return;
+                const data = { radios: {}, essays: {} };
+                document.querySelectorAll('#examQuestionsContainer input[type=radio]:checked').forEach(r => {
+                    data.radios[r.name] = r.value;
+                });
+                document.querySelectorAll('#examQuestionsContainer textarea.essay-answer').forEach(t => {
+                    data.essays[t.id] = t.value;
+                });
+                localStorage.setItem(k, JSON.stringify(data));
+            } catch (e) {}
+        }
+
+        function _restoreExamDraft() {
+            try {
+                const k = _examDraftKey();
+                if (!k) return;
+                const saved = JSON.parse(localStorage.getItem(k) || '{}');
+                if (saved.radios) {
+                    Object.entries(saved.radios).forEach(([name, val]) => {
+                        const rad = document.querySelector(`input[name="${name}"][value="${val}"]`);
+                        if (rad) rad.checked = true;
+                    });
+                }
+                if (saved.essays) {
+                    Object.entries(saved.essays).forEach(([id, val]) => {
+                        const el = document.getElementById(id);
+                        if (el) el.value = val;
+                    });
+                }
+            } catch (e) {}
+        }
+
+        function startExamTimer(courseId, lessonId, examIndex) {
+            if (examTimerInterval) clearInterval(examTimerInterval);
+            examTimerInterval = setInterval(() => {
+                examTimeRemaining = _examSecondsLeft();
+                const timerText = document.getElementById('examTimerText');
+                if (timerText) {
+                    timerText.textContent = formatTime(examTimeRemaining);
+                }
+                if (examTimeRemaining <= 0) {
+                    clearInterval(examTimerInterval);
+                    showToast(currentLanguage === 'ar' ? 'انتهى الوقت المحدد! يتم تسليم الامتحان تلقائياً...' : 'Time is up! Submitting...', 'warning');
+                    submitExam(courseId, lessonId, examIndex);
+                }
+            }, 1000);
+        }
+
         async function takeExam(courseId, lessonId, examIndex) {
             try {
                 const course = courses.find(c => c.id === courseId);
-                const lesson = course ? course.lessons.find(l => l.id === lessonId) : null;
+                const lesson = course ? (course.lessons || []).find(l => l.id === lessonId) : null;
                 const exam = lesson && lesson.exams ? lesson.exams[examIndex] : null;
                 
                 if (!exam) {
@@ -6555,7 +6644,7 @@
                     return;
                 }
 
-                // فحص حاسم: التحقق من وجود أي امتحان آخر مفتوح وجاري حالياً ومنع فتحه
+                // فحص أي محاولة نشطة مفتوحة
                 let _isResuming = false;
                 try {
                     const { data: _activeAtt } = await sb.rpc('get_active_exam_attempt');
@@ -6566,8 +6655,8 @@
                                 : 'Cannot enter this exam! You have another active exam running.', 'error');
                             
                             const _resume = confirm(currentLanguage === 'ar'
-                                ? '⚠️ تنبيه حاسم:\nلديك بالفعل امتحان آخر قيد التشغيل حالياً ولم ينتهِ وقته بعد!\n\nلا يُسمح بالنظام بفتح أكثر من امتحان في نفس الوقت.\n\nهل تريد الانتقال إلى امتحانك المفتوح الآن لمتابعته وتسليمه؟'
-                                : '⚠️ Alert:\nYou already have another exam currently in progress!\n\nTaking multiple exams at once is not allowed.\n\nDo you want to switch to your running exam now?');
+                                ? '⚠️ تنبيه:\nلديك بالفعل امتحان آخر قيد التشغيل حالياً ولم ينتهِ وقته بعد!\n\nهل تريد الانتقال إلى امتحانك المفتوح الآن؟'
+                                : '⚠️ Alert:\nYou already have another exam in progress! Switch to it?');
                             
                             if (_resume) {
                                 await checkActiveExamAttempt();
@@ -6578,44 +6667,43 @@
                         }
                     }
                 } catch (_chkErr) {
-                    console.warn('Error verifying active exam attempts:', _chkErr);
+                    console.warn('active attempt check ignored:', _chkErr);
                 }
 
-                // تأكيد قبل بدء الامتحان
+                // تأكيد قبل البدء
                 if (!_isResuming) {
-                    const questionsCount = (exam.questions || []).length;
-                    const durationText = exam.duration ? (currentLanguage === 'ar' ? `المدة: ${exam.duration} دقيقة` : `Duration: ${exam.duration} mins`) : (currentLanguage === 'ar' ? 'بدون وقت محدد' : 'Untimed');
-                    const startConfirmMsg = currentLanguage === 'ar'
-                        ? `هل أنت مستعد لبدء امتحان "${exam.title || lesson.title}"؟\n- عدد الأسئلة: ${questionsCount}\n- ${durationText}\n\nتنبيه: سيبدأ احتساب محاولتك ووقت الامتحان فور الضغط على موافق.`
-                        : `Are you ready to start the exam "${exam.title || lesson.title}"?\n- Questions: ${questionsCount}\n- ${durationText}\n\nNote: Your attempt and timer will start immediately.`;
+                    const qCount = (exam.questions || []).length;
+                    const dur = (exam.timeLimit || exam.duration);
+                    const durTxt = dur ? (currentLanguage === 'ar' ? `المدة: ${dur} دقيقة` : `Duration: ${dur} mins`) : (currentLanguage === 'ar' ? 'بدون وقت محدد' : 'Untimed');
+                    const msg = currentLanguage === 'ar'
+                        ? `هل أنت مستعد لبدء امتحان "${exam.title || lesson.title}"؟\n- عدد الأسئلة: ${qCount}\n- ${durTxt}\n\nتنبيه: سيبدأ احتساب الوقت فور الضغط على موافق.`
+                        : `Ready to start exam "${exam.title || lesson.title}"?\n- Questions: ${qCount}\n- ${durTxt}\n\nNote: Timer starts immediately.`;
                     
-                    if (!confirm(startConfirmMsg)) {
-                        return;
-                    }
+                    if (!confirm(msg)) return;
                 }
-                
-                // بدء المحاولة مع حماية بديلة فورية تضمن عدم تعطل الامتحان أبداً
+
+                // بدء المحاولة مع Fallback مضمون
                 let _att = null;
                 try {
                     const res = await sb.rpc('start_exam_attempt', { _exam_id: exam.id });
                     if (res && res.error) {
-                        const _m = res.error.message || '';
-                        if (_m.includes('MAX_ATTEMPTS')) {
+                        const m = res.error.message || '';
+                        if (m.includes('MAX_ATTEMPTS')) {
                             showToast(currentLanguage === 'ar' ? 'لقد استنفدت عدد مرات دخول هذا الامتحان' : 'You have used all attempts for this exam', 'error');
                             return;
                         }
                     } else if (res && res.data) {
                         _att = res.data;
                     }
-                } catch (_rpcErr) {
-                    console.warn('RPC start_exam_attempt fallback triggered:', _rpcErr);
+                } catch (rpcErr) {
+                    console.warn('start_exam_attempt fallback triggered:', rpcErr);
                 }
 
                 if (!_att) {
-                    const durationMs = (exam.duration || 60) * 60 * 1000;
+                    const limitMin = (exam.timeLimit || exam.duration);
                     _att = {
                         attempt_id: 'local_' + Date.now(),
-                        expires_at: exam.duration ? new Date(Date.now() + durationMs).toISOString() : null,
+                        expires_at: limitMin ? new Date(Date.now() + limitMin * 60000).toISOString() : null,
                         server_now: new Date().toISOString(),
                         resumed: false
                     };
@@ -6634,13 +6722,15 @@
                 let timerHTML = '';
                 if (window._examAttempt.expiresAt) {
                     examTimeRemaining = _examSecondsLeft();
-                    timerHTML = `<div class="exam-timer" id="examTimer"><i class="fas fa-clock"></i> <span id="examTimerText">${formatTime(examTimeRemaining)}</span></div>`;
+                    timerHTML = `<div class="exam-timer" id="examTimer" style="background:var(--primary);color:#fff;padding:8px 16px;border-radius:20px;font-weight:bold;display:inline-flex;align-items:center;gap:8px;margin-bottom:14px;"><i class="fas fa-clock"></i> <span id="examTimerText">${formatTime(examTimeRemaining)}</span></div>`;
                 }
-                
+
                 let questionsHTML = '';
-                exam.questions.forEach((question, index) => {
+                const qList = exam.questions || [];
+                qList.forEach((question, index) => {
+                    const opts = Array.isArray(question.options) ? question.options : [];
                     questionsHTML += `
-                        <div class="question-item" id="examQ_${index}">
+                        <div class="question-item" id="examQ_${index}" style="background:var(--card-light);padding:14px;border-radius:8px;margin-bottom:12px;border:1px solid var(--border);">
                             <div style="font-weight:bold;margin-bottom:10px;">
                                 ${currentLanguage === 'ar' ? 'سؤال' : 'Question'} ${index + 1}: ${question.text}
                                 <span class="badge ${question.type === 'multiple' ? 'badge-accent' : 'badge-primary'}" style="margin-right:8px;margin-left:8px;">
@@ -6648,24 +6738,24 @@
                                 </span>
                             </div>
                             ${question.type === 'multiple' ? `
-                                <div class="options-container">
-                                    ${question.options.map((option, optIndex) => `
-                                        <div class="option-row" style="cursor:pointer;" onclick="document.getElementById('q${index}_opt${optIndex}').checked = true;">
+                                <div class="options-container" style="display:flex;flex-direction:column;gap:8px;">
+                                    ${opts.map((option, optIndex) => `
+                                        <div class="option-row" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;background:rgba(255,255,255,0.03);" onclick="const r = document.getElementById('q${index}_opt${optIndex}'); if(r){ r.checked = true; _saveExamDraft(); }">
                                             <input type="radio" name="question_${index}" value="${optIndex}" id="q${index}_opt${optIndex}" style="width:auto;margin:0;">
-                                            <label for="q${index}_opt${optIndex}" style="cursor:pointer;flex:1;">${option}</label>
+                                            <label for="q${index}_opt${optIndex}" style="cursor:pointer;flex:1;margin:0;">${option}</label>
                                         </div>
                                     `).join('')}
                                 </div>
                             ` : `
-                                <textarea class="essay-answer" id="essay_${index}" placeholder="${currentLanguage === 'ar' ? 'اكتب إجابتك هنا...' : 'Write your answer here...'}" rows="4" style="pointer-events:auto !important; -webkit-user-select:text !important; user-select:text !important;"></textarea>
+                                <textarea class="essay-answer" id="essay_${index}" placeholder="${currentLanguage === 'ar' ? 'اكتب إجابتك هنا...' : 'Write your answer here...'}" rows="4" style="width:100%;pointer-events:auto !important; -webkit-user-select:text !important; user-select:text !important; border-radius:6px; padding:10px;"></textarea>
                             `}
                         </div>
                     `;
                 });
 
-                let navHTML = '<div class="question-navigation">';
-                exam.questions.forEach((_, index) => {
-                    navHTML += `<button class="question-nav-btn" onclick="document.getElementById('examQ_${index}').scrollIntoView({behavior:'smooth'})">${index + 1}</button>`;
+                let navHTML = '<div class="question-navigation" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;">';
+                qList.forEach((_, index) => {
+                    navHTML += `<button type="button" class="question-nav-btn btn btn-sm" onclick="document.getElementById('examQ_${index}')?.scrollIntoView({behavior:'smooth'})" style="padding:4px 10px;">${index + 1}</button>`;
                 });
                 navHTML += '</div>';
 
@@ -6675,9 +6765,9 @@
                     </div>
                     ${timerHTML}
                     ${navHTML}
-                    ${_att.resumed ? `<div style="padding:10px;margin-bottom:10px;border-radius:var(--radius-sm);background:rgba(245,158,11,0.12);color:var(--warning);"><i class="fas fa-info-circle"></i> ${currentLanguage === 'ar' ? 'لديك امتحان مفتوح، الوقت مستمر منذ بدايته.' : 'You have an open exam; the timer kept running since it started.'}</div>` : ''}
+                    ${_att.resumed ? `<div style="padding:10px;margin-bottom:12px;border-radius:var(--radius-sm);background:rgba(245,158,11,0.12);color:var(--warning);"><i class="fas fa-info-circle"></i> ${currentLanguage === 'ar' ? 'لديك امتحان مفتوح، الوقت مستمر منذ بدايته.' : 'Open exam resumed; timer kept running.'}</div>` : ''}
                     <div id="examQuestionsContainer">${questionsHTML}</div>
-                    <div class="exam-controls">
+                    <div class="exam-controls" style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end;">
                         <button class="btn btn-success" onclick="confirmAndSubmitExam('${courseId}', '${lessonId}', ${examIndex})">
                             <i class="fas fa-paper-plane"></i> ${currentLanguage === 'ar' ? 'تسليم الامتحان' : 'Submit Exam'}
                         </button>
@@ -6686,13 +6776,20 @@
                         </button>
                     </div>
                 `);
-                
+
                 _restoreExamDraft();
-                const _qc = document.getElementById('examQuestionsContainer');
-                if (_qc) { _qc.addEventListener('input', _saveExamDraft); _qc.addEventListener('change', _saveExamDraft); }
+                const qc = document.getElementById('examQuestionsContainer');
+                if (qc) {
+                    qc.addEventListener('input', _saveExamDraft);
+                    qc.addEventListener('change', _saveExamDraft);
+                }
+
                 if (window._examAttempt.expiresAt) {
-                    if (examTimeRemaining <= 0) { submitExam(courseId, lessonId, examIndex); }
-                    else startExamTimer(courseId, lessonId, examIndex);
+                    if (examTimeRemaining <= 0) {
+                        submitExam(courseId, lessonId, examIndex);
+                    } else {
+                        startExamTimer(courseId, lessonId, examIndex);
+                    }
                 }
             } catch (error) {
                 console.error('Error taking exam:', error);
@@ -6700,17 +6797,15 @@
             }
         }
 
-        // دالة التأكيد المزدوج عند التسليم اليدوي
         async function confirmAndSubmitExam(courseId, lessonId, examIndex) {
             try {
                 const course = courses.find(c => c.id === courseId);
-                const lesson = course ? course.lessons.find(l => l.id === lessonId) : null;
+                const lesson = course ? (course.lessons || []).find(l => l.id === lessonId) : null;
                 const exam = lesson && lesson.exams ? lesson.exams[examIndex] : null;
                 if (!exam) return submitExam(courseId, lessonId, examIndex);
 
-                // فحص الأسئلة المتروكة بدون إجابة
                 let unansweredCount = 0;
-                exam.questions.forEach((q, idx) => {
+                (exam.questions || []).forEach((q, idx) => {
                     if (q.type === 'multiple') {
                         if (!document.querySelector(`input[name="question_${idx}"]:checked`)) unansweredCount++;
                     } else {
@@ -6719,30 +6814,23 @@
                     }
                 });
 
-                // التأكيد الأول (مع التنبيه بالأسئلة غير المحلولة)
                 let firstMsg = currentLanguage === 'ar'
                     ? 'هل أنت متأكد من رغبتك في تسليم الامتحان الآن؟'
                     : 'Are you sure you want to submit the exam now?';
                 if (unansweredCount > 0) {
                     firstMsg = currentLanguage === 'ar'
-                        ? `تنبيه: لديك (${unansweredCount}) سؤال/أسئلة لم تقم بالإجابة عليها بعد!\n\nهل ما زلت ترغب في التسليم؟`
-                        : `Warning: You have ${unansweredCount} unanswered question(s)!\n\nDo you still want to proceed with submission?`;
+                        ? `تنبيه: لديك (${unansweredCount}) سؤال لم تجب عليه بعد!\n\nهل ترغب في التسليم بالرغم من ذلك؟`
+                        : `Warning: You have ${unansweredCount} unanswered question(s)!\n\nDo you still want to proceed?`;
                 }
 
-                if (!confirm(firstMsg)) {
-                    return;
-                }
+                if (!confirm(firstMsg)) return;
 
-                // التأكيد الثاني (الحاسم والنهائي)
                 const secondMsg = currentLanguage === 'ar'
                     ? '⚠️ تأكيد نهائي وحاسم:\nبمجرد التسليم لن تتمكن من العودة للامتحان أو تغيير أي إجابة إطلاقاً وسيتم تصحيحها فوراً.\n\nهل تريد الإرسال النهائي الآن؟'
-                    : '⚠️ Final Confirmation:\nOnce submitted, you cannot change any answers and your attempt will be graded immediately.\n\nDo you confirm final submission?';
+                    : '⚠️ Final Confirmation:\nOnce submitted, you cannot change any answers.\n\nDo you confirm final submission?';
 
-                if (!confirm(secondMsg)) {
-                    return;
-                }
+                if (!confirm(secondMsg)) return;
 
-                // تنفيذ التسليم الفعلي
                 submitExam(courseId, lessonId, examIndex);
             } catch (e) {
                 console.error('Confirm submit error:', e);
@@ -6788,7 +6876,7 @@
             if (a && a.expiresAt) {
                 if (!confirm(currentLanguage === 'ar' 
                     ? '⚠️ تنبيه هام:\nالوقت سيستمر في العد على السيرفر حتى لو أغلقت الامتحان، ولن يسمح لك النظام بدخول أي امتحان آخر حتى ينتهي وقته أو تقوم بتسليمه!\n\nهل ما زلت متأكداً من رغبتك في الإغلاق؟' 
-                    : '⚠️ Warning:\nThe timer keeps running on the server even if you close this exam, and you cannot enter any other exam until time ends or you submit it.\n\nAre you sure you want to close?')) return;
+                    : '⚠️ Warning:\nThe timer keeps running on the server even if you close this exam.\n\nAre you sure you want to close?')) return;
                 _saveExamDraft();
             } else if (a) {
                 try { await sb.rpc('abandon_exam_attempt', { _attempt_id: a.id }); } catch (e) {}
@@ -6804,16 +6892,15 @@
                 if (examTimerInterval) clearInterval(examTimerInterval);
                 
                 const course = courses.find(c => c.id === courseId);
-                const lesson = course ? course.lessons.find(l => l.id === lessonId) : null;
+                const lesson = course ? (course.lessons || []).find(l => l.id === lessonId) : null;
                 const exam = lesson && lesson.exams ? lesson.exams[examIndex] : null;
                 if (!exam || !currentUser) return;
                 
                 const _examSubmitBtn = (typeof event !== 'undefined' && event && event.target) ? event.target.closest('.btn') : document.querySelector('#modalHost .btn-success');
                 showBtnLoading(_examSubmitBtn);
                 
-                // تجميع الإجابات
                 const rawAnswers = [];
-                exam.questions.forEach((question, index) => {
+                (exam.questions || []).forEach((question, index) => {
                     if (question.type === 'multiple') {
                         const selected = document.querySelector(`input[name="question_${index}"]:checked`);
                         const selectedValue = selected ? parseInt(selected.value) : -1;
@@ -6836,7 +6923,6 @@
                 const _attempt = window._examAttempt;
                 let gradeResult = null;
 
-                // 1) محاولة تصحيح السيرفر عبر submit_exam_attempt
                 if (_attempt && _attempt.id && !_attempt.id.startsWith('local_')) {
                     try {
                         const { data, error } = await sb.rpc('submit_exam_attempt', {
@@ -6851,7 +6937,6 @@
                     }
                 }
 
-                // 2) محاولة ثانية عبر grade_exam_submission إذا فشلت الأولى
                 if (!gradeResult && exam.id) {
                     try {
                         const { data, error } = await sb.rpc('grade_exam_submission', {
@@ -6866,12 +6951,11 @@
                     }
                 }
 
-                // 3) تصحيح محلي آمن وموثوق في حال تعذر اتصال السيرفر
                 if (!gradeResult) {
                     let mcqCorrect = 0;
                     let mcqTotal = 0;
                     let hasEssay = false;
-                    const gradedAnswers = exam.questions.map((q, idx) => {
+                    const gradedAnswers = (exam.questions || []).map((q, idx) => {
                         const ans = rawAnswers[idx] || {};
                         if (q.type === 'multiple') {
                             mcqTotal++;
