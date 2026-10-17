@@ -2594,25 +2594,24 @@
         }
 
         // ---- Video watermark (student identifier) --------------------------
-        function getWatermarkText() {
-            const u = window.currentUser || (typeof currentUser !== 'undefined' ? currentUser : null);
-            if (!u) return '';
-            const id = u.publicId || u.public_id || '';
-            const mail = (u.email || '').split('@')[0] || '';
-            return (id ? 'ID ' + id : '') + (mail ? ' • ' + mail : '');
-        }
+function getWatermarkText() {
+    const u = window.currentUser || (typeof currentUser !== 'undefined' ? currentUser : null);
+    if (!u) return '';
+    const id = u.publicId || u.public_id || '';
+    return id ? String(id) : '';
+}
 
         function buildWatermarkLayer(text) {
             const wm = document.createElement('div');
             wm.className = 'video-watermark';
             wm.setAttribute('dir', 'ltr');
             wm.textContent = text;
-            wm.style.cssText = 'position:absolute;top:8%;left:8%;pointer-events:none !important;z-index:2147483640 !important;'
-                + 'color:#ffffff;background:rgba(0,0,0,0.7);padding:5px 12px;border-radius:6px;'
-                + 'text-shadow:0 1px 3px rgba(0,0,0,.9);font-weight:800;font-size:.85rem;letter-spacing:.5px;'
-                + 'white-space:nowrap;box-sizing:border-box;max-width:calc(100% - 16px);overflow:hidden;text-overflow:ellipsis;'
-                + 'box-shadow:0 2px 10px rgba(0,0,0,0.7);border:1px solid rgba(255,255,255,0.3);'
-                + 'transition:all 2s ease-in-out;user-select:none !important;';
+            wm.style.cssText =
+    'position:absolute;top:8%;left:8%;pointer-events:none !important;z-index:2147483640 !important;'
+    + 'color:#ffffff;background:transparent;padding:0;border:0;border-radius:0;'
+    + 'text-shadow:0 1px 3px rgba(0,0,0,.95);font-weight:600;font-size:.65rem;letter-spacing:.2px;'
+    + 'white-space:nowrap;max-width:calc(100% - 16px);overflow:hidden;text-overflow:ellipsis;'
+    + 'box-shadow:none;transition:all 2s ease-in-out;user-select:none !important;';
             return wm;
         }
 
@@ -2686,7 +2685,7 @@ if (existingWatermark && !layerHost.contains(existingWatermark)) {
             const wm = wrap.querySelector('.video-watermark');
             if (!wm) return;
             const full = isElementFullscreen(wrap) || wrap.classList.contains('plyr--fullscreen-fallback');
-            wm.style.fontSize = full ? '1.4rem' : '.85rem';
+            wm.style.fontSize = full ? '.8rem' : '.65rem';
         }
 
         function toggleVideoFullscreen(wrap, iframe, btn) {
