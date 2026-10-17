@@ -162,6 +162,9 @@ Menu.setApplicationMenu(editMenu);
   windowRef.webContents.on('will-frame-navigate', (event, details) => { if (!frameAllowed(details.url)) event.preventDefault(); });
   windowRef.webContents.on('will-attach-webview', event => event.preventDefault());
   windowRef.webContents.on('before-input-event', (event, input) => { if (input.key === 'F12' || (input.control && input.shift && ['i','j','c'].includes(input.key.toLowerCase()))) event.preventDefault(); });
+  windowRef.webContents.session.setPermissionCheckHandler((_wc, permission) => {
+  return permission === 'fullscreen';
+});
   windowRef.webContents.session.setPermissionRequestHandler((_wc, permission, callback) => {
   if (permission === 'fullscreen') return callback(true);
   callback(false);
