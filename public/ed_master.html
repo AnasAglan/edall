@@ -3031,10 +3031,23 @@ if (existingWatermark && !layerHost.contains(existingWatermark)) {
             let disposed = false, player = null, bundle = null, sequence = 0, switching = false;
             let refreshTimer = null, renewPromise = null, renewCount = 0, selected = 0;
             let separate = false;
+            let desktopFullscreen = false;
+const originalBodyOverflow = document.body.style.overflow;
             const cleanups = [];
             const listen = (el, name, fn) => { el.addEventListener(name, fn); cleanups.push(() => el.removeEventListener(name, fn)); };
             container._desktopCleanup = () => {
                 disposed = true; sequence++; clearTimeout(refreshTimer);
+                if (desktopFullscreen) {
+    desktopFullscreen = false;
+    wrap.classList.remove('plyr--fullscreen-fallback');
+    document.body.style.overflow = originalBodyOverflow;
+
+    try {
+        if (typeof bridge.setVideoFullscreen === 'function') {
+            bridge.setVideoFullscreen(false).catch(() => {});
+        }
+    } catch (_) {}
+}
                 cleanups.splice(0).forEach(fn => fn());
                 audio.pause(); audio.removeAttribute('src'); audio.load();
                 video.pause(); video.removeAttribute('src'); video.load();
@@ -3135,6 +3148,88 @@ if (existingWatermark && !layerHost.contains(existingWatermark)) {
 },
                     storage: { enabled: false }
                 });
+                const setDesktopFullscreen = async (enabled) => {
+    desktopFullscreen = enabled;
+
+    // استخدام نمط ملء الشاشة الاحتياطي الموجود أصلًا في ملفك
+    wrap.classList.toggle('plyr--fullscreen-fallback', enabled);
+
+    // تحديث حالة زر Plyr وشكله
+    if (player && player.elements && player.elements.container) {
+        player.elements.container.classList.toggle(
+            'plyr--fullscreen-active',
+            enabled
+        );
+    }
+
+    document.body.style.overflow = enabled
+        ? 'hidden'
+        : originalBodyOverflow;
+
+    // طلب ملء الشاشة من Electron نفسه
+    try {
+        if (typeof bridge.setVideoFullscreen === 'function') {
+            await bridge.setVideoFullscreen(enabled);
+        }
+    } catch (error) {
+        console.error(
+            '[ED-ALL] Fullscreen request failed:',
+            error
+        );
+    }
+};
+
+const fsButton =
+    player.elements?.buttons?.fullscreen ||
+    wrap.querySelector('button[data-plyr="fullscreen"]');
+
+if (fsButton) {
+    const onFullscreenClick = (event) => {
+        // منع معالج Plyr الأصلي من تنفيذ طلب آخر
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+
+        void setDesktopFullscreen(!desktopFullscreen);
+    };
+
+    // التقاط النقر قبل معالج Plyr الأصلي
+    fsButton.addEventListener(
+        'click',
+        onFullscreenClick,
+        true
+    );
+
+    cleanups.push(() => {
+        fsButton.removeEventListener(
+            'click',
+            onFullscreenClick,
+            true
+        );
+    });
+}
+
+// السماح بالخروج باستخدام مفتاح Escape
+const onFullscreenEscape = (event) => {
+    if (event.key === 'Escape' && desktopFullscreen) {
+        event.preventDefault();
+        void setDesktopFullscreen(false);
+    }
+};
+
+document.addEventListener(
+    'keydown',
+    onFullscreenEscape,
+    true
+);
+
+cleanups.push(() => {
+    document.removeEventListener(
+        'keydown',
+        onFullscreenEscape,
+        true
+    );
+});
                 container._p = player;
                 const mark = getWatermarkText();
                 if (mark) { wrap.appendChild(buildWatermarkLayer(mark)); guardWatermark(wrap, mark); }
