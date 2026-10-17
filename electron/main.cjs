@@ -139,6 +139,28 @@ Menu.setApplicationMenu(editMenu);
     return true;
   });
 
+ipcMain.handle('edall:video-fullscreen', (event, enabled) => {
+    if (
+        !windowRef ||
+        windowRef.isDestroyed() ||
+        event.sender !== windowRef.webContents ||
+        event.senderFrame !== event.sender.mainFrame
+    ) {
+        throw new Error('Access denied');
+    }
+
+    const fullscreen = enabled === true;
+
+    if (fullscreen) {
+        windowRef.setMenuBarVisibility(false);
+        windowRef.setAutoHideMenuBar(true);
+    }
+
+    windowRef.setFullScreen(fullscreen);
+
+    return true;
+});
+
   protocol.handle('https', async request => {
 
     const url = new URL(request.url);
