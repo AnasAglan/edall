@@ -1687,6 +1687,32 @@
             .topbar .actions .btn span:not(.notification-badge) { display: none; }
             .topbar .actions { gap: 6px; }
         }
+        
+.edv-wrap.ed-desktop-fullscreen {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    z-index: 2147483647 !important;
+    background: #000 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+}
+
+.edv-wrap.ed-desktop-fullscreen .plyr,
+.edv-wrap.ed-desktop-fullscreen video {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+.edv-wrap.ed-desktop-fullscreen video {
+    object-fit: contain !important;
+}
+
     </style>
 </head>
 <body class="dark">
@@ -3148,18 +3174,33 @@ const originalBodyOverflow = document.body.style.overflow;
 },
                     storage: { enabled: false }
                 });
-                const setDesktopFullscreen = async (enabled) => {
+                
+const setDesktopFullscreen = async (enabled) => {
     desktopFullscreen = enabled;
 
-    // استخدام نمط ملء الشاشة الاحتياطي الموجود أصلًا في ملفك
     wrap.classList.toggle('plyr--fullscreen-fallback', enabled);
+    wrap.classList.toggle('ed-desktop-fullscreen', enabled);
 
-    // تحديث حالة زر Plyr وشكله
     if (player && player.elements && player.elements.container) {
         player.elements.container.classList.toggle(
             'plyr--fullscreen-active',
             enabled
         );
+    }
+
+    document.body.style.overflow = enabled
+        ? 'hidden'
+        : originalBodyOverflow;
+
+    try {
+        if (typeof bridge.setVideoFullscreen === 'function') {
+            await bridge.setVideoFullscreen(enabled);
+        }
+    } catch (error) {
+        console.error('[ED-ALL] Fullscreen request failed:', error);
+    }
+};
+
     }
 
     document.body.style.overflow = enabled
