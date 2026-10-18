@@ -126,19 +126,6 @@ Menu.setApplicationMenu(editMenu);
     return extract(id, force === true);
   });
 
-  ipcMain.handle('edall:video-fullscreen', (event, enabled) => {
-    if (
-      !windowRef ||
-      windowRef.isDestroyed() ||
-      event.sender !== windowRef.webContents
-    ) {
-      return false;
-    }
-
-    windowRef.setFullScreen(enabled === true);
-    return true;
-  });
-
 ipcMain.handle('edall:video-fullscreen', (event, enabled) => {
     if (
         !windowRef ||
