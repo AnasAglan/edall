@@ -2719,20 +2719,33 @@ if (existingWatermark && !layerHost.contains(existingWatermark)) {
         }
 
         function toggleVideoFullscreen(wrap, iframe, btn) {
-            const inFs = isElementFullscreen(wrap) || wrap.classList.contains('plyr--fullscreen-fallback');
+            const bridge = window.edallDesktop;
+            const inFs = isElementFullscreen(wrap) || wrap.classList.contains('plyr--fullscreen-fallback') || wrap.classList.contains('ed-desktop-fullscreen');
+            
             const exitFallback = () => {
-                wrap.classList.remove('plyr--fullscreen-fallback');
+                wrap.classList.remove('plyr--fullscreen-fallback', 'ed-desktop-fullscreen');
                 document.body.style.overflow = '';
                 if (iframe) iframe.style.height = '315px';
                 if (btn) btn.innerHTML = '<i class="fas fa-expand"></i>';
                 applyWatermarkScale(wrap);
+                try {
+                    if (bridge && typeof bridge.setVideoFullscreen === 'function') {
+                        bridge.setVideoFullscreen(false).catch(() => {});
+                    }
+                } catch (_) {}
             };
+            
             const enterFallback = () => {
-                wrap.classList.add('plyr--fullscreen-fallback');
+                wrap.classList.add('plyr--fullscreen-fallback', 'ed-desktop-fullscreen');
                 document.body.style.overflow = 'hidden';
                 if (iframe) iframe.style.height = '100%';
                 if (btn) btn.innerHTML = '<i class="fas fa-compress"></i>';
                 applyWatermarkScale(wrap);
+                try {
+                    if (bridge && typeof bridge.setVideoFullscreen === 'function') {
+                        bridge.setVideoFullscreen(true).catch(() => {});
+                    }
+                } catch (_) {}
             };
 
             if (inFs) {
@@ -2741,18 +2754,23 @@ if (existingWatermark && !layerHost.contains(existingWatermark)) {
                 }
                 exitFallback();
             } else {
-                const req = wrap.requestFullscreen || wrap.webkitRequestFullscreen;
-                if (req) {
-                    req.call(wrap).then(() => {
-                        applyWatermarkScale(wrap);
-                    }).catch(() => {
-                        enterFallback();
-                    });
-                } else {
+                if (bridge && typeof bridge.setVideoFullscreen === 'function') {
                     enterFallback();
+                } else {
+                    const req = wrap.requestFullscreen || wrap.webkitRequestFullscreen;
+                    if (req) {
+                        req.call(wrap).then(() => {
+                            applyWatermarkScale(wrap);
+                        }).catch(() => {
+                            enterFallback();
+                        });
+                    } else {
+                        enterFallback();
+                    }
                 }
             }
         }
+
 
         function toggleLessonVideo(btn, containerId, encodedUrl, num) {
             const container = document.getElementById(containerId);
