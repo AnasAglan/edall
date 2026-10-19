@@ -3327,7 +3327,8 @@ cleanups.push(() => {
                 } finally { btn.disabled = false; }
                 return;
             }
-            {
+            const isAndroidApp = !!((window.edallAndroid && window.edallAndroid.isApp && window.edallAndroid.isApp()) || /EdAllAndroid/i.test(navigator.userAgent));
+            if (!isAndroidApp) {
                 const ar = currentLanguage === 'ar';
                 container.innerHTML = '<div style="padding:28px 16px;text-align:center;border:1px dashed var(--border, #888);border-radius:var(--radius);">'
                     + '<i class="fas fa-desktop" style="font-size:2rem;margin-bottom:10px;"></i>'
@@ -3339,6 +3340,7 @@ cleanups.push(() => {
                 try { const f = document.createElement('iframe'); f.style.display = 'none'; f.src = 'edall://open'; document.body.appendChild(f); setTimeout(() => f.remove(), 3000); } catch (_) {}
                 return;
             }
+
             const cls = 'edv-' + Math.random().toString(36).slice(2, 9);
             const wrap = document.createElement('div');
             wrap.className = 'edv-wrap ' + cls;
@@ -3659,6 +3661,13 @@ cleanups.push(() => {
         }
 
         document.addEventListener('DOMContentLoaded', function() {
+            // إخفاء زر تنزيل البرنامج إذا كان المستخدم داخل تطبيق الأندرويد أو الكمبيوتر
+            const isDesktop = !!(window.edallDesktop && window.edallDesktop.isDesktop);
+            const isAndroid = !!((window.edallAndroid && window.edallAndroid.isApp && window.edallAndroid.isApp()) || /EdAllAndroid/i.test(navigator.userAgent));
+            if (isDesktop || isAndroid) {
+                const heroBtn = document.getElementById('desktopDownloadHero');
+                if (heroBtn) heroBtn.style.display = 'none';
+            }
             initializeApp();
         });
 
