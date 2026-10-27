@@ -6901,6 +6901,28 @@ if (!(await showExamConfirm(
         function _examDraftKey() {
             return window._examAttempt ? ('ed_exam_draft_' + window._examAttempt.id) : null;
         }
+        function _normalizeEssaySpaces(textarea) {
+    if (!(textarea instanceof HTMLTextAreaElement)) return;
+
+    const before = textarea.value;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+
+    // دمج المسافات المتتالية وعلامات الجدولة، مع الحفاظ على أسطر الإجابة.
+    const normalize = value => value.replace(/[ \t]{2,}/g, ' ');
+    const after = normalize(before);
+
+    if (after === before) return;
+
+    const nextStart = normalize(before.slice(0, start)).length;
+    const nextEnd = normalize(before.slice(0, end)).length;
+
+    textarea.value = after;
+
+    try {
+        textarea.setSelectionRange(nextStart, nextEnd);
+    } catch (_) {}
+}
 
         function _saveExamDraft() {
             try {
@@ -6931,7 +6953,10 @@ if (!(await showExamConfirm(
                 if (saved.essays) {
                     Object.entries(saved.essays).forEach(([id, val]) => {
                         const el = document.getElementById(id);
-                        if (el) el.value = val;
+                        if (el) {
+    const restoredText = String(val == null ? '' : val);
+    el.value = restoredText.replace(/[ \t]{2,}/g, ' ');
+}
                     });
                 }
             } catch (e) {}
@@ -7317,13 +7342,24 @@ async function takeExam(courseId, lessonId, examIndex) {
 
         _restoreExamDraft();
 
-        const qc = document.getElementById('examQuestionsContainer');
+const qc = document.getElementById('examQuestionsContainer');
 
-        if (qc) {
-            qc.addEventListener('input', _saveExamDraft);
-            qc.addEventListener('change', _saveExamDraft);
+if (qc) {
+    qc.addEventListener('input', event => {
+        const target = event.target;
+
+        if (
+            target instanceof HTMLTextAreaElement &&
+            target.classList.contains('essay-answer')
+        ) {
+            _normalizeEssaySpaces(target);
         }
 
+        _saveExamDraft();
+    });
+
+    qc.addEventListener('change', _saveExamDraft);
+}
         if (window._examAttempt.expiresAt) {
             if (examTimeRemaining <= 0) {
                 await submitExam(courseId, lessonId, examIndex);
