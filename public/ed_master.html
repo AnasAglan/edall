@@ -2513,6 +2513,7 @@
         let _searchDebounceTimer = null;
         let _courseLoadPromises = new Map();
         let _modalCloseAction = null;
+        let _modalCloseActionRunning = false;
         let _coursesOffset = 0;
         let _allCoursesLoaded = false;
         let _loadingMoreCourses = false;
@@ -3533,29 +3534,52 @@ cleanups.push(() => {
             }
         };
 
-        window.closeModal = function() {
-            try {
-                document.getElementById('modalHost').innerHTML = '';
-                _modalCloseAction = null;
-            } catch (error) {
-                console.error('Error closing modal:', error);
-            }
-        };
+window.closeModal = function() {
+    try {
+        document.getElementById('modalHost').innerHTML = '';
+        _modalCloseAction = null;
+        _modalCloseActionRunning = false;
+    } catch (error) {
+        console.error('Error closing modal:', error);
+    }
+};
 
-        window.triggerModalClose = function() {
-            try {
-                if (typeof _modalCloseAction === 'function') {
-                    const action = _modalCloseAction;
-                    _modalCloseAction = null;
-                    action();
-                    return;
-                }
-                closeModal();
-            } catch (error) {
-                console.error('Error triggering modal close:', error);
-                closeModal();
+window.triggerModalClose = function() {
+    try {
+        if (typeof _modalCloseAction === 'function') {
+            // Prevent double-clicking while async cleanup/confirmation is running.
+            // Keep the callback until closeModal() runs, so a cancelled confirmation can be retried.
+            if (_modalCloseActionRunning) return;
+
+            const action = _modalCloseAction;
+            _modalCloseActionRunning = true;
+
+            const result = action();
+
+            if (result && typeof result.then === 'function') {
+                result.then(
+                    () => {
+                        _modalCloseActionRunning = false;
+                    },
+                    error => {
+                        _modalCloseActionRunning = false;
+                        console.error('Modal close action failed:', error);
+                    }
+                );
+            } else {
+                _modalCloseActionRunning = false;
             }
-        };
+
+            return;
+        }
+
+        closeModal();
+    } catch (error) {
+        _modalCloseActionRunning = false;
+        console.error('Error triggering modal close:', error);
+        closeModal();
+    }
+};
 
         window._modalReturnPage = 'mainPage';
         function _returnToStoredPage() {
@@ -3579,6 +3603,7 @@ cleanups.push(() => {
         window.showModal = function(content, options) {
             try {
                 _modalCloseAction = options && typeof options.onClose === 'function' ? options.onClose : null;
+                _modalCloseActionRunning = false;
                 document.getElementById('modalHost').innerHTML = `
                     <div class="modal-bg" id="modalBackground">
                         <div class="modal-box">
@@ -6341,11 +6366,121 @@ cleanups.push(() => {
 
         // ==================== EXAM SYSTEM (MULTIPLE EXAMS) ====================
 
-        let examTimerInterval = null;
-        let examTimeRemaining = 0;
+let examTimerInterval = null;
+let examTimeRemaining = 0;
+let _examSubmissionInProgress = false;
+let _examConfirmPendingResolver = null;
+let _pendingExamSubmission = null;
 
-        function migrateExamsToArray() {
-            // No longer needed - data loaded from Supabase already in correct format
+// EDALL_EXAM_CONFIRM_V260: avoid native Windows JavaScript dialogs in the exam flow.
+function _escapeExamConfirmHTML(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, c => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    }[c]));
+}
+
+function showExamConfirm(message, options = {}) {
+    return new Promise(resolve => {
+        if (_examConfirmPendingResolver) {
+            _examConfirmPendingResolver(false);
+        }
+
+        const previous = document.getElementById('edall-exam-confirm-overlay');
+        if (previous) previous.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'edall-exam-confirm-overlay';
+        overlay.setAttribute('data-edall-exam-confirm', 'true');
+        overlay.setAttribute('role', 'presentation');
+        overlay.style.cssText =
+            'position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(5,10,20,.76);backdrop-filter:blur(5px);';
+
+        const isAr = currentLanguage === 'ar';
+        const title = options.title || (isAr ? 'تأكيد' : 'Confirm');
+        const confirmLabel = options.confirmLabel || (isAr ? 'تأكيد' : 'Confirm');
+        const cancelLabel = options.cancelLabel || (isAr ? 'رجوع' : 'Go Back');
+
+        overlay.innerHTML = `
+            <div role="dialog" aria-modal="true"
+                 aria-labelledby="edall-exam-confirm-title"
+                 dir="${isAr ? 'rtl' : 'ltr'}"
+                 style="width:min(100%,520px);max-height:85vh;overflow:auto;background:var(--card,#222b3a);color:var(--text,#fff);border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:22px;box-shadow:0 20px 70px rgba(0,0,0,.42);">
+                <div id="edall-exam-confirm-title"
+                     style="font-size:1.12rem;font-weight:800;margin-bottom:12px;">
+                    ${_escapeExamConfirmHTML(title)}
+                </div>
+                <div style="white-space:pre-line;line-height:1.8;color:var(--text-muted,#a3bdd6);margin-bottom:20px;">
+                    ${_escapeExamConfirmHTML(message)}
+                </div>
+                <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
+                    <button type="button" data-exam-confirm-cancel class="btn btn-outline">
+                        ${_escapeExamConfirmHTML(cancelLabel)}
+                    </button>
+                    <button type="button" data-exam-confirm-accept class="btn btn-primary">
+                        ${_escapeExamConfirmHTML(confirmLabel)}
+                    </button>
+                </div>
+            </div>`;
+
+        document.body.appendChild(overlay);
+
+        let settled = false;
+
+        const finish = result => {
+            if (settled) return;
+            settled = true;
+            document.removeEventListener('keydown', onKeyDown, true);
+
+            if (_examConfirmPendingResolver === finish) {
+                _examConfirmPendingResolver = null;
+            }
+
+            overlay.remove();
+            resolve(Boolean(result));
+        };
+
+        const onKeyDown = event => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                finish(false);
+            }
+        };
+
+        _examConfirmPendingResolver = finish;
+
+        overlay.querySelector('[data-exam-confirm-cancel]')
+            .addEventListener('click', () => finish(false));
+
+        overlay.querySelector('[data-exam-confirm-accept]')
+            .addEventListener('click', () => finish(true));
+
+        document.addEventListener('keydown', onKeyDown, true);
+        overlay.querySelector('[data-exam-confirm-cancel]').focus();
+    });
+}
+
+function retryPendingExamSubmission() {
+    const pending = _pendingExamSubmission;
+    if (!pending) return;
+
+    closeModal();
+    submitExam(
+        pending.courseId,
+        pending.lessonId,
+        pending.examIndex
+    );
+}
+
+window.retryPendingExamSubmission = retryPendingExamSubmission;
+
+function migrateExamsToArray() {
+    // No longer needed - data loaded from Supabase already in correct format
+}            // No longer needed - data loaded from Supabase already in correct format
         }
 
         function canAccessLesson(courseId, lessonIndex) {
@@ -6719,7 +6854,19 @@ cleanups.push(() => {
 
         async function deleteExam(courseId, lessonId, examIndex) {
             try {
-                if (!confirm(currentLanguage === 'ar' ? 'هل أنت متأكد من حذف الامتحان؟' : 'Are you sure?')) return;
+if (!(await showExamConfirm(
+    currentLanguage === 'ar'
+        ? 'هل أنت متأكد من حذف الامتحان؟'
+        : 'Are you sure you want to delete this exam?',
+    {
+        title: currentLanguage === 'ar'
+            ? 'تأكيد حذف الامتحان'
+            : 'Confirm exam deletion',
+        confirmLabel: currentLanguage === 'ar'
+            ? 'حذف'
+            : 'Delete'
+    }
+))) return;
                 const course = courses.find(c => c.id === courseId);
                 const lesson = course ? course.lessons.find(l => l.id === lessonId) : null;
                 if (lesson && lesson.exams && lesson.exams[examIndex]) {
@@ -6789,190 +6936,411 @@ cleanups.push(() => {
             } catch (e) {}
         }
 
-        function startExamTimer(courseId, lessonId, examIndex) {
-            if (examTimerInterval) clearInterval(examTimerInterval);
-            examTimerInterval = setInterval(() => {
-                examTimeRemaining = _examSecondsLeft();
-                const timerText = document.getElementById('examTimerText');
-                if (timerText) {
-                    timerText.textContent = formatTime(examTimeRemaining);
-                }
-                if (examTimeRemaining <= 0) {
-                    clearInterval(examTimerInterval);
-                    showToast(currentLanguage === 'ar' ? 'انتهى الوقت المحدد! يتم تسليم الامتحان تلقائياً...' : 'Time is up! Submitting...', 'warning');
-                    submitExam(courseId, lessonId, examIndex);
-                }
-            }, 1000);
+function startExamTimer(courseId, lessonId, examIndex) {
+    if (examTimerInterval) clearInterval(examTimerInterval);
+
+    const timerAttemptId = window._examAttempt
+        ? window._examAttempt.id
+        : null;
+
+    examTimerInterval = setInterval(() => {
+        // Never let a stale timer submit answers for a different attempt.
+        if (
+            timerAttemptId &&
+            (!window._examAttempt ||
+             window._examAttempt.id !== timerAttemptId)
+        ) {
+            clearInterval(examTimerInterval);
+            examTimerInterval = null;
+            return;
         }
 
-        async function takeExam(courseId, lessonId, examIndex) {
-            try {
-                const course = courses.find(c => c.id === courseId);
-                const lesson = course ? (course.lessons || []).find(l => l.id === lessonId) : null;
-                const exam = lesson && lesson.exams ? lesson.exams[examIndex] : null;
-                
-                if (!exam) {
-                    showToast(currentLanguage === 'ar' ? 'لا يوجد امتحان لهذه المحاضرة' : 'No exam for this lesson', 'error');
-                    return;
-                }
-                
-                if (!currentUser) {
-                    showToast(currentLanguage === 'ar' ? 'يرجى تسجيل الدخول أولاً' : 'Please login first', 'error');
-                    return;
-                }
+        examTimeRemaining = _examSecondsLeft();
 
-                // فحص أي محاولة نشطة مفتوحة
-                let _isResuming = false;
-                try {
-                    const { data: _activeAtt } = await sb.rpc('get_active_exam_attempt');
-                    if (_activeAtt && _activeAtt.attempt_id) {
-                        if (_activeAtt.exam_id !== exam.id) {
-                            showToast(currentLanguage === 'ar' 
-                                ? 'لا يمكنك دخول هذا الامتحان! لديك امتحان آخر قيد التشغيل حالياً.' 
-                                : 'Cannot enter this exam! You have another active exam running.', 'error');
-                            
-                            const _resume = confirm(currentLanguage === 'ar'
-                                ? '⚠️ تنبيه:\nلديك بالفعل امتحان آخر قيد التشغيل حالياً ولم ينتهِ وقته بعد!\n\nهل تريد الانتقال إلى امتحانك المفتوح الآن؟'
-                                : '⚠️ Alert:\nYou already have another exam in progress! Switch to it?');
-                            
-                            if (_resume) {
-                                await checkActiveExamAttempt();
-                            }
-                            return;
-                        } else {
-                            _isResuming = true;
-                        }
-                    }
-                } catch (_chkErr) {
-                    console.warn('active attempt check ignored:', _chkErr);
-                }
+        const timerText = document.getElementById('examTimerText');
+        if (timerText) {
+            timerText.textContent = formatTime(examTimeRemaining);
+        }
 
-                // تأكيد قبل البدء
-                if (!_isResuming) {
-                    const qCount = (exam.questions || []).length;
-                    const dur = (exam.timeLimit || exam.duration);
-                    const durTxt = dur ? (currentLanguage === 'ar' ? `المدة: ${dur} دقيقة` : `Duration: ${dur} mins`) : (currentLanguage === 'ar' ? 'بدون وقت محدد' : 'Untimed');
-                    const msg = currentLanguage === 'ar'
-                        ? `هل أنت مستعد لبدء امتحان "${exam.title || lesson.title}"؟\n- عدد الأسئلة: ${qCount}\n- ${durTxt}\n\nتنبيه: سيبدأ احتساب الوقت فور الضغط على موافق.`
-                        : `Ready to start exam "${exam.title || lesson.title}"?\n- Questions: ${qCount}\n- ${durTxt}\n\nNote: Timer starts immediately.`;
-                    
-                    if (!confirm(msg)) return;
-                }
+        if (examTimeRemaining <= 0) {
+            clearInterval(examTimerInterval);
+            examTimerInterval = null;
 
-                // بدء المحاولة مع Fallback مضمون
-                let _att = null;
-                try {
-                    const res = await sb.rpc('start_exam_attempt', { _exam_id: exam.id });
-                    if (res && res.error) {
-                        const m = res.error.message || '';
-                        if (m.includes('MAX_ATTEMPTS')) {
-                            showToast(currentLanguage === 'ar' ? 'لقد استنفدت عدد مرات دخول هذا الامتحان' : 'You have used all attempts for this exam', 'error');
-                            return;
-                        }
-                    } else if (res && res.data) {
-                        _att = res.data;
-                    }
-                } catch (rpcErr) {
-                    console.warn('start_exam_attempt fallback triggered:', rpcErr);
-                }
+            // Timeout takes precedence over a still-open close confirmation.
+            if (_examConfirmPendingResolver) {
+                _examConfirmPendingResolver(false);
+            }
 
-                if (!_att) {
-                    const limitMin = (exam.timeLimit || exam.duration);
-                    _att = {
-                        attempt_id: 'local_' + Date.now(),
-                        expires_at: limitMin ? new Date(Date.now() + limitMin * 60000).toISOString() : null,
-                        server_now: new Date().toISOString(),
-                        resumed: false
-                    };
-                }
+            showToast(
+                currentLanguage === 'ar'
+                    ? 'انتهى الوقت المحدد! يتم تسليم الامتحان تلقائياً...'
+                    : 'Time is up! Submitting...',
+                'warning'
+            );
 
-                window._examAttempt = {
-                    id: _att.attempt_id,
-                    examId: exam.id,
-                    courseId,
-                    lessonId,
-                    examIndex,
-                    expiresAt: _att.expires_at ? new Date(_att.expires_at).getTime() : null,
-                    offset: _att.server_now ? (Date.now() - new Date(_att.server_now).getTime()) : 0
-                };
+            submitExam(courseId, lessonId, examIndex);
+        }
+    }, 1000);
+}
 
-                let timerHTML = '';
-                if (window._examAttempt.expiresAt) {
-                    examTimeRemaining = _examSecondsLeft();
-                    timerHTML = `<div class="exam-timer" id="examTimer" style="background:var(--primary);color:#fff;padding:8px 16px;border-radius:20px;font-weight:bold;display:inline-flex;align-items:center;gap:8px;margin-bottom:14px;"><i class="fas fa-clock"></i> <span id="examTimerText">${formatTime(examTimeRemaining)}</span></div>`;
-                }
 
-                let questionsHTML = '';
-                const qList = exam.questions || [];
-                qList.forEach((question, index) => {
-                    const opts = Array.isArray(question.options) ? question.options : [];
-                    questionsHTML += `
-                        <div class="question-item" id="examQ_${index}" style="background:var(--card-light);padding:14px;border-radius:8px;margin-bottom:12px;border:1px solid var(--border);">
-                            <div style="font-weight:bold;margin-bottom:10px;">
-                                ${currentLanguage === 'ar' ? 'سؤال' : 'Question'} ${index + 1}: ${question.text}
-                                <span class="badge ${question.type === 'multiple' ? 'badge-accent' : 'badge-primary'}" style="margin-right:8px;margin-left:8px;">
-                                    ${question.type === 'multiple' ? (currentLanguage === 'ar' ? 'اختياري' : 'MCQ') : (currentLanguage === 'ar' ? 'مقالي' : 'Essay')}
-                                </span>
-                            </div>
-                            ${question.type === 'multiple' ? `
-                                <div class="options-container" style="display:flex;flex-direction:column;gap:8px;">
-                                    ${opts.map((option, optIndex) => `
-                                        <div class="option-row" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;background:rgba(255,255,255,0.03);" onclick="const r = document.getElementById('q${index}_opt${optIndex}'); if(r){ r.checked = true; _saveExamDraft(); }">
-                                            <input type="radio" name="question_${index}" value="${optIndex}" id="q${index}_opt${optIndex}" style="width:auto;margin:0;">
-                                            <label for="q${index}_opt${optIndex}" style="cursor:pointer;flex:1;margin:0;">${option}</label>
-                                        </div>
-                                    `).join('')}
-                                </div>
-                            ` : `
-                                <textarea class="essay-answer" id="essay_${index}" placeholder="${currentLanguage === 'ar' ? 'اكتب إجابتك هنا...' : 'Write your answer here...'}" rows="4" style="width:100%;pointer-events:auto !important; -webkit-user-select:text !important; user-select:text !important; border-radius:6px; padding:10px;"></textarea>
-                            `}
-                        </div>
-                    `;
-                });
+async function takeExam(courseId, lessonId, examIndex) {
+    try {
+        const course = courses.find(c => c.id === courseId);
+        const lesson = course
+            ? (course.lessons || []).find(l => l.id === lessonId)
+            : null;
+        const exam = lesson && lesson.exams
+            ? lesson.exams[examIndex]
+            : null;
 
-                let navHTML = '<div class="question-navigation" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;">';
-                qList.forEach((_, index) => {
-                    navHTML += `<button type="button" class="question-nav-btn btn btn-sm" onclick="document.getElementById('examQ_${index}')?.scrollIntoView({behavior:'smooth'})" style="padding:4px 10px;">${index + 1}</button>`;
-                });
-                navHTML += '</div>';
+        if (!exam) {
+            showToast(
+                currentLanguage === 'ar'
+                    ? 'لا يوجد امتحان لهذه المحاضرة'
+                    : 'No exam for this lesson',
+                'error'
+            );
+            return;
+        }
 
-                showModal(`
-                    <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">
-                        <i class="fas fa-clipboard-list"></i> ${exam.title || (currentLanguage === 'ar' ? 'امتحان' : 'Exam')}: ${lesson.title}
-                    </div>
-                    ${timerHTML}
-                    ${navHTML}
-                    ${_att.resumed ? `<div style="padding:10px;margin-bottom:12px;border-radius:var(--radius-sm);background:rgba(245,158,11,0.12);color:var(--warning);"><i class="fas fa-info-circle"></i> ${currentLanguage === 'ar' ? 'لديك امتحان مفتوح، الوقت مستمر منذ بدايته.' : 'Open exam resumed; timer kept running.'}</div>` : ''}
-                    <div id="examQuestionsContainer">${questionsHTML}</div>
-                    <div class="exam-controls" style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end;">
-                        <button class="btn btn-success" onclick="confirmAndSubmitExam('${courseId}', '${lessonId}', ${examIndex})">
-                            <i class="fas fa-paper-plane"></i> ${currentLanguage === 'ar' ? 'تسليم الامتحان' : 'Submit Exam'}
-                        </button>
-                        <button class="btn btn-outline" onclick="cancelExam()">
-                            <i class="fas fa-times"></i> ${currentLanguage === 'ar' ? 'إلغاء' : 'Cancel'}
-                        </button>
-                    </div>
-                `);
+        if (!currentUser) {
+            showToast(
+                currentLanguage === 'ar'
+                    ? 'يرجى تسجيل الدخول أولاً'
+                    : 'Please login first',
+                'error'
+            );
+            return;
+        }
 
-                _restoreExamDraft();
-                const qc = document.getElementById('examQuestionsContainer');
-                if (qc) {
-                    qc.addEventListener('input', _saveExamDraft);
-                    qc.addEventListener('change', _saveExamDraft);
-                }
+        // Prevent replacing an existing timed attempt.
+        const locallyActiveAttempt = window._examAttempt;
 
-                if (window._examAttempt.expiresAt) {
-                    if (examTimeRemaining <= 0) {
-                        submitExam(courseId, lessonId, examIndex);
-                    } else {
-                        startExamTimer(courseId, lessonId, examIndex);
-                    }
-                }
-            } catch (error) {
-                console.error('Error taking exam:', error);
-                showToast(currentLanguage === 'ar' ? 'حدث خطأ في بدء الامتحان' : 'Error starting exam', 'error');
+        if (locallyActiveAttempt && locallyActiveAttempt.expiresAt) {
+            if (_examSecondsLeft() <= 0) {
+                await submitExam(
+                    locallyActiveAttempt.courseId,
+                    locallyActiveAttempt.lessonId,
+                    locallyActiveAttempt.examIndex
+                );
+                return;
+            }
+
+            if (locallyActiveAttempt.examId !== exam.id) {
+                showToast(
+                    currentLanguage === 'ar'
+                        ? 'لديك امتحان موقّت مفتوح. أكمل الامتحان نفسه أو سلّمه قبل دخول امتحان آخر.'
+                        : 'You have an active timed exam. Resume or submit that exam before starting another one.',
+                    'warning'
+                );
+                return;
+            }
+
+            // The same attempt is already open in this page.
+            const existingQuestions =
+                document.getElementById('examQuestionsContainer');
+
+            if (existingQuestions) {
+                showToast(
+                    currentLanguage === 'ar'
+                        ? 'هذا الامتحان مفتوح بالفعل.'
+                        : 'This exam is already open.',
+                    'warning'
+                );
+                return;
             }
         }
+
+        // Check for an active server-side attempt.
+        let _isResuming = false;
+
+        try {
+            const { data: _activeAtt, error: activeError } =
+                await sb.rpc('get_active_exam_attempt');
+
+            if (activeError) {
+                console.warn(
+                    'Active exam attempt check failed:',
+                    activeError
+                );
+            } else if (_activeAtt && _activeAtt.attempt_id) {
+                if (_activeAtt.exam_id !== exam.id) {
+                    showToast(
+                        currentLanguage === 'ar'
+                            ? 'لا يمكنك دخول هذا الامتحان! لديك امتحان آخر قيد التشغيل حالياً.'
+                            : 'Cannot enter this exam! You have another active exam running.',
+                        'error'
+                    );
+
+                    const _resume = await showExamConfirm(
+                        currentLanguage === 'ar'
+                            ? '⚠️ تنبيه:\nلديك بالفعل امتحان آخر قيد التشغيل حالياً ولم ينتهِ وقته بعد!\n\nهل تريد الانتقال إلى امتحانك المفتوح الآن؟'
+                            : '⚠️ Alert:\nYou already have another exam in progress! Switch to it?',
+                        {
+                            title: currentLanguage === 'ar'
+                                ? 'امتحان مفتوح بالفعل'
+                                : 'An exam is already open'
+                        }
+                    );
+
+                    if (_resume) {
+                        await checkActiveExamAttempt();
+                    }
+
+                    return;
+                }
+
+                _isResuming = true;
+            }
+        } catch (_chkErr) {
+            console.error('Active attempt check failed:', _chkErr);
+
+            showToast(
+                currentLanguage === 'ar'
+                    ? 'تعذر التحقق من الامتحان المفتوح. تحقق من الاتصال وحاول مرة أخرى.'
+                    : 'Could not verify the active exam. Check your connection and try again.',
+                'error'
+            );
+            return;
+        }
+
+        // Confirm before starting a new attempt.
+        if (!_isResuming) {
+            const qCount = (exam.questions || []).length;
+            const dur = exam.timeLimit || exam.duration;
+
+            const durTxt = dur
+                ? (
+                    currentLanguage === 'ar'
+                        ? `المدة: ${dur} دقيقة`
+                        : `Duration: ${dur} mins`
+                )
+                : (
+                    currentLanguage === 'ar'
+                        ? 'بدون وقت محدد'
+                        : 'Untimed'
+                );
+
+            const msg = currentLanguage === 'ar'
+                ? `هل أنت مستعد لبدء امتحان "${exam.title || lesson.title}"؟\n- عدد الأسئلة: ${qCount}\n- ${durTxt}\n\nتنبيه: سيبدأ احتساب الوقت فور الضغط على موافق.`
+                : `Ready to start exam "${exam.title || lesson.title}"?\n- Questions: ${qCount}\n- ${durTxt}\n\nNote: Timer starts immediately.`;
+
+            const confirmed = await showExamConfirm(msg, {
+                title: currentLanguage === 'ar'
+                    ? 'تأكيد بدء الامتحان'
+                    : 'Confirm exam start'
+            });
+
+            if (!confirmed) return;
+        }
+
+        // The server must create or resume the attempt.
+        let _att = null;
+
+        try {
+            const res = await sb.rpc('start_exam_attempt', {
+                _exam_id: exam.id
+            });
+
+            if (res && res.error) {
+                const m = res.error.message || '';
+
+                if (m.includes('MAX_ATTEMPTS')) {
+                    showToast(
+                        currentLanguage === 'ar'
+                            ? 'لقد استنفدت عدد مرات دخول هذا الامتحان'
+                            : 'You have used all attempts for this exam',
+                        'error'
+                    );
+                    return;
+                }
+
+                console.error('start_exam_attempt failed:', res.error);
+            } else if (res && res.data) {
+                _att = res.data;
+            }
+        } catch (rpcErr) {
+            console.error('start_exam_attempt failed:', rpcErr);
+        }
+
+        if (!_att || !_att.attempt_id) {
+            showToast(
+                currentLanguage === 'ar'
+                    ? 'تعذر بدء محاولة الامتحان على الخادم. لم يبدأ الامتحان؛ تحقق من الاتصال ثم حاول مرة أخرى.'
+                    : 'The server could not start this exam attempt. The exam has not started; check your connection and retry.',
+                'error'
+            );
+            return;
+        }
+
+        window._examAttempt = {
+            id: _att.attempt_id,
+            examId: exam.id,
+            courseId,
+            lessonId,
+            examIndex,
+            expiresAt: _att.expires_at
+                ? new Date(_att.expires_at).getTime()
+                : null,
+            offset: _att.server_now
+                ? Date.now() - new Date(_att.server_now).getTime()
+                : 0
+        };
+
+        let timerHTML = '';
+
+        if (window._examAttempt.expiresAt) {
+            examTimeRemaining = _examSecondsLeft();
+
+            timerHTML = `
+                <div class="exam-timer" id="examTimer"
+                    style="background:var(--primary);color:#fff;padding:8px 16px;border-radius:20px;font-weight:bold;display:inline-flex;align-items:center;gap:8px;margin-bottom:14px;">
+                    <i class="fas fa-clock"></i>
+                    <span id="examTimerText">${formatTime(examTimeRemaining)}</span>
+                </div>
+            `;
+        }
+
+        let questionsHTML = '';
+        const qList = exam.questions || [];
+
+        qList.forEach((question, index) => {
+            const opts = Array.isArray(question.options)
+                ? question.options
+                : [];
+
+            questionsHTML += `
+                <div class="question-item" id="examQ_${index}"
+                    style="background:var(--card-light);padding:14px;border-radius:8px;margin-bottom:12px;border:1px solid var(--border);">
+
+                    <div style="font-weight:bold;margin-bottom:10px;">
+                        ${currentLanguage === 'ar' ? 'سؤال' : 'Question'}
+                        ${index + 1}: ${question.text}
+
+                        <span class="badge ${question.type === 'multiple' ? 'badge-accent' : 'badge-primary'}"
+                            style="margin-right:8px;margin-left:8px;">
+                            ${question.type === 'multiple'
+                                ? (currentLanguage === 'ar' ? 'اختياري' : 'MCQ')
+                                : (currentLanguage === 'ar' ? 'مقالي' : 'Essay')}
+                        </span>
+                    </div>
+
+                    ${question.type === 'multiple' ? `
+                        <div class="options-container"
+                            style="display:flex;flex-direction:column;gap:8px;">
+                            ${opts.map((option, optIndex) => `
+                                <div class="option-row"
+                                    style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;background:rgba(255,255,255,0.03);"
+                                    onclick="const r = document.getElementById('q${index}_opt${optIndex}'); if(r){ r.checked = true; _saveExamDraft(); }">
+
+                                    <input type="radio"
+                                        name="question_${index}"
+                                        value="${optIndex}"
+                                        id="q${index}_opt${optIndex}"
+                                        style="width:auto;margin:0;">
+
+                                    <label for="q${index}_opt${optIndex}"
+                                        style="cursor:pointer;flex:1;margin:0;">
+                                        ${option}
+                                    </label>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : `
+                        <textarea
+                            class="essay-answer"
+                            id="essay_${index}"
+                            placeholder="${currentLanguage === 'ar' ? 'اكتب إجابتك هنا...' : 'Write your answer here...'}"
+                            rows="4"
+                            style="width:100%;pointer-events:auto !important;-webkit-user-select:text !important;user-select:text !important;border-radius:6px;padding:10px;">
+                        </textarea>
+                    `}
+                </div>
+            `;
+        });
+
+        let navHTML = `
+            <div class="question-navigation"
+                style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;">
+        `;
+
+        qList.forEach((_, index) => {
+            navHTML += `
+                <button type="button"
+                    class="question-nav-btn btn btn-sm"
+                    onclick="document.getElementById('examQ_${index}')?.scrollIntoView({behavior:'smooth'})"
+                    style="padding:4px 10px;">
+                    ${index + 1}
+                </button>
+            `;
+        });
+
+        navHTML += '</div>';
+
+        showModal(`
+            <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">
+                <i class="fas fa-clipboard-list"></i>
+                ${exam.title || (currentLanguage === 'ar' ? 'امتحان' : 'Exam')}: ${lesson.title}
+            </div>
+
+            ${timerHTML}
+            ${navHTML}
+
+            ${_att.resumed ? `
+                <div style="padding:10px;margin-bottom:12px;border-radius:var(--radius-sm);background:rgba(245,158,11,0.12);color:var(--warning);">
+                    <i class="fas fa-info-circle"></i>
+                    ${currentLanguage === 'ar'
+                        ? 'لديك امتحان مفتوح، الوقت مستمر منذ بدايته.'
+                        : 'Open exam resumed; timer kept running.'}
+                </div>
+            ` : ''}
+
+            <div id="examQuestionsContainer">${questionsHTML}</div>
+
+            <div class="exam-controls"
+                style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end;">
+
+                <button class="btn btn-success"
+                    onclick="confirmAndSubmitExam('${courseId}', '${lessonId}', ${examIndex})">
+                    <i class="fas fa-paper-plane"></i>
+                    ${currentLanguage === 'ar' ? 'تسليم الامتحان' : 'Submit Exam'}
+                </button>
+
+                <button class="btn btn-outline" onclick="cancelExam()">
+                    <i class="fas fa-times"></i>
+                    ${currentLanguage === 'ar' ? 'إلغاء' : 'Cancel'}
+                </button>
+            </div>
+        `);
+
+        _restoreExamDraft();
+
+        const qc = document.getElementById('examQuestionsContainer');
+
+        if (qc) {
+            qc.addEventListener('input', _saveExamDraft);
+            qc.addEventListener('change', _saveExamDraft);
+        }
+
+        if (window._examAttempt.expiresAt) {
+            if (examTimeRemaining <= 0) {
+                await submitExam(courseId, lessonId, examIndex);
+            } else {
+                startExamTimer(courseId, lessonId, examIndex);
+            }
+        }
+    } catch (error) {
+        console.error('Error taking exam:', error);
+
+        showToast(
+            currentLanguage === 'ar'
+                ? 'حدث خطأ في بدء الامتحان'
+                : 'Error starting exam',
+            'error'
+        );
+    }
+}
 
         async function confirmAndSubmitExam(courseId, lessonId, examIndex) {
             try {
@@ -7000,19 +7368,36 @@ cleanups.push(() => {
                         : `Warning: You have ${unansweredCount} unanswered question(s)!\n\nDo you still want to proceed?`;
                 }
 
-                if (!confirm(firstMsg)) return;
+                if (!(await showExamConfirm(firstMsg, {
+    title: currentLanguage === 'ar'
+        ? 'تأكيد تسليم الامتحان'
+        : 'Confirm exam submission'
+}))) return;
 
                 const secondMsg = currentLanguage === 'ar'
                     ? '⚠️ تأكيد نهائي وحاسم:\nبمجرد التسليم لن تتمكن من العودة للامتحان أو تغيير أي إجابة إطلاقاً وسيتم تصحيحها فوراً.\n\nهل تريد الإرسال النهائي الآن؟'
                     : '⚠️ Final Confirmation:\nOnce submitted, you cannot change any answers.\n\nDo you confirm final submission?';
 
-                if (!confirm(secondMsg)) return;
+                if (!(await showExamConfirm(secondMsg, {
+    title: currentLanguage === 'ar'
+        ? 'التأكيد النهائي'
+        : 'Final confirmation',
+    confirmLabel: currentLanguage === 'ar'
+        ? 'تسليم نهائي'
+        : 'Submit finally'
+}))) return;
 
                 submitExam(courseId, lessonId, examIndex);
-            } catch (e) {
-                console.error('Confirm submit error:', e);
-                submitExam(courseId, lessonId, examIndex);
-            }
+} catch (e) {
+    console.error('Confirm submit error:', e);
+
+    showToast(
+        currentLanguage === 'ar'
+            ? 'تعذر تأكيد التسليم. لم يتم تسليم الامتحان.'
+            : 'Could not confirm submission. The exam was not submitted.',
+        'error'
+    );
+}
         }
 
         function getUserExamAttempts(examId) {
@@ -7048,206 +7433,457 @@ cleanups.push(() => {
             finally { _activeExamChecking = false; }
         }
 
-        async function cancelExam() {
-            const a = window._examAttempt;
-            if (a && a.expiresAt) {
-                if (!confirm(currentLanguage === 'ar' 
-                    ? '⚠️ تنبيه هام:\nالوقت سيستمر في العد على السيرفر حتى لو أغلقت الامتحان، ولن يسمح لك النظام بدخول أي امتحان آخر حتى ينتهي وقته أو تقوم بتسليمه!\n\nهل ما زلت متأكداً من رغبتك في الإغلاق؟' 
-                    : '⚠️ Warning:\nThe timer keeps running on the server even if you close this exam.\n\nAre you sure you want to close?')) return;
-                _saveExamDraft();
-            } else if (a) {
-                try { await sb.rpc('abandon_exam_attempt', { _attempt_id: a.id }); } catch (e) {}
-                try { localStorage.removeItem(_examDraftKey()); } catch (e) {}
+async function cancelExam() {
+    const a = window._examAttempt;
+
+    if (a && a.expiresAt) {
+        const attemptId = a.id;
+
+        const accepted = await showExamConfirm(
+            currentLanguage === 'ar'
+                ? '⚠️ تنبيه هام:\nالوقت سيستمر في العد على السيرفر حتى لو أغلقت الامتحان، ولن يسمح لك النظام بدخول أي امتحان آخر حتى ينتهي وقته أو تقوم بتسليمه!\n\nهل ما زلت متأكداً من رغبتك في الإغلاق؟'
+                : '⚠️ Warning:\nThe timer keeps running on the server even if you close this exam. You cannot start another exam until it expires or you submit it.\n\nAre you sure you want to close?',
+            {
+                title: currentLanguage === 'ar'
+                    ? 'إغلاق الامتحان مع استمرار الوقت'
+                    : 'Close exam while time continues',
+                confirmLabel: currentLanguage === 'ar'
+                    ? 'إغلاق الامتحان'
+                    : 'Close exam'
             }
-            if (examTimerInterval) clearInterval(examTimerInterval);
-            window._examAttempt = null;
-            closeModal();
+        );
+
+        if (!accepted) return false;
+
+        // The timeout may have submitted the attempt while the confirmation was open.
+        if (!window._examAttempt || window._examAttempt.id !== attemptId) {
+            return true;
         }
 
-        async function submitExam(courseId, lessonId, examIndex) {
-            try {
-                if (examTimerInterval) clearInterval(examTimerInterval);
-                
-                const course = courses.find(c => c.id === courseId);
-                const lesson = course ? (course.lessons || []).find(l => l.id === lessonId) : null;
-                const exam = lesson && lesson.exams ? lesson.exams[examIndex] : null;
-                if (!exam || !currentUser) return;
-                
-                const _examSubmitBtn = (typeof event !== 'undefined' && event && event.target) ? event.target.closest('.btn') : document.querySelector('#modalHost .btn-success');
-                showBtnLoading(_examSubmitBtn);
-                
-                const rawAnswers = [];
-                (exam.questions || []).forEach((question, index) => {
-                    if (question.type === 'multiple') {
-                        const selected = document.querySelector(`input[name="question_${index}"]:checked`);
-                        const selectedValue = selected ? parseInt(selected.value) : -1;
-                        rawAnswers.push({
-                            questionIndex: index,
-                            type: 'multiple',
-                            selectedOption: selectedValue
-                        });
-                    } else {
-                        const essayInput = document.getElementById(`essay_${index}`);
-                        const essayText = essayInput ? essayInput.value.trim() : '';
-                        rawAnswers.push({
-                            questionIndex: index,
-                            type: 'essay',
-                            answer: essayText
-                        });
+        _saveExamDraft();
+
+        // Do not stop the timer or clear the attempt. On expiry, submitExam reads the saved draft.
+        if (!examTimerInterval) {
+            startExamTimer(a.courseId, a.lessonId, a.examIndex);
+        }
+
+        closeModal();
+        return true;
+    }
+
+    if (a) {
+        try {
+            await sb.rpc('abandon_exam_attempt', {
+                _attempt_id: a.id
+            });
+        } catch (e) {}
+
+        try {
+            localStorage.removeItem(_examDraftKey());
+        } catch (e) {}
+    }
+
+    if (examTimerInterval) {
+        clearInterval(examTimerInterval);
+    }
+
+    examTimerInterval = null;
+    window._examAttempt = null;
+
+    closeModal();
+    return true;
+}
+
+async function submitExam(courseId, lessonId, examIndex) {
+    if (_examSubmissionInProgress) return;
+
+    _examSubmissionInProgress = true;
+    let _examSubmitBtn = null;
+
+    try {
+        if (examTimerInterval) clearInterval(examTimerInterval);
+        examTimerInterval = null;
+
+        const course = courses.find(c => c.id === courseId);
+        const lesson = course ? (course.lessons || []).find(l => l.id === lessonId) : null;
+        const exam = lesson && lesson.exams ? lesson.exams[examIndex] : null;
+
+        if (!exam || !currentUser) {
+            _examSubmissionInProgress = false;
+            return;
+        }
+
+        const examContainer = document.querySelector('#modalHost #examQuestionsContainer');
+
+        if (examContainer) _saveExamDraft();
+
+        const _attempt = window._examAttempt;
+        let attemptSubmissionConfirmed = false;
+        let savedDraft = { radios: {}, essays: {} };
+
+        try {
+            if (_attempt && _attempt.id) {
+                savedDraft = JSON.parse(
+                    localStorage.getItem('ed_exam_draft_' + _attempt.id)
+                    || '{"radios":{},"essays":{}}'
+                );
+            }
+        } catch (_) {
+            savedDraft = { radios: {}, essays: {} };
+        }
+
+        _examSubmitBtn = examContainer
+            ? examContainer.closest('.modal-box')?.querySelector('.btn-success')
+            : null;
+
+        showBtnLoading(_examSubmitBtn);
+
+
+const rawAnswers = [];
+
+(exam.questions || []).forEach((question, index) => {
+    if (question.type === 'multiple') {
+        const selected = examContainer
+            ? examContainer.querySelector(
+                `input[name="question_${index}"]:checked`
+            )
+            : null;
+
+        const savedValue = savedDraft.radios
+            ? savedDraft.radios[`question_${index}`]
+            : undefined;
+
+        const selectedValue = selected
+            ? parseInt(selected.value, 10)
+            : (savedValue != null
+                ? parseInt(savedValue, 10)
+                : -1);
+
+        rawAnswers.push({
+            questionIndex: index,
+            type: 'multiple',
+            selectedOption: Number.isFinite(selectedValue)
+                ? selectedValue
+                : -1
+        });
+    } else {
+        const essayInput = examContainer
+            ? examContainer.querySelector(`#essay_${index}`)
+            : null;
+
+        const savedEssay = savedDraft.essays
+            ? savedDraft.essays[`essay_${index}`]
+            : '';
+
+        const essayText = String(
+            essayInput
+                ? essayInput.value
+                : (savedEssay || '')
+        ).trim();
+
+        rawAnswers.push({
+            questionIndex: index,
+            type: 'essay',
+            answer: essayText
+        });
+    }
+});
+
+const _attempt = window._examAttempt;
+let gradeResult = null;
+
+if (_attempt && _attempt.id &&
+    !_attempt.id.startsWith('local_')) {
+    try {
+        const { data, error } = await sb.rpc(
+            'submit_exam_attempt',
+            {
+                _attempt_id: _attempt.id,
+                _answers: rawAnswers
+            }
+        );
+
+        if (!error && data) {
+            gradeResult = data;
+            attemptSubmissionConfirmed = true;
+        }
+    } catch (e) {
+        console.warn('submit_exam_attempt error:', e);
+    }
+}
+
+if (
+    !gradeResult &&
+    exam.id &&
+    (!_attempt ||
+        String(_attempt.id || '').startsWith('local_'))
+) {
+    try {
+        const { data, error } = await sb.rpc(
+            'grade_exam_submission',
+            {
+                _exam_id: exam.id,
+                _answers: rawAnswers
+            }
+        );
+
+        if (!error && data) {
+            gradeResult = data;
+            attemptSubmissionConfirmed = true;
+        }
+    } catch (e) {
+        console.warn(
+            'grade_exam_submission fallback error:',
+            e
+        );
+    }
+}
+
+if (
+    !gradeResult ||
+    (
+        _attempt &&
+        _attempt.id &&
+        !_attempt.id.startsWith('local_') &&
+        !attemptSubmissionConfirmed
+    )
+) {
+    // Preserve answers when the server cannot confirm submission.
+    if (examContainer) _saveExamDraft();
+
+    hideBtnLoading(_examSubmitBtn);
+    _examSubmissionInProgress = false;
+
+    _pendingExamSubmission = {
+        courseId,
+        lessonId,
+        examIndex
+    };
+
+    if (
+        window._examAttempt &&
+        window._examAttempt.expiresAt &&
+        _examSecondsLeft() > 0 &&
+        !examTimerInterval
+    ) {
+        startExamTimer(courseId, lessonId, examIndex);
+    }
+
+    showModal(`
+        <div style="padding:8px 2px;">
+            <div style="font-size:1.15rem;font-weight:900;margin-bottom:12px;color:var(--danger);">
+                <i class="fas fa-exclamation-triangle"></i>
+                ${currentLanguage === 'ar'
+                    ? 'تعذر تأكيد تسليم الامتحان'
+                    : 'Exam submission could not be confirmed'}
+            </div>
+
+            <p style="line-height:1.8;color:var(--text-muted);margin-bottom:16px;">
+                ${currentLanguage === 'ar'
+                    ? 'لم يؤكد الخادم حفظ النتيجة. احتفظنا بإجاباتك على هذا الجهاز. تحقق من اتصال الإنترنت ثم أعد محاولة التسليم. لن نعرض درجة نهائية غير مؤكدة.'
+                    : 'The server did not confirm the result. Your answers have been preserved on this device. Check your connection and retry. We will not show an unconfirmed final grade.'}
+            </p>
+
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                <button type="button" class="btn btn-primary"
+                        onclick="retryPendingExamSubmission()">
+                    ${currentLanguage === 'ar'
+                        ? 'إعادة محاولة التسليم'
+                        : 'Retry submission'}
+                </button>
+
+                <button type="button" class="btn btn-outline"
+                        onclick="closeModal()">
+                    ${currentLanguage === 'ar'
+                        ? 'إغلاق'
+                        : 'Close'}
+                </button>
+            </div>
+        </div>
+    `);
+
+    return;
+}
+
+if (_attempt) {
+    try {
+        localStorage.removeItem(
+            'ed_exam_draft_' + _attempt.id
+        );
+    } catch (e) {}
+}
+
+window._examAttempt = null;
+_pendingExamSubmission = null;
+
+const mcqCorrect = gradeResult.mcqCorrect ?? 0;
+const mcqTotal = gradeResult.mcqTotal ?? 0;
+const hasEssay = Boolean(gradeResult.hasEssay);
+const answers = gradeResult.gradedAnswers || [];
+const mcqScore = gradeResult.mcqScore ?? 0;
+const finalScore = gradeResult.score ?? mcqScore;
+const passed = Boolean(gradeResult.passed);
+const essayGraded = !hasEssay;
+
+try {
+    const raw = JSON.parse(
+        localStorage.getItem('_rawExamResults') || '[]'
+    );
+
+    raw.push({
+        id: gradeResult.result_id || ('res_' + Date.now()),
+        user_id: currentUser.id,
+        exam_id: exam.id,
+        score: finalScore,
+        passed,
+        has_essay: hasEssay,
+        essay_graded: essayGraded,
+        answers,
+        submitted_at:
+            gradeResult.submitted_at ||
+            new Date().toISOString()
+    });
+
+    localStorage.setItem(
+        '_rawExamResults',
+        JSON.stringify(raw)
+    );
+} catch (e) {}
+
+const examResults = JSON.parse(
+    localStorage.getItem(LS_KEYS.EXAM_RESULTS)
+) || {};
+
+const resultKey =
+    `${currentUser.id}_${courseId}_${lessonId}_${examIndex}`;
+
+examResults[resultKey] = {
+    id: gradeResult.result_id,
+    userId: currentUser.id,
+    userName: currentUser.name,
+    courseId,
+    lessonId,
+    examIndex,
+    examId: exam.id,
+    answers,
+    mcqScore,
+    mcqCorrect,
+    mcqTotal,
+    score: finalScore,
+    passed,
+    hasEssay,
+    essayGraded,
+    timestamp: Date.now()
+};
+
+localStorage.setItem(
+    LS_KEYS.EXAM_RESULTS,
+    JSON.stringify(examResults)
+);
+
+trackLessonProgress(
+    courseId,
+    lessonId,
+    'examCompleted',
+    true
+);
+
+trackLessonProgress(
+    courseId,
+    lessonId,
+    'examScore',
+    finalScore
+);
+
+hideBtnLoading(_examSubmitBtn);
+
+let resultHTML = `
+    <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">
+        <i class="fas fa-chart-bar"></i>
+        ${currentLanguage === 'ar'
+            ? 'نتائج الامتحان'
+            : 'Exam Results'}
+    </div>
+`;
+
+if (mcqTotal > 0) {
+    resultHTML += `
+        <div style="margin-bottom:15px;">
+            <strong>
+                ${currentLanguage === 'ar'
+                    ? 'الأسئلة الاختيارية:'
+                    : 'MCQ Results:'}
+            </strong>
+
+            <div style="font-size:1.5rem;font-weight:bold;color:${
+                mcqScore >= (exam.passingGrade || 50)
+                    ? 'var(--success)'
+                    : 'var(--danger)'
+            };">
+                ${mcqCorrect} / ${mcqTotal} (${mcqScore}%)
+            </div>
+        </div>
+    `;
+}
+
+exam.questions.forEach((question, index) => {
+    const answer = answers[index];
+
+    if (question.type === 'multiple' && answer) {
+        resultHTML += `
+            <div style="padding:10px;margin:5px 0;background:${
+                answer.isCorrect
+                    ? 'rgba(16,185,129,0.1)'
+                    : 'rgba(239,68,68,0.1)'
+            };border-radius:var(--radius-sm);border-right:4px solid ${
+                answer.isCorrect
+                    ? 'var(--success)'
+                    : 'var(--danger)'
+            };">
+                <div>
+                    <strong>
+                        ${currentLanguage === 'ar' ? 'سؤال' : 'Q'}
+                        ${index + 1}:
+                    </strong>
+                    ${question.text}
+                </div>
+
+                <div style="color:${
+                    answer.isCorrect
+                        ? 'var(--success)'
+                        : 'var(--danger)'
+                };">
+                    ${answer.isCorrect ? '✅' : '❌'}
+                    ${currentLanguage === 'ar'
+                        ? 'إجابتك:'
+                        : 'Your answer:'}
+                    ${
+                        answer.selectedOption >= 0
+                            ? question.options[answer.selectedOption]
+                            : (
+                                currentLanguage === 'ar'
+                                    ? 'لم تجب'
+                                    : 'No answer'
+                            )
                     }
-                });
-                
-                const _attempt = window._examAttempt;
-                let gradeResult = null;
+                </div>
 
-                if (_attempt && _attempt.id && !_attempt.id.startsWith('local_')) {
-                    try {
-                        const { data, error } = await sb.rpc('submit_exam_attempt', {
-                            _attempt_id: _attempt.id,
-                            _answers: rawAnswers
-                        });
-                        if (!error && data) {
-                            gradeResult = data;
-                        }
-                    } catch (e) {
-                        console.warn('submit_exam_attempt error:', e);
-                    }
+                ${
+                    !answer.isCorrect
+                        ? `<div style="color:var(--success);font-size:0.9rem;">
+                            ${
+                                currentLanguage === 'ar'
+                                    ? 'الإجابة الصحيحة:'
+                                    : 'Correct:'
+                            }
+                            ${question.options[question.correctOption]}
+                        </div>`
+                        : ''
                 }
-
-                if (!gradeResult && exam.id) {
-                    try {
-                        const { data, error } = await sb.rpc('grade_exam_submission', {
-                            _exam_id: exam.id,
-                            _answers: rawAnswers
-                        });
-                        if (!error && data) {
-                            gradeResult = data;
-                        }
-                    } catch (e) {
-                        console.warn('grade_exam_submission fallback error:', e);
-                    }
-                }
-
-                if (!gradeResult) {
-                    let mcqCorrect = 0;
-                    let mcqTotal = 0;
-                    let hasEssay = false;
-                    const gradedAnswers = (exam.questions || []).map((q, idx) => {
-                        const ans = rawAnswers[idx] || {};
-                        if (q.type === 'multiple') {
-                            mcqTotal++;
-                            const isCorrect = (ans.selectedOption === q.correctOption);
-                            if (isCorrect) mcqCorrect++;
-                            return { questionIndex: idx, type: 'multiple', selectedOption: ans.selectedOption, isCorrect };
-                        } else {
-                            hasEssay = true;
-                            return { questionIndex: idx, type: 'essay', answer: ans.answer || '', isCorrect: null };
-                        }
-                    });
-                    const mcqScore = mcqTotal > 0 ? Math.round((mcqCorrect / mcqTotal) * 100) : 100;
-                    const passing = exam.passingGrade || 50;
-                    gradeResult = {
-                        result_id: 'res_' + Date.now(),
-                        mcqCorrect,
-                        mcqTotal,
-                        mcqScore,
-                        score: mcqScore,
-                        passed: mcqScore >= passing,
-                        hasEssay,
-                        gradedAnswers,
-                        submitted_at: new Date().toISOString()
-                    };
-                }
-
-                if (_attempt) {
-                    try { localStorage.removeItem('ed_exam_draft_' + _attempt.id); } catch (e) {}
-                }
-                window._examAttempt = null;
-
-                const mcqCorrect = gradeResult.mcqCorrect ?? 0;
-                const mcqTotal = gradeResult.mcqTotal ?? 0;
-                const hasEssay = Boolean(gradeResult.hasEssay);
-                const answers = gradeResult.gradedAnswers || [];
-                const mcqScore = gradeResult.mcqScore ?? 0;
-                const finalScore = gradeResult.score ?? mcqScore;
-                const passed = Boolean(gradeResult.passed);
-                const essayGraded = !hasEssay;
-
-                try {
-                    const raw = JSON.parse(localStorage.getItem('_rawExamResults') || '[]');
-                    raw.push({
-                        id: gradeResult.result_id || ('res_' + Date.now()),
-                        user_id: currentUser.id,
-                        exam_id: exam.id,
-                        score: finalScore,
-                        passed,
-                        has_essay: hasEssay,
-                        essay_graded: essayGraded,
-                        answers,
-                        submitted_at: gradeResult.submitted_at || new Date().toISOString()
-                    });
-                    localStorage.setItem('_rawExamResults', JSON.stringify(raw));
-                } catch (e) {}
-
-                const examResults = JSON.parse(localStorage.getItem(LS_KEYS.EXAM_RESULTS)) || {};
-                const resultKey = `${currentUser.id}_${courseId}_${lessonId}_${examIndex}`;
-                examResults[resultKey] = {
-                    id: gradeResult.result_id,
-                    userId: currentUser.id,
-                    userName: currentUser.name,
-                    courseId: courseId,
-                    lessonId: lessonId,
-                    examIndex: examIndex,
-                    examId: exam.id,
-                    answers: answers,
-                    mcqScore: mcqScore,
-                    mcqCorrect: mcqCorrect,
-                    mcqTotal: mcqTotal,
-                    score: finalScore,
-                    passed: passed,
-                    hasEssay: hasEssay,
-                    essayGraded: essayGraded,
-                    timestamp: Date.now()
-                };
-                localStorage.setItem(LS_KEYS.EXAM_RESULTS, JSON.stringify(examResults));
-                
-                trackLessonProgress(courseId, lessonId, 'examCompleted', true);
-                trackLessonProgress(courseId, lessonId, 'examScore', finalScore);
-                
-                hideBtnLoading(_examSubmitBtn);
-                
-                let resultHTML = `
-                    <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">
-                        <i class="fas fa-chart-bar"></i> ${currentLanguage === 'ar' ? 'نتائج الامتحان' : 'Exam Results'}
-                    </div>
-                `;
-                
-                if (mcqTotal > 0) {
-                    resultHTML += `
-                        <div style="margin-bottom:15px;">
-                            <strong>${currentLanguage === 'ar' ? 'الأسئلة الاختيارية:' : 'MCQ Results:'}</strong>
-                            <div style="font-size:1.5rem;font-weight:bold;color:${mcqScore >= (exam.passingGrade || 50) ? 'var(--success)' : 'var(--danger)'};">
-                                ${mcqCorrect} / ${mcqTotal} (${mcqScore}%)
-                            </div>
-                        </div>
-                    `;
-                }
-                
-                exam.questions.forEach((question, index) => {
-                    const answer = answers[index];
-                    if (question.type === 'multiple' && answer) {
-                        resultHTML += `
-                            <div style="padding:10px;margin:5px 0;background:${answer.isCorrect ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)'};border-radius:var(--radius-sm);border-right:4px solid ${answer.isCorrect ? 'var(--success)' : 'var(--danger)'};">
-                                <div><strong>${currentLanguage === 'ar' ? 'سؤال' : 'Q'} ${index + 1}:</strong> ${question.text}</div>
-                                <div style="color:${answer.isCorrect ? 'var(--success)' : 'var(--danger)'};">
-                                    ${answer.isCorrect ? '✅' : '❌'} 
-                                    ${currentLanguage === 'ar' ? 'إجابتك:' : 'Your answer:'} ${answer.selectedOption >= 0 ? question.options[answer.selectedOption] : (currentLanguage === 'ar' ? 'لم تجب' : 'No answer')}
-                                </div>
-                                ${!answer.isCorrect ? `<div style="color:var(--success);font-size:0.9rem;">${currentLanguage === 'ar' ? 'الإجابة الصحيحة:' : 'Correct:'} ${question.options[question.correctOption]}</div>` : ''}
-                            </div>
-                        `;
-                    }
-                });
+            </div>
+        `;
+    }
+});
                 
                 if (hasEssay) {
                     resultHTML += `
@@ -7274,7 +7910,7 @@ cleanups.push(() => {
                         </button>
                     </div>
                 `;
-                
+                _examSubmissionInProgress = false;
                 showModal(resultHTML);
                 
                 if (hasEssay && course.createdBy) {
@@ -7286,11 +7922,38 @@ cleanups.push(() => {
                     );
                 }
                 
-            } catch (error) {
-                hideBtnLoading(_examSubmitBtn);
-                console.error('Error submitting exam:', error);
-                showToast(currentLanguage === 'ar' ? 'حدث خطأ في تسليم الامتحان' : 'Error submitting exam', 'error');
-            }
+} catch (error) {
+    hideBtnLoading(_examSubmitBtn);
+    _examSubmissionInProgress = false;
+
+    console.error('Error submitting exam:', error);
+
+    if (document.querySelector('#modalHost #examQuestionsContainer')) {
+        _saveExamDraft();
+    }
+
+    if (
+        window._examAttempt &&
+        window._examAttempt.expiresAt &&
+        _examSecondsLeft() > 0 &&
+        !examTimerInterval
+    ) {
+        startExamTimer(courseId, lessonId, examIndex);
+    }
+
+    _pendingExamSubmission = {
+        courseId,
+        lessonId,
+        examIndex
+    };
+
+    showToast(
+        currentLanguage === 'ar'
+            ? 'تعذر تأكيد تسليم الامتحان؛ تم الاحتفاظ بالإجابات. حاول التسليم مرة أخرى.'
+            : 'Submission could not be confirmed; answers were preserved. Please retry.',
+        'error'
+    );
+}
         }
 
 
