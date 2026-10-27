@@ -2627,6 +2627,10 @@ word-spacing: normal !important;
         let _allCoursesLoaded = false;
         let _loadingMoreCourses = false;
         let _infiniteScrollObserver = null;
+        // Keep all course records in memory for direct links and admin pages,
+        // while only showing five cards at a time on the homepage.
+        let _homeCoursesVisibleLimit = 5;
+        const _homeCoursesBatchSize = 5;
         let _activePdfUploads = []; // track {xhr, path} for cancel
         let _pdfUploadComplete = true;
 
@@ -3931,32 +3935,65 @@ window.triggerModalClose = function() {
             }
         }
 
+        // Load every course's public metadata at startup. This is deliberately separate
+        // from homepage rendering: admin pages, course management, and direct course URLs
+        // must not depend on whether a visitor has scrolled through the homepage.
+        async function loadAllCourseMetadata() {
+            const pageSize = 5; // preserve the pagination size already used by this RPC
+            const allRows = [];
+            let offset = 0;
+            let safetyPages = 0;
+
+            while (true) {
+                const { data, error } = await sb.rpc('get_courses_sorted_by_enrollment', {
+                    _offset: offset,
+                    _limit: pageSize
+                });
+                if (error) throw error;
+
+                const batch = Array.isArray(data) ? data : [];
+                if (batch.length === 0) break;
+                allRows.push(...batch);
+                offset += batch.length;
+
+                if (batch.length < pageSize) break;
+                safetyPages += 1;
+                // Prevent an unexpected server-side pagination loop.
+                if (safetyPages > 10000) {
+                    throw new Error('Course pagination safety limit reached');
+                }
+            }
+            return allRows;
+        }
+
         async function loadData() {
             if (_dataLoading) return;
             _dataLoading = true;
             try {
-                // Load top 5 courses sorted by enrollment + profiles + roles + notifications
+                // Load all course metadata so admin pages, course lists, and direct URLs
+                // can find every course even before the visitor scrolls the homepage.
                 const isGuest = !currentUser;
                 const isAdminUser = !!(currentUser && currentUser.roles && currentUser.roles.includes('admin'));
                 const profilesQuery = isAdminUser
                     ? sb.from('profiles').select('*')
                     : sb.rpc('get_course_creators_public');
                 const [
-                    { data: coursesData },
+                    coursesData,
                     { data: profilesData },
                     { data: rolesData },
                     { data: notifsData }
                 ] = await Promise.all([
-                    sb.rpc('get_courses_sorted_by_enrollment', { _offset: 0, _limit: 5 }),
+                    loadAllCourseMetadata(),
                     profilesQuery,
                     isAdminUser ? sb.from('user_roles').select('*') : Promise.resolve({ data: [] }),
                     isGuest ? Promise.resolve({ data: [] }) : sb.from('notifications').select('*').order('created_at', { ascending: false }).limit(50)
                 ]);
 
                 _coursesOffset = (coursesData || []).length;
-                _allCoursesLoaded = (coursesData || []).length < 5;
+                _homeCoursesVisibleLimit = Math.min(_homeCoursesBatchSize, (coursesData || []).length);
+                _allCoursesLoaded = _homeCoursesVisibleLimit >= (coursesData || []).length;
 
-                // Build courses WITHOUT lessons (lazy loaded on demand)
+                // Build courses WITHOUT lessons (lessons/videos/exams are still lazy-loaded)
                 courses = (coursesData || []).map(c => ({
                     id: c.id,
                     title: c.title,
@@ -4250,40 +4287,31 @@ window.triggerModalClose = function() {
             }
         }
 
-        // Infinite scroll: load more courses
+        // Infinite scroll only changes how many already-loaded courses are visible.
+        // It must not control whether a course exists in the global courses array.
         async function loadMoreCourses() {
             if (_loadingMoreCourses || _allCoursesLoaded) return;
             _loadingMoreCourses = true;
-            
+
             const sentinel = document.getElementById('coursesScrollSentinel');
             if (sentinel) sentinel.innerHTML = '<div style="text-align:center;padding:20px;"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem;color:var(--primary);"></i></div>';
-            
+
             try {
-                const { data } = await sb.rpc('get_courses_sorted_by_enrollment', { _offset: _coursesOffset, _limit: 5 });
-                const newCourses = (data || []).map(c => ({
-                    id: c.id, title: c.title, description: c.description,
-                    image: c.image_url, createdBy: c.created_by, price: Number(c.price || 0),
-                    lessons: null, enrollmentCount: c.enrollment_count || 0,
-                    lessonCount: c.lesson_count || 0,
-                    created: new Date(c.created_at).getTime()
-                }));
-                
-                // Avoid duplicates
-                newCourses.forEach(nc => {
-                    if (!courses.find(c => c.id === nc.id)) {
-                        courses.push(nc);
-                    }
-                });
-                
-                _coursesOffset += newCourses.length;
-                if (newCourses.length < 5) _allCoursesLoaded = true;
-                
+                // A tiny yield lets the loading indicator render without another database query.
+                await new Promise(resolve => setTimeout(resolve, 60));
+                _homeCoursesVisibleLimit = Math.min(
+                    _homeCoursesVisibleLimit + _homeCoursesBatchSize,
+                    courses.length
+                );
+                _coursesOffset = _homeCoursesVisibleLimit;
+                _allCoursesLoaded = _homeCoursesVisibleLimit >= courses.length;
                 renderCoursesGrid();
             } catch (e) {
-                console.error('Error loading more courses:', e);
+                console.error('Error showing more courses:', e);
             } finally {
                 _loadingMoreCourses = false;
-                if (sentinel) sentinel.innerHTML = '';
+                const currentSentinel = document.getElementById('coursesScrollSentinel');
+                if (currentSentinel) currentSentinel.innerHTML = '';
             }
         }
 
@@ -5457,6 +5485,15 @@ window.triggerModalClose = function() {
                         (course.description && course.description.toLowerCase().includes(searchTerm.toLowerCase()))
                     );
                 }
+
+                // Paginate only the default homepage view. The full `courses` array remains
+                // complete for admin panels, management pages, teacher profiles, and direct links.
+                const shouldPaginateHomepage = currentFilter === 'all' && !searchTerm;
+                const totalMatchingCourses = coursesToShow.length;
+                if (shouldPaginateHomepage) {
+                    coursesToShow = coursesToShow.slice(0, _homeCoursesVisibleLimit);
+                    _allCoursesLoaded = coursesToShow.length >= totalMatchingCourses;
+                }
                 
                 if (coursesToShow.length === 0) {
                     grid.innerHTML = `
@@ -5557,8 +5594,8 @@ window.triggerModalClose = function() {
                     `;
                 }).join('');
                 
-                // Add infinite scroll sentinel
-                if (!_allCoursesLoaded && currentFilter === 'all') {
+                // Add infinite scroll sentinel only when more homepage cards remain to be shown.
+                if (shouldPaginateHomepage && !_allCoursesLoaded) {
                     grid.innerHTML += '<div id="coursesScrollSentinel" style="grid-column:1/-1;min-height:10px;"></div>';
                     setTimeout(() => setupInfiniteScroll(), 100);
                 }
@@ -10597,6 +10634,13 @@ exam.questions.forEach((question, index) => {
 
     window.openReleasesPage = async function (keepCurrentRoute) {
         try {
+            // The download button can be clicked from the video gate inside a course modal.
+            // Close that overlay first, otherwise it stays in front of the releases page.
+            const modalHost = document.getElementById('modalHost');
+            if (modalHost && modalHost.innerHTML.trim()) {
+                if (typeof window.closeModal === 'function') window.closeModal();
+                else modalHost.innerHTML = '';
+            }
             if (typeof window.showPage === 'function') window.showPage('releasesPage');
             else {
                 document.querySelectorAll('.page').forEach(page => page.classList.toggle('active', page.id === 'releasesPage'));
