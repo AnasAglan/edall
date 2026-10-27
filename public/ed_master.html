@@ -7274,13 +7274,12 @@ async function takeExam(courseId, lessonId, examIndex) {
                             `).join('')}
                         </div>
                     ` : `
-                        <textarea
-                            class="essay-answer"
-                            id="essay_${index}"
-                            placeholder="${currentLanguage === 'ar' ? 'اكتب إجابتك هنا...' : 'Write your answer here...'}"
-                            rows="4"
-                            style="width:100%;pointer-events:auto !important;-webkit-user-select:text !important;user-select:text !important;border-radius:6px;padding:10px;">
-                        </textarea>
+<textarea
+    class="essay-answer"
+    id="essay_${index}"
+    placeholder="${currentLanguage === 'ar' ? 'اكتب إجابتك هنا...' : 'Write your answer here...'}"
+    rows="4"
+    style="width:100%;pointer-events:auto !important;-webkit-user-select:text !important;user-select:text !important;border-radius:6px;padding:10px;"></textarea>
                     `}
                 </div>
             `;
