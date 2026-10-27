@@ -3441,9 +3441,9 @@ cleanups.push(() => {
             if (!isAndroidApp) {
                 const ar = currentLanguage === 'ar';
                 container.innerHTML = '<div style="padding:28px 16px;text-align:center;border:1px dashed var(--border, #888);border-radius:var(--radius);">'
-                    + '<i class="fas fa-desktop" style="font-size:2rem;margin-bottom:10px;"></i>'
+                    + '<i class="fas fa-download" style="font-size:2rem;margin-bottom:10px;"></i>'
                     + '<div style="font-weight:800;margin-bottom:14px;">' + (ar ? 'لفتح الفيديو يجب عليك تنزيل البرنامج' : 'To watch this video you must download the app') + '</div>'
-                    + '<a class="btn" href="' + EDALL_DOWNLOAD_URL + '" download style="text-decoration:none;"><i class="fas fa-download"></i> ' + (ar ? 'تنزيل البرنامج' : 'Download the app') + '</a>'
+                    + '<button type="button" class="btn" onclick="openReleasesPage()" style="text-decoration:none;"><i class="fas fa-download"></i> ' + (ar ? 'تنزيل البرنامج' : 'Download the app') + '</button>'
                     + '</div>';
                 container.style.display = 'block';
                 btn.innerHTML = '<i class="fas fa-eye-slash"></i> ' + hideLbl + ' (' + num + ')';
@@ -7022,27 +7022,10 @@ if (!(await showExamConfirm(
             return window._examAttempt ? ('ed_exam_draft_' + window._examAttempt.id) : null;
         }
         function _normalizeEssaySpaces(textarea) {
-    if (!(textarea instanceof HTMLTextAreaElement)) return;
-
-    const before = textarea.value;
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-
-    // دمج المسافات المتتالية وعلامات الجدولة، مع الحفاظ على أسطر الإجابة.
-    const normalize = value => value.replace(/[ \t]{2,}/g, ' ');
-    const after = normalize(before);
-
-    if (after === before) return;
-
-    const nextStart = normalize(before.slice(0, start)).length;
-    const nextEnd = normalize(before.slice(0, end)).length;
-
-    textarea.value = after;
-
-    try {
-        textarea.setSelectionRange(nextStart, nextEnd);
-    } catch (_) {}
-}
+            // Preserve the student's exact input, including repeated spaces and tabs.
+            // Do not rewrite textarea.value while the student is typing.
+            if (!(textarea instanceof HTMLTextAreaElement)) return;
+        }
 
         function _saveExamDraft() {
             try {
@@ -7075,7 +7058,7 @@ if (!(await showExamConfirm(
                         const el = document.getElementById(id);
                         if (el) {
     const restoredText = String(val == null ? '' : val);
-    el.value = restoredText.replace(/[ \t]{2,}/g, ' ');
+    el.value = restoredText;
 }
                     });
                 }
@@ -7399,8 +7382,7 @@ async function takeExam(courseId, lessonId, examIndex) {
                             id="essay_${index}"
                             placeholder="${currentLanguage === 'ar' ? 'اكتب إجابتك هنا...' : 'Write your answer here...'}"
                             rows="4"
-                            style="width:100%;pointer-events:auto !important;-webkit-user-select:text !important;user-select:text !important;border-radius:6px;padding:10px;">
-                        </textarea>
+                            style="width:100%;pointer-events:auto !important;-webkit-user-select:text !important;user-select:text !important;border-radius:6px;padding:10px;"></textarea>
                     `}
                 </div>
             `;
