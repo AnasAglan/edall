@@ -1898,17 +1898,14 @@ word-spacing: normal !important;
             <div class="logo" onclick="showPage('mainPage')">ED</div>
             <div class="header-title">ED ALL</div>
             <div class="header-desc">منصة تعليمية متطورة تجمع بين أحدث التقنيات وأفضل المحتويات التعليمية بتجربة مستخدم استثنائية</div>
-            <div id="desktopDownloadHero" style="margin-top: 18px; display: flex; justify-content: center; align-items: center; gap: 10px;">
-                <a href="https://github.com/AnasAglan/ED-ALL/releases/download/Education/EdAll-Setup.exe" 
-                   download 
-                   style="display: inline-flex; align-items: center; gap: 10px; padding: 10px 24px; font-size: 0.95rem; font-weight: 700; border-radius: 9999px; background: rgba(255, 255, 255, 0.22); border: 1px solid rgba(255, 255, 255, 0.4); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); color: #ffffff; text-decoration: none; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); transition: all 0.25s ease;"
-                   onmouseover="this.style.background='rgba(255,255,255,0.32)'; this.style.transform='translateY(-2px)';" 
-                   onmouseout="this.style.background='rgba(255,255,255,0.22)'; this.style.transform='translateY(0)';"
-                   title="تحميل برنامج ED ALL للكمبيوتر">
-                    <i class="fa-brands fa-windows" style="font-size: 1.15rem;"></i>
-                    <span id="heroDownloadText">تحميل برنامج ED ALL للكمبيوتر (Windows)</span>
-                    <i class="fas fa-download" style="font-size: 0.85rem; opacity: 0.85;"></i>
-                </a>
+            <div id="desktopDownloadHero" style="margin-top:18px;display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap;">
+                <button type="button" class="btn" onclick="openReleasesPage()" style="display:inline-flex;align-items:center;gap:10px;padding:10px 24px;font-size:.95rem;font-weight:700;border-radius:9999px;background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.4);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.18);">
+                    <i class="fas fa-download" style="font-size:.9rem;"></i>
+                    <span id="heroDownloadText">تنزيل برنامج ED ALL</span>
+                </button>
+                <button type="button" id="releaseAdminEditBtn" class="btn btn-outline" onclick="openReleasesAdminPage()" title="تعديل الإصدارات" aria-label="تعديل الإصدارات" style="display:none;min-width:42px;padding:10px 12px;color:#fff;border-color:rgba(255,255,255,.65);">
+                    <i class="fas fa-pen"></i>
+                </button>
             </div>
         </div>
 
@@ -2188,6 +2185,116 @@ word-spacing: normal !important;
         © <span id="yr"></span> ED ALL — <span id="footerText">منصة تعليمية متكاملة بالسلاسة والتركيز</span>
     </footer>
     
+    <!-- App releases: public catalogue, platform details, and admin editor -->
+    <div id="releasesPage" class="page">
+        <div class="header">
+            <div class="logo" onclick="showPage('mainPage')">ED</div>
+            <div class="header-title">تنزيل برنامج ED ALL</div>
+            <div class="header-desc">اختر النظام المناسب لجهازك</div>
+            <div class="actions"><button class="btn" onclick="showPage('mainPage')"><i class="fas fa-arrow-right"></i> العودة للرئيسية</button></div>
+        </div>
+        <div class="release-content"><div id="releasePlatformsGrid" class="release-platform-grid"></div></div>
+    </div>
+
+    <div id="releaseDetailPage" class="page">
+        <div class="header">
+            <div class="logo" onclick="showPage('mainPage')">ED</div>
+            <div class="header-title" id="releaseDetailTitle">إصدار ED ALL</div>
+            <div class="header-desc" id="releaseDetailDesc">معلومات الإصدار وروابط التنزيل</div>
+            <div class="actions"><button class="btn" onclick="openReleasesPage(true)"><i class="fas fa-arrow-right"></i> العودة للإصدارات</button></div>
+        </div>
+        <div class="release-content"><div id="releaseDetailBody"></div></div>
+    </div>
+
+    <div id="releasesAdminPage" class="page">
+        <div class="header">
+            <div class="logo" onclick="showPage('mainPage')">ED</div>
+            <div class="header-title">إدارة إصدارات ED ALL</div>
+            <div class="header-desc">إضافة الإصدارات وتعديل بياناتها وروابط التنزيل والمتاجر</div>
+            <div class="actions">
+                <button class="btn" onclick="showPage('mainPage')"><i class="fas fa-arrow-right"></i> العودة للرئيسية</button>
+                <button class="btn btn-accent" onclick="newReleaseEntry()"><i class="fas fa-plus"></i> إضافة إصدار</button>
+            </div>
+        </div>
+        <div class="release-content">
+            <div class="release-admin-layout">
+                <section class="release-admin-form">
+                    <h3 id="releaseFormHeading"><i class="fas fa-plus-circle"></i> إضافة إصدار جديد</h3>
+                    <input type="hidden" id="releaseEditingId">
+                    <label for="releasePlatform">نظام التشغيل</label>
+                    <select id="releasePlatform">
+                        <option value="windows">Windows</option>
+                        <option value="android">Android</option>
+                        <option value="linux">Linux</option>
+                        <option value="macos">macOS</option>
+                        <option value="ios">iPhone / iOS</option>
+                        <option value="ipados">iPad / iPadOS</option>
+                        <option value="googletv">Google TV</option>
+                        <option value="androidtv">Android TV</option>
+                        <option value="chromeos">ChromeOS</option>
+                        <option value="appletv">Apple TV / tvOS</option>
+                        <option value="harmonyos">HarmonyOS</option>
+                        <option value="web">إصدار الويب</option>
+                        <option value="other">نظام آخر</option>
+                    </select>
+                    <label for="releaseDisplayName">اسم الإصدار الظاهر للمستخدمين</label>
+                    <input id="releaseDisplayName" type="text" maxlength="100" placeholder="مثال: ED ALL للكمبيوتر - Windows">
+                    <label for="releaseVersion">رقم الإصدار (اختياري)</label>
+                    <input id="releaseVersion" type="text" maxlength="60" placeholder="مثال: 2.6.2">
+                    <label for="releaseDescription">مواصفات أو ملاحظات الإصدار (اختياري)</label>
+                    <textarea id="releaseDescription" rows="3" maxlength="1000" placeholder="مثال: متوافق مع Windows 10 وWindows 11"></textarea>
+                    <label for="releaseDirectUrl">رابط التنزيل المباشر</label>
+                    <input id="releaseDirectUrl" type="url" placeholder="https://...">
+                    <label id="releaseStoreLabel" for="releaseStoreUrl">رابط المتجر الرسمي الخاص بالنظام</label>
+                    <input id="releaseStoreUrl" type="url" placeholder="https://..."><div class="release-form-hint">اترك أي رابط فارغًا إذا لم يكن متوفرًا؛ سيظهر للمستخدم أنه غير متوفر.</div>
+                    <div class="release-form-actions">
+                        <button class="btn" onclick="saveReleaseEntry()"><i class="fas fa-save"></i> حفظ الإصدار</button>
+                        <button class="btn btn-outline" onclick="newReleaseEntry()">إلغاء / إصدار جديد</button>
+                    </div>
+                </section>
+                <section class="release-admin-list-section">
+                    <h3><i class="fas fa-list"></i> الإصدارات المضافة</h3>
+                    <div id="releaseAdminList"></div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .release-content{max-width:1180px;margin:24px auto;padding:0 18px 30px}
+        .release-platform-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
+        .release-platform-card,.release-admin-form,.release-admin-list-section,.release-detail-panel{background:var(--card);border:1px solid rgba(255,255,255,.08);border-radius:var(--radius-lg);padding:20px;box-shadow:var(--shadow)}
+        .release-platform-card{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;cursor:pointer;transition:transform .2s ease,border-color .2s ease;min-height:190px;color:var(--text)}
+        .release-platform-card:hover{transform:translateY(-3px);border-color:var(--primary)}
+        .release-os-icon{font-size:2.2rem;color:var(--primary);min-height:42px;display:flex;align-items:center;justify-content:center}
+        .release-os-name{font-size:1.08rem;font-weight:900}
+        .release-os-version{font-size:.9rem;color:var(--text-muted);overflow-wrap:anywhere}
+        .release-open-label{margin-top:auto;color:var(--primary);font-weight:800}
+        .release-detail-panel{max-width:850px;margin:auto}
+        .release-detail-heading{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+        .release-detail-heading .release-os-icon{font-size:2.5rem;min-width:55px}
+        .release-link-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-top:18px}
+        .release-link-box{border:1px solid rgba(255,255,255,.1);border-radius:var(--radius);padding:18px;text-align:center;background:var(--bg-light)}
+        .release-link-icon{font-size:1.9rem;color:var(--primary);margin-bottom:10px}
+        .release-status{display:inline-block;border-radius:999px;padding:5px 12px;font-size:.86rem;font-weight:800;margin:8px 0 12px}
+        .release-status.available{background:rgba(16,185,129,.15);color:var(--secondary-light)}
+        .release-status.unavailable{background:rgba(239,68,68,.13);color:var(--danger)}
+        .release-admin-layout{display:grid;grid-template-columns:minmax(280px,.9fr) minmax(300px,1.1fr);gap:18px;align-items:start}
+        .release-admin-form label{display:block;margin:13px 0 6px;font-weight:800}
+        .release-admin-form h3,.release-admin-list-section h3{margin-bottom:14px}
+        .release-form-hint{font-size:.88rem;color:var(--text-muted);line-height:1.6}
+        .release-form-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
+        .release-admin-item{display:flex;align-items:center;gap:12px;padding:13px;border-radius:var(--radius-sm);background:var(--bg-light);margin-bottom:10px;min-width:0}
+        .release-admin-item-main{flex:1;min-width:0;overflow-wrap:anywhere}
+        .release-admin-item-title{font-weight:900}
+        .release-admin-item-sub{color:var(--text-muted);font-size:.88rem;margin-top:4px}
+        .release-admin-item-actions{display:flex;gap:6px;flex-wrap:wrap}
+        .release-admin-item-actions .btn{padding:7px 10px;font-size:.85rem}
+        .release-empty{text-align:center;color:var(--text-muted);padding:24px 12px}
+        .release-description{white-space:pre-wrap;color:var(--text-muted);line-height:1.8;margin-top:12px}
+        @media(max-width:760px){.release-admin-layout{grid-template-columns:1fr}.release-admin-item{align-items:flex-start;flex-wrap:wrap}.release-admin-item-actions{width:100%}.release-admin-item-actions .btn{flex:1}}
+    </style>
+
     <div id="toast" class="toast"></div>
     <div id="modalHost"></div>
     <div id="loadingOverlay" class="loading-overlay" style="display: none;">
@@ -3427,7 +3534,9 @@ cleanups.push(() => {
             'favoritesPage': 'favorites',
             'manageCoursesPage': 'manage',
             'walletPage': 'wallet',
-            'walletAdminTopupPage': 'wallet-topup'
+            'walletAdminTopupPage': 'wallet-topup',
+            'releasesPage': 'releases',
+            'releasesAdminPage': 'releases-admin'
         };
         const routeToPage = {};
         for (const [page, route] of Object.entries(pageToRoute)) {
@@ -3482,7 +3591,7 @@ cleanups.push(() => {
         window.showPage = function(pageId, skipPushState) {
             try {
                 // Protect admin page
-                if (pageId === 'adminPage') {
+                if (pageId === 'adminPage' || pageId === 'releasesAdminPage') {
                     if (!currentUser || !currentUser.roles || !currentUser.roles.includes('admin')) {
                         showToast(currentLanguage === 'ar' ? 'يجب تسجيل الدخول كمدير للوصول لهذه الصفحة' : 'Admin access required', 'error');
                         return;
@@ -3520,6 +3629,10 @@ cleanups.push(() => {
                     renderWalletPage();
                 } else if (pageId === 'walletAdminTopupPage') {
                     renderWalletAdminTopupPage();
+                } else if (pageId === 'releasesPage') {
+                    renderReleasePlatforms();
+                } else if (pageId === 'releasesAdminPage') {
+                    renderReleaseAdminPage();
                 }
 
                 updateBreadcrumb(pageId);
@@ -4457,6 +4570,8 @@ window.triggerModalClose = function() {
                         document.getElementById('manageCoursesBtn').style.display = 'none';
                     }
                     
+                    const releaseEditButton = document.getElementById('releaseAdminEditBtn');
+                    if (releaseEditButton) releaseEditButton.style.display = (currentUser.roles && currentUser.roles.includes('admin')) ? 'inline-flex' : 'none';
                     document.getElementById('courseFilters').style.display = 'flex';
                     document.getElementById('quickStats').style.display = 'grid';
                     
@@ -4465,6 +4580,8 @@ window.triggerModalClose = function() {
                     document.getElementById('loginBtn').style.display = 'inline-flex';
                     document.getElementById('userMenu').style.display = 'none';
                     document.getElementById('adminUiBtn').style.display = 'none';
+                    const releaseEditButton = document.getElementById('releaseAdminEditBtn');
+                    if (releaseEditButton) releaseEditButton.style.display = 'none';
                     document.getElementById('courseFilters').style.display = 'none';
                     document.getElementById('quickStats').style.display = 'none';
                 }
@@ -4484,7 +4601,10 @@ window.triggerModalClose = function() {
                 'settingsPage': currentLanguage === 'ar' ? 'الإعدادات' : 'Settings',
                 'enrolledPage': currentLanguage === 'ar' ? 'كورساتي' : 'My Courses',
                 'favoritesPage': currentLanguage === 'ar' ? 'المفضلة' : 'Favorites',
-                'manageCoursesPage': currentLanguage === 'ar' ? 'إدارة الكورسات' : 'Manage Courses'
+                'manageCoursesPage': currentLanguage === 'ar' ? 'إدارة الكورسات' : 'Manage Courses',
+                'releasesPage': currentLanguage === 'ar' ? 'إصدارات ED ALL' : 'ED ALL Releases',
+                'releasesAdminPage': currentLanguage === 'ar' ? 'إدارة الإصدارات' : 'Manage Releases',
+                'releaseDetailPage': currentLanguage === 'ar' ? 'تفاصيل الإصدار' : 'Release Details'
             };
             
             if (pageId === 'mainPage') {
@@ -7274,12 +7394,13 @@ async function takeExam(courseId, lessonId, examIndex) {
                             `).join('')}
                         </div>
                     ` : `
-<textarea
-    class="essay-answer"
-    id="essay_${index}"
-    placeholder="${currentLanguage === 'ar' ? 'اكتب إجابتك هنا...' : 'Write your answer here...'}"
-    rows="4"
-    style="width:100%;pointer-events:auto !important;-webkit-user-select:text !important;user-select:text !important;border-radius:6px;padding:10px;"></textarea>
+                        <textarea
+                            class="essay-answer"
+                            id="essay_${index}"
+                            placeholder="${currentLanguage === 'ar' ? 'اكتب إجابتك هنا...' : 'Write your answer here...'}"
+                            rows="4"
+                            style="width:100%;pointer-events:auto !important;-webkit-user-select:text !important;user-select:text !important;border-radius:6px;padding:10px;">
+                        </textarea>
                     `}
                 </div>
             `;
@@ -10411,5 +10532,306 @@ exam.questions.forEach((question, index) => {
         })();
 
     </script>
+
+<script>
+(function () {
+    'use strict';
+    const RELEASES_SETTING_KEY = 'app_releases';
+    let appReleases = [];
+    let selectedReleaseId = null;
+    let releaseDataLoaded = false;
+
+    const RELEASE_PLATFORMS = {
+        windows:   { name: 'Windows', icon: 'fa-brands fa-windows', store: 'Microsoft Store', storeIcon: 'fa-brands fa-microsoft' },
+        android:   { name: 'Android', icon: 'fa-brands fa-android', store: 'Google Play', storeIcon: 'fa-brands fa-google-play' },
+        linux:     { name: 'Linux', icon: 'fa-brands fa-linux', store: 'متجر Linux / التوزيعة', storeIcon: 'fa-brands fa-linux' },
+        macos:     { name: 'macOS', icon: 'fa-brands fa-apple', store: 'Mac App Store', storeIcon: 'fa-brands fa-app-store-ios' },
+        ios:       { name: 'iPhone / iOS', icon: 'fa-brands fa-app-store-ios', store: 'App Store', storeIcon: 'fa-brands fa-app-store-ios' },
+        ipados:    { name: 'iPad / iPadOS', icon: 'fa-brands fa-app-store-ios', store: 'App Store', storeIcon: 'fa-brands fa-app-store-ios' },
+        googletv:  { name: 'Google TV', icon: 'fa-brands fa-google-play', store: 'Google Play', storeIcon: 'fa-brands fa-google-play' },
+        androidtv: { name: 'Android TV', icon: 'fa-brands fa-android', store: 'Google Play', storeIcon: 'fa-brands fa-google-play' },
+        chromeos:  { name: 'ChromeOS', icon: 'fa-brands fa-chrome', store: 'متجر Chrome / Google Play', storeIcon: 'fa-brands fa-google-play' },
+        appletv:   { name: 'Apple TV / tvOS', icon: 'fa-brands fa-apple', store: 'App Store', storeIcon: 'fa-brands fa-app-store-ios' },
+        harmonyos: { name: 'HarmonyOS', icon: 'fa-solid fa-mobile-screen-button', store: 'متجر Huawei AppGallery', storeIcon: 'fa-solid fa-store' },
+        web:       { name: 'الويب', icon: 'fa-solid fa-globe', store: 'الموقع الرسمي', storeIcon: 'fa-solid fa-globe' },
+        other:     { name: 'نظام آخر', icon: 'fa-solid fa-desktop', store: 'المتجر الرسمي', storeIcon: 'fa-solid fa-store' }
+    };
+
+    function releaseIsAdmin() {
+        const user = window.currentUser || (typeof currentUser !== 'undefined' ? currentUser : null);
+        return !!(user && Array.isArray(user.roles) && user.roles.includes('admin'));
+    }
+    function releaseEscape(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
+            return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+        });
+    }
+    function safeReleaseUrl(value) {
+        const raw = String(value || '').trim();
+        if (!raw) return '';
+        try {
+            const parsed = new URL(raw, window.location.href);
+            if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return '';
+            return parsed.href;
+        } catch (_) { return ''; }
+    }
+    function platformInfo(platform) {
+        return RELEASE_PLATFORMS[platform] || RELEASE_PLATFORMS.other;
+    }
+    function getReleaseIcon(platform, store) {
+        const info = platformInfo(platform);
+        return store ? info.storeIcon : info.icon;
+    }
+    function isReleasePlatformAvailable(entry) {
+        return !!(safeReleaseUrl(entry && entry.directUrl) || safeReleaseUrl(entry && entry.storeUrl));
+    }
+    async function loadReleaseData(force) {
+        if (releaseDataLoaded && !force) return appReleases;
+        try {
+            const result = await sb.from('site_settings').select('value').eq('key', RELEASES_SETTING_KEY).maybeSingle();
+            if (result.error) throw result.error;
+            const value = result.data && result.data.value;
+            appReleases = Array.isArray(value) ? value.filter(item => item && typeof item === 'object') : [];
+            releaseDataLoaded = true;
+            return appReleases;
+        } catch (error) {
+            console.error('Unable to load ED ALL releases:', error);
+            throw error;
+        }
+    }
+    async function saveReleaseData() {
+        const result = await sb.from('site_settings').upsert({
+            key: RELEASES_SETTING_KEY,
+            value: appReleases,
+            updated_at: new Date().toISOString()
+        }, { onConflict: 'key' });
+        if (result.error) throw result.error;
+        releaseDataLoaded = true;
+    }
+    function releaseToast(message, type) {
+        if (typeof window.showToast === 'function') window.showToast(message, type || 'info');
+        else alert(message);
+    }
+
+    window.openReleasesPage = async function (keepCurrentRoute) {
+        try {
+            if (typeof window.showPage === 'function') window.showPage('releasesPage');
+            else {
+                document.querySelectorAll('.page').forEach(page => page.classList.toggle('active', page.id === 'releasesPage'));
+                await renderReleasePlatforms();
+            }
+        } catch (error) {
+            console.error(error);
+            releaseToast('تعذر تحميل الإصدارات. تحقق من الاتصال بقاعدة البيانات وصلاحيات site_settings.', 'error');
+        }
+    };
+    window.openReleasesAdminPage = async function () {
+        if (!releaseIsAdmin()) {
+            releaseToast('هذه الصفحة متاحة للمدير فقط.', 'error');
+            return;
+        }
+        window.showPage('releasesAdminPage');
+    };
+
+    window.renderReleasePlatforms = async function () {
+        const container = document.getElementById('releasePlatformsGrid');
+        if (!container) return;
+        container.innerHTML = '<div class="release-empty">جارٍ تحميل الإصدارات...</div>';
+        try { await loadReleaseData(true); }
+        catch (error) {
+            container.innerHTML = '<div class="release-empty">تعذر تحميل الإصدارات الآن. حاول مرة أخرى بعد قليل.</div>';
+            return;
+        }
+        if (!appReleases.length) {
+            container.innerHTML = '<div class="release-empty">لا توجد إصدارات مضافة حاليًا.</div>';
+            return;
+        }
+        container.innerHTML = appReleases.map(entry => {
+            const info = platformInfo(entry.platform);
+            const title = entry.displayName || info.name;
+            const available = isReleasePlatformAvailable(entry);
+            return `<button type="button" class="release-platform-card" onclick="openReleaseDetails('${releaseEscape(entry.id)}')">
+                <span class="release-os-icon"><i class="${releaseEscape(info.icon)}"></i></span>
+                <span class="release-os-name">${releaseEscape(title)}</span>
+                <span class="release-os-version">${entry.version ? 'الإصدار ' + releaseEscape(entry.version) : releaseEscape(info.name)}</span>
+                ${entry.description ? `<span class="release-os-version">${releaseEscape(entry.description)}</span>` : ''}
+                <span class="release-status ${available ? 'available' : 'unavailable'}">${available ? 'روابط متاحة' : 'روابط التنزيل غير متوفرة'}</span>
+                <span class="release-open-label">عرض الإصدار <i class="fas fa-arrow-left"></i></span>
+            </button>`;
+        }).join('');
+    };
+
+    window.openReleaseDetails = async function (releaseId) {
+        try {
+            await loadReleaseData(true);
+            selectedReleaseId = String(releaseId);
+            window.showPage('releaseDetailPage', true);
+            await renderReleaseDetail();
+        } catch (error) {
+            console.error(error);
+            releaseToast('تعذر فتح تفاصيل الإصدار.', 'error');
+        }
+    };
+    window.renderReleaseDetail = async function () {
+        const body = document.getElementById('releaseDetailBody');
+        if (!body) return;
+        try { await loadReleaseData(false); } catch (_) {}
+        const entry = appReleases.find(item => String(item.id) === String(selectedReleaseId));
+        if (!entry) {
+            body.innerHTML = '<div class="release-empty">لم يتم العثور على هذا الإصدار. ارجع إلى قائمة الإصدارات واختر إصدارًا آخر.</div>';
+            return;
+        }
+        const info = platformInfo(entry.platform);
+        const title = entry.displayName || info.name;
+        const directUrl = safeReleaseUrl(entry.directUrl);
+        const storeUrl = safeReleaseUrl(entry.storeUrl);
+        document.getElementById('releaseDetailTitle').textContent = title;
+        document.getElementById('releaseDetailDesc').textContent = entry.version ? 'الإصدار ' + entry.version : info.name;
+        const renderLinkBox = (kind, label, url, iconClass, buttonText) => `
+            <div class="release-link-box">
+                <div class="release-link-icon"><i class="${releaseEscape(iconClass)}"></i></div>
+                <h3>${releaseEscape(label)}</h3>
+                <span class="release-status ${url ? 'available' : 'unavailable'}">${url ? 'متوفر' : 'غير متوفر'}</span>
+                ${url ? `<div><a class="btn" href="${releaseEscape(url)}" target="_blank" rel="noopener noreferrer"><i class="${kind === 'direct' ? 'fas fa-download' : 'fas fa-arrow-up-right-from-square'}"></i> ${releaseEscape(buttonText)}</a></div>` : '<div style="color:var(--text-muted);">الرابط غير متوفر حاليًا</div>'}
+                ${kind === 'store' ? `<div style="margin-top:14px;font-size:.82rem;color:var(--text-muted);">${releaseEscape(info.store)}</div>` : ''}
+            </div>`;
+        body.innerHTML = `<div class="release-detail-panel">
+            <div class="release-detail-heading"><div class="release-os-icon"><i class="${releaseEscape(info.icon)}"></i></div><div><h2>${releaseEscape(title)}</h2><div class="release-os-version">${releaseEscape(info.name)}${entry.version ? ' · الإصدار ' + releaseEscape(entry.version) : ''}</div></div></div>
+            ${entry.description ? `<div class="release-description">${releaseEscape(entry.description)}</div>` : ''}
+            <div class="release-link-grid">
+                ${renderLinkBox('direct', 'التنزيل المباشر', directUrl, 'fas fa-download', 'تحميل')}
+                ${renderLinkBox('store', 'التنزيل من المتجر', storeUrl, info.storeIcon, 'فتح المتجر')}
+            </div>
+        </div>`;
+    };
+
+    window.renderReleaseAdminPage = async function () {
+        if (!releaseIsAdmin()) {
+            releaseToast('هذه الصفحة متاحة للمدير فقط.', 'error');
+            window.showPage('mainPage');
+            return;
+        }
+        try { await loadReleaseData(true); }
+        catch (error) {
+            const list = document.getElementById('releaseAdminList');
+            if (list) list.innerHTML = '<div class="release-empty">تعذر قراءة الإصدارات. قد تحتاج صلاحيات قراءة جدول site_settings.</div>';
+            return;
+        }
+        const list = document.getElementById('releaseAdminList');
+        if (!list) return;
+        if (!appReleases.length) {
+            list.innerHTML = '<div class="release-empty">لا توجد إصدارات بعد. اضغط «إضافة إصدار» لإنشاء أول إصدار.</div>';
+            return;
+        }
+        list.innerHTML = appReleases.map(entry => {
+            const info = platformInfo(entry.platform);
+            const title = entry.displayName || info.name;
+            const direct = safeReleaseUrl(entry.directUrl);
+            const store = safeReleaseUrl(entry.storeUrl);
+            return `<div class="release-admin-item">
+                <div class="release-os-icon"><i class="${releaseEscape(info.icon)}"></i></div>
+                <div class="release-admin-item-main"><div class="release-admin-item-title">${releaseEscape(title)}</div>
+                <div class="release-admin-item-sub">${entry.version ? 'الإصدار ' + releaseEscape(entry.version) + ' · ' : ''}${direct ? 'رابط مباشر ✓' : 'لا يوجد رابط مباشر'} · ${store ? 'رابط متجر ✓' : 'لا يوجد رابط متجر'}</div></div>
+                <div class="release-admin-item-actions"><button type="button" class="btn btn-outline" onclick="editReleaseEntry('${releaseEscape(entry.id)}')"><i class="fas fa-pen"></i> تعديل</button><button type="button" class="btn btn-danger" onclick="deleteReleaseEntry('${releaseEscape(entry.id)}')"><i class="fas fa-trash"></i> حذف</button></div>
+            </div>`;
+        }).join('');
+    };
+
+    window.newReleaseEntry = function () {
+        const ids = ['releaseEditingId','releaseDisplayName','releaseVersion','releaseDescription','releaseDirectUrl','releaseStoreUrl'];
+        ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+        document.getElementById('releasePlatform').value = 'windows';
+        document.getElementById('releaseFormHeading').innerHTML = '<i class="fas fa-plus-circle"></i> إضافة إصدار جديد';
+        document.getElementById('releaseStoreLabel').textContent = 'رابط المتجر الرسمي الخاص بالنظام';
+    };
+
+    window.editReleaseEntry = function (releaseId) {
+        if (!releaseIsAdmin()) return;
+        const entry = appReleases.find(item => String(item.id) === String(releaseId));
+        if (!entry) { releaseToast('لم يتم العثور على الإصدار.', 'error'); return; }
+        document.getElementById('releaseEditingId').value = entry.id;
+        document.getElementById('releasePlatform').value = RELEASE_PLATFORMS[entry.platform] ? entry.platform : 'other';
+        document.getElementById('releaseDisplayName').value = entry.displayName || '';
+        document.getElementById('releaseVersion').value = entry.version || '';
+        document.getElementById('releaseDescription').value = entry.description || '';
+        document.getElementById('releaseDirectUrl').value = entry.directUrl || '';
+        document.getElementById('releaseStoreUrl').value = entry.storeUrl || '';
+        document.getElementById('releaseFormHeading').innerHTML = '<i class="fas fa-pen"></i> تعديل الإصدار';
+        document.getElementById('releaseStoreLabel').textContent = 'رابط ' + platformInfo(entry.platform).store;
+        document.getElementById('releasePlatform').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
+
+    window.saveReleaseEntry = async function () {
+        if (!releaseIsAdmin()) { releaseToast('هذه العملية للمدير فقط.', 'error'); return; }
+        const platform = document.getElementById('releasePlatform').value;
+        const displayName = document.getElementById('releaseDisplayName').value.trim();
+        const version = document.getElementById('releaseVersion').value.trim();
+        const description = document.getElementById('releaseDescription').value.trim();
+        const directRaw = document.getElementById('releaseDirectUrl').value.trim();
+        const storeRaw = document.getElementById('releaseStoreUrl').value.trim();
+        const directUrl = safeReleaseUrl(directRaw);
+        const storeUrl = safeReleaseUrl(storeRaw);
+        if (directRaw && !directUrl) { releaseToast('رابط التنزيل المباشر غير صحيح. استخدم رابطًا يبدأ بـ https:// أو http://', 'error'); return; }
+        if (storeRaw && !storeUrl) { releaseToast('رابط المتجر غير صحيح. استخدم رابطًا يبدأ بـ https:// أو http://', 'error'); return; }
+        if (!displayName && !RELEASE_PLATFORMS[platform]) { releaseToast('أدخل اسم الإصدار.', 'error'); return; }
+        const editingId = document.getElementById('releaseEditingId').value;
+        const existingIndex = appReleases.findIndex(item => String(item.id) === String(editingId));
+        const oldItems = appReleases.map(item => ({ ...item }));
+        const entry = {
+            id: editingId || ('release_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)),
+            platform,
+            displayName: displayName || platformInfo(platform).name,
+            version,
+            description,
+            directUrl,
+            storeUrl,
+            updatedAt: new Date().toISOString()
+        };
+        if (existingIndex >= 0) appReleases[existingIndex] = entry;
+        else appReleases.unshift(entry);
+        try {
+            await saveReleaseData();
+            releaseToast('تم حفظ الإصدار بنجاح.', 'success');
+            window.newReleaseEntry();
+            await window.renderReleaseAdminPage();
+        } catch (error) {
+            console.error('Failed to save release settings:', error);
+            appReleases = oldItems;
+            releaseToast('فشل الحفظ في قاعدة البيانات. تأكد من أن حساب المدير يملك صلاحية upsert على جدول site_settings.', 'error');
+        }
+    };
+
+    window.deleteReleaseEntry = async function (releaseId) {
+        if (!releaseIsAdmin()) { releaseToast('هذه العملية للمدير فقط.', 'error'); return; }
+        const entry = appReleases.find(item => String(item.id) === String(releaseId));
+        if (!entry) return;
+        if (!confirm('هل تريد حذف الإصدار «' + (entry.displayName || platformInfo(entry.platform).name) + '»؟')) return;
+        const oldItems = appReleases.slice();
+        appReleases = appReleases.filter(item => String(item.id) !== String(releaseId));
+        try {
+            await saveReleaseData();
+            releaseToast('تم حذف الإصدار.', 'success');
+            await window.renderReleaseAdminPage();
+        } catch (error) {
+            appReleases = oldItems;
+            console.error(error);
+            releaseToast('فشل حذف الإصدار من قاعدة البيانات.', 'error');
+        }
+    };
+
+    // Keep the store label intuitive when the administrator changes platform.
+    document.addEventListener('DOMContentLoaded', function () {
+        const platform = document.getElementById('releasePlatform');
+        if (platform) platform.addEventListener('change', function () {
+            const info = platformInfo(platform.value);
+            const label = document.getElementById('releaseStoreLabel');
+            if (label && !document.getElementById('releaseEditingId').value) label.textContent = 'رابط ' + info.store;
+        });
+        const pencil = document.getElementById('releaseAdminEditBtn');
+        if (pencil && !releaseIsAdmin()) pencil.style.display = 'none';
+    });
+})();
+</script>
+
 </body>
 </html>
