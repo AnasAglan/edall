@@ -506,6 +506,49 @@
       } catch (_) {}
     };
 
+    const waitForShakaVariant = (shakaPlayer, requestedTrack) => new Promise((resolve, reject) => {
+      if (!shakaPlayer || !requestedTrack) {
+        reject(new Error('A valid Shaka video variant was not selected.'));
+        return;
+      }
+      const current = shakaPlayer.getVariantTracks().find(item => item.active);
+      if (current && String(current.id) === String(requestedTrack.id)) {
+        resolve();
+        return;
+      }
+      let finished = false;
+      const finish = error => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        if (typeof shakaPlayer.removeEventListener === 'function') {
+          shakaPlayer.removeEventListener('variantchanged', onVariantChanged);
+        }
+        if (error) reject(error); else resolve();
+      };
+      const timer = setTimeout(() => finish(new Error('Shaka did not confirm the requested quality within 15 seconds.')), 15000);
+      const onVariantChanged = event => {
+        const nextTrack = event && event.newTrack
+          ? event.newTrack
+          : (event && event.detail && event.detail.newTrack ? event.detail.newTrack : null);
+        if (!nextTrack || String(nextTrack.id) !== String(requestedTrack.id)) return;
+        const active = shakaPlayer.getVariantTracks().find(item => item.active);
+        if (active && String(active.id) === String(requestedTrack.id)) finish();
+      };
+      if (typeof shakaPlayer.addEventListener !== 'function') {
+        finish(new Error('Shaka cannot confirm video quality changes.'));
+        return;
+      }
+      shakaPlayer.addEventListener('variantchanged', onVariantChanged);
+      try {
+        shakaPlayer.selectVariantTrack(requestedTrack, true, 0);
+        const activeAfterSelection = shakaPlayer.getVariantTracks().find(item => item.active);
+        if (activeAfterSelection && String(activeAfterSelection.id) === String(requestedTrack.id)) finish();
+      } catch (error) {
+        finish(error);
+      }
+    });
+
     const loadProgressiveFallback = async (current, preferredHeight) => {
       muxedVideos = current.muxedVideos.slice().sort((a, b) => b.height - a.height || b.bitrate - a.bitrate);
       qualityHeights = Array.from(new Set(muxedVideos.map(item => Number(item.height)))).sort((a, b) => b - a);
@@ -568,7 +611,7 @@
           selectedHeight = getPreferredHeight(qualityHeights, preferredHeight);
           const selectedTrack = chooseVariant(variantTracks, selectedHeight);
           if (!selectedTrack) throw new Error('The requested initial video quality is not present in the DASH manifest.');
-          if (!selectedTrack.active) shakaPlayer.selectVariantTrack(selectedTrack, true, 0);
+          await waitForShakaVariant(shakaPlayer, selectedTrack);
           loadedWithShaka = true;
         } catch (shakaError) {
           if (disposed) throw shakaError;
@@ -618,43 +661,7 @@
 
           // Shaka schedules a manual variant change; wait for its confirmation event
           // instead of assuming that calling selectVariantTrack means it was applied.
-          await new Promise((resolve, reject) => {
-            let finished = false;
-            const timeout = setTimeout(() => finish(new Error('Shaka did not confirm the requested quality within 15 seconds.')), 15000);
-            const cleanupEvent = () => {
-              if (activeEngine && typeof activeEngine.removeEventListener === 'function') {
-                activeEngine.removeEventListener('variantchanged', onVariantChanged);
-              }
-            };
-            const finish = error => {
-              if (finished) return;
-              finished = true;
-              clearTimeout(timeout);
-              cleanupEvent();
-              if (error) reject(error); else resolve();
-            };
-            const onVariantChanged = event => {
-              const newTrack = event && event.newTrack
-                ? event.newTrack
-                : (event && event.detail && event.detail.newTrack ? event.detail.newTrack : null);
-              if (newTrack && Number(newTrack.height) === requested) finish();
-            };
-            if (!activeEngine || typeof activeEngine.addEventListener !== 'function') {
-              finish(new Error('Shaka cannot report actual quality changes.'));
-              return;
-            }
-            activeEngine.addEventListener('variantchanged', onVariantChanged);
-            try {
-              activeEngine.selectVariantTrack(track, true, 0);
-            } catch (error) {
-              finish(error);
-            }
-          });
-          if (disposed || engine !== activeEngine) throw new Error('The Piped player changed while applying quality.');
-          const activeTrack = activeEngine.getVariantTracks().find(item => item.active);
-          if (!activeTrack || Number(activeTrack.height) !== requested) {
-            throw new Error('Shaka did not activate the requested video height.');
-          }
+          await waitForShakaVariant(activeEngine, track);
           selectedHeight = requested;
         } else if (mode === 'direct') {
           const target = chooseMuxed(muxedVideos, requested);
