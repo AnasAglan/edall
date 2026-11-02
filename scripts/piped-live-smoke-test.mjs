@@ -1,5 +1,5 @@
 const DOCS_URL = "https://raw.githubusercontent.com/TeamPiped/documentation/main/content/docs/public-instances/index.md";
-const VIDEO_ID = "dQw4w9WgXcQ";
+const VIDEO_IDS = ["dQw4w9WgXcQ", "aqz-KE-bpKQ", "jNQXAC9IVRw"];
 const ORIGIN = "https://edymaster.lovable.app";
 const FALLBACKS = [
   "https://pipedapi.kavin.rocks",
@@ -66,36 +66,86 @@ async function probeRange(stream, kind, controller) {
 async function inspectInstance(base, activeControllers) {
   const controller = new AbortController();
   activeControllers.push(controller);
-  const timer = setTimeout(() => controller.abort(), 14000);
+  const timer = setTimeout(() => controller.abort(), 18000);
   try {
-    const response = await fetch(base + "/streams/" + VIDEO_ID, {
-      method: "GET",
-      cache: "no-store",
-      headers: { Accept: "application/json", Origin: ORIGIN },
-      signal: controller.signal,
-    });
-    if (!response.ok) throw new Error("API returned HTTP " + response.status);
-    if (!hasCorsAccess(response)) {
-      throw new Error("API does not allow cross-origin fetch from " + ORIGIN);
+    let data = null;
+    let selectedVideoId = "";
+    const sampleErrors = [];
+
+    for (const videoId of VIDEO_IDS) {
+      const response = await fetch(base + "/streams/" + videoId, {
+        method: "GET",
+        cache: "no-store",
+        headers: { Accept: "application/json", Origin: ORIGIN },
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error("API returned HTTP " + response.status + " for " + videoId);
+      if (!hasCorsAccess(response)) {
+        throw new Error("API CORS header was " +
+          (response.headers.get("access-control-allow-origin") || "(missing)") +
+          " for origin " + ORIGIN);
+      }
+
+      const candidate = await response.json();
+      if (!candidate || !Array.isArray(candidate.videoStreams)) {
+        sampleErrors.push(videoId + ": response omitted videoStreams");
+        continue;
+      }
+
+      const videos = candidate.videoStreams.filter(stream => {
+        if (!stream || typeof stream.url !== "string" || !/^https:\/\//i.test(stream.url)) return false;
+        const mimeType = String(stream.mimeType || (
+          stream.format === "MPEG_4" ? "video/mp4" :
+          stream.format === "WEBM" ? "video/webm" : ""
+        )).split(";")[0].trim();
+        const height = Number(stream.height) ||
+          Number((String(stream.quality || "").match(/(\d{3,4})p/i) || [])[1]);
+        return Number(height) > 0 && /^video\/(mp4|webm)$/i.test(mimeType);
+      });
+      if (!videos.length) {
+        const sample = candidate.videoStreams.slice(0, 2).map(stream => ({
+          height: stream && stream.height,
+          quality: stream && stream.quality,
+          format: stream && stream.format,
+          mimeType: stream && stream.mimeType,
+          urlProtocol: stream && typeof stream.url === "string" ? stream.url.slice(0, 8) : "",
+        }));
+        sampleErrors.push(videoId + ": no usable video streams; raw=" +
+          candidate.videoStreams.length + "; sample=" + JSON.stringify(sample) +
+          "; apiError=" + String(candidate.error || ""));
+        continue;
+      }
+      data = candidate;
+      selectedVideoId = videoId;
+      break;
     }
 
-    const data = await response.json();
-    if (!data || !Array.isArray(data.videoStreams) || !Array.isArray(data.audioStreams)) {
-      throw new Error("API response does not contain Piped videoStreams/audioStreams arrays");
-    }
+    if (!data) throw new Error(sampleErrors.join(" | ") || "No sample video returned usable streams");
 
-    const videos = data.videoStreams.filter(stream =>
-      stream && typeof stream.url === "string" &&
-      /^https:\/\//i.test(stream.url) &&
-      Number(stream.height) > 0 &&
-      /^video\/(mp4|webm)/i.test(String(stream.mimeType || ""))
+    const videos = data.videoStreams.map(stream => {
+      const mimeType = String(stream.mimeType || (
+        stream.format === "MPEG_4" ? "video/mp4" :
+        stream.format === "WEBM" ? "video/webm" : ""
+      )).split(";")[0].trim();
+      const height = Number(stream.height) ||
+        Number((String(stream.quality || "").match(/(\d{3,4})p/i) || [])[1]);
+      return { ...stream, mimeType, height };
+    }).filter(stream =>
+      typeof stream.url === "string" && /^https:\/\//i.test(stream.url) &&
+      Number(stream.height) > 0 && /^video\/(mp4|webm)$/i.test(stream.mimeType)
     );
-    const audios = data.audioStreams.filter(stream =>
-      stream && typeof stream.url === "string" &&
-      /^https:\/\//i.test(stream.url) &&
-      /^audio\/(mp4|webm|ogg|mpeg)/i.test(String(stream.mimeType || ""))
+
+    const audios = (Array.isArray(data.audioStreams) ? data.audioStreams : []).map(stream => {
+      const mimeType = String(stream && stream.mimeType || (
+        stream && stream.format === "M4A" ? "audio/mp4" :
+        stream && (stream.format === "OPUS" || stream.format === "OGG") ? "audio/ogg" :
+        stream && stream.format === "WEBM" ? "audio/webm" : ""
+      )).split(";")[0].trim();
+      return { ...stream, mimeType };
+    }).filter(stream =>
+      stream && typeof stream.url === "string" && /^https:\/\//i.test(stream.url) &&
+      /^audio\/(mp4|webm|ogg|mpeg)$/i.test(stream.mimeType)
     );
-    if (!videos.length) throw new Error("No HTTPS browser-compatible video streams were returned");
 
     const adaptiveVideo = videos.find(stream => stream.videoOnly === true || stream.videoOnly === "true");
     const muxedVideo = videos.find(stream => stream.videoOnly !== true && stream.videoOnly !== "true");
@@ -112,12 +162,14 @@ async function inspectInstance(base, activeControllers) {
     const heights = [...new Set(videos.map(stream => Number(stream.height)))].sort((a, b) => b - a);
     return {
       instance: base,
+      videoId: selectedVideoId,
       title: String(data.title || ""),
       videoCount: videos.length,
       audioCount: audios.length,
       heights,
       usedSeparateAudio: !!audio,
-      apiCors: response.headers.get("access-control-allow-origin"),
+      videoOnlyAvailable: !!adaptiveVideo,
+      apiCors: ORIGIN,
       videoRangeStatus: videoProbe.status,
       videoCors: videoProbe.cors,
       audioRangeStatus: audioProbe && audioProbe.status,
@@ -130,7 +182,7 @@ async function inspectInstance(base, activeControllers) {
 
 const instances = await getInstances();
 if (!instances.length) throw new Error("No secure Piped API instances were discovered.");
-console.log("Checking " + instances.length + " Piped API instances for video " + VIDEO_ID + "...");
+console.log("Checking " + instances.length + " Piped API instances against " + VIDEO_IDS.length + " public video samples...");
 
 const failures = [];
 let healthyResult = null;
