@@ -1,181 +1,254 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-02T00:00:00.000Z",
-  "refreshedDaily": false,
+  "generatedAt": "2026-11-02T20:12:23.653000Z",
+  "refreshedDaily": true,
   "sources": {
     "piped": [
       {
-        "url": "https://pipedapi.kavin.rocks",
-        "provider": "piped",
-        "official": true,
-        "status": "unknown",
-        "score": 0,
-        "responseMs": null,
-        "heights": []
-      },
-      {
-        "url": "https://pipedapi.leptons.xyz",
-        "provider": "piped",
-        "official": true,
-        "status": "unknown",
-        "score": 0,
-        "responseMs": null,
-        "heights": []
-      },
-      {
-        "url": "https://pipedapi.nosebs.ru",
-        "provider": "piped",
-        "official": true,
-        "status": "unknown",
-        "score": 0,
-        "responseMs": null,
-        "heights": []
-      },
-      {
-        "url": "https://pipedapi-libre.kavin.rocks",
-        "provider": "piped",
-        "official": true,
-        "status": "unknown",
-        "score": 0,
-        "responseMs": null,
-        "heights": []
-      },
-      {
-        "url": "https://piped-api.privacy.com.de",
-        "provider": "piped",
-        "official": true,
-        "status": "unknown",
-        "score": 0,
-        "responseMs": null,
-        "heights": []
-      },
-      {
-        "url": "https://pipedapi.adminforge.de",
-        "provider": "piped",
-        "official": true,
-        "status": "unknown",
-        "score": 0,
-        "responseMs": null,
-        "heights": []
-      },
-      {
-        "url": "https://api.piped.yt",
-        "provider": "piped",
-        "official": true,
-        "status": "unknown",
-        "score": 0,
-        "responseMs": null,
-        "heights": []
-      },
-      {
-        "url": "https://pipedapi.drgns.space",
-        "provider": "piped",
-        "official": true,
-        "status": "unknown",
-        "score": 0,
-        "responseMs": null,
-        "heights": []
-      },
-      {
-        "url": "https://pipedapi.owo.si",
-        "provider": "piped",
-        "official": true,
-        "status": "unknown",
-        "score": 0,
-        "responseMs": null,
-        "heights": []
-      },
-      {
         "url": "https://pipedapi.ducks.party",
-        "provider": "piped",
-        "official": true,
-        "status": "unknown",
-        "score": 0,
-        "responseMs": null,
-        "heights": []
-      },
-      {
-        "url": "https://piped-api.codespace.cz",
-        "provider": "piped",
-        "official": true,
-        "status": "unknown",
-        "score": 0,
-        "responseMs": null,
-        "heights": []
-      },
-      {
-        "url": "https://pipedapi.reallyaweso.me",
-        "provider": "piped",
-        "official": true,
-        "status": "unknown",
-        "score": 0,
-        "responseMs": null,
-        "heights": []
+        "status": "healthy",
+        "responseMs": 1604,
+        "videoCount": 3,
+        "audioCount": 0,
+        "heights": [
+          360
+        ],
+        "mediaProbe": {
+          "ok": true,
+          "status": 206,
+          "cors": "*",
+          "error": null
+        },
+        "manifestProbe": null,
+        "apiError": null
       },
       {
         "url": "https://api.piped.private.coffee",
-        "provider": "piped",
-        "official": true,
-        "status": "unknown",
-        "score": 0,
-        "responseMs": null,
-        "heights": []
+        "status": "healthy",
+        "responseMs": 1886,
+        "videoCount": 3,
+        "audioCount": 0,
+        "heights": [
+          360
+        ],
+        "mediaProbe": {
+          "ok": true,
+          "status": 206,
+          "cors": "*",
+          "error": null
+        },
+        "manifestProbe": null,
+        "apiError": null
+      },
+      {
+        "url": "https://pipedapi.leptons.xyz",
+        "status": "unhealthy",
+        "responseMs": 93,
+        "videoCount": 0,
+        "audioCount": 0,
+        "heights": [],
+        "mediaProbe": null,
+        "manifestProbe": null,
+        "apiError": "HTTP 403 from https://pipedapi.leptons.xyz/streams/dQw4w9WgXcQ"
+      },
+      {
+        "url": "https://pipedapi.nosebs.ru",
+        "status": "unhealthy",
+        "responseMs": 118,
+        "videoCount": 0,
+        "audioCount": 0,
+        "heights": [],
+        "mediaProbe": null,
+        "manifestProbe": null,
+        "apiError": "fetch failed"
+      },
+      {
+        "url": "https://piped-api.privacy.com.de",
+        "status": "unhealthy",
+        "responseMs": 155,
+        "videoCount": 0,
+        "audioCount": 0,
+        "heights": [],
+        "mediaProbe": null,
+        "manifestProbe": null,
+        "apiError": "fetch failed"
+      },
+      {
+        "url": "https://api.piped.yt",
+        "status": "unhealthy",
+        "responseMs": 232,
+        "videoCount": 0,
+        "audioCount": 0,
+        "heights": [],
+        "mediaProbe": null,
+        "manifestProbe": null,
+        "apiError": "fetch failed"
+      },
+      {
+        "url": "https://pipedapi.drgns.space",
+        "status": "unhealthy",
+        "responseMs": 257,
+        "videoCount": 0,
+        "audioCount": 0,
+        "heights": [],
+        "mediaProbe": null,
+        "manifestProbe": null,
+        "apiError": "fetch failed"
+      },
+      {
+        "url": "https://pipedapi-libre.kavin.rocks",
+        "status": "unhealthy",
+        "responseMs": 400,
+        "videoCount": 0,
+        "audioCount": 0,
+        "heights": [],
+        "mediaProbe": null,
+        "manifestProbe": null,
+        "apiError": "fetch failed"
+      },
+      {
+        "url": "https://pipedapi.owo.si",
+        "status": "unhealthy",
+        "responseMs": 495,
+        "videoCount": 0,
+        "audioCount": 0,
+        "heights": [],
+        "mediaProbe": null,
+        "manifestProbe": null,
+        "apiError": "fetch failed"
+      },
+      {
+        "url": "https://pipedapi.kavin.rocks",
+        "status": "unhealthy",
+        "responseMs": 555,
+        "videoCount": 0,
+        "audioCount": 0,
+        "heights": [],
+        "mediaProbe": null,
+        "manifestProbe": null,
+        "apiError": "HTTP 526 from https://pipedapi.kavin.rocks/streams/dQw4w9WgXcQ"
       },
       {
         "url": "https://pipedapi.darkness.services",
-        "provider": "piped",
-        "official": true,
-        "status": "unknown",
-        "score": 0,
-        "responseMs": null,
-        "heights": []
+        "status": "unhealthy",
+        "responseMs": 941,
+        "videoCount": 0,
+        "audioCount": 0,
+        "heights": [],
+        "mediaProbe": null,
+        "manifestProbe": null,
+        "apiError": "fetch failed"
+      },
+      {
+        "url": "https://pipedapi.reallyaweso.me",
+        "status": "unhealthy",
+        "responseMs": 1141,
+        "videoCount": 0,
+        "audioCount": 0,
+        "heights": [],
+        "mediaProbe": null,
+        "manifestProbe": null,
+        "apiError": "HTTP 502 from https://pipedapi.reallyaweso.me/streams/dQw4w9WgXcQ"
+      },
+      {
+        "url": "https://piped-api.codespace.cz",
+        "status": "unhealthy",
+        "responseMs": 1153,
+        "videoCount": 0,
+        "audioCount": 0,
+        "heights": [],
+        "mediaProbe": null,
+        "manifestProbe": null,
+        "apiError": "fetch failed"
+      },
+      {
+        "url": "https://pipedapi.adminforge.de",
+        "status": "unhealthy",
+        "responseMs": 2105,
+        "videoCount": 0,
+        "audioCount": 0,
+        "heights": [],
+        "mediaProbe": null,
+        "manifestProbe": null,
+        "apiError": "HTTP 403 from https://pipedapi.adminforge.de/streams/dQw4w9WgXcQ"
       },
       {
         "url": "https://pipedapi.orangenet.cc",
-        "provider": "piped",
-        "official": true,
-        "status": "unknown",
-        "score": 0,
-        "responseMs": null,
-        "heights": []
+        "status": "unhealthy",
+        "responseMs": 7000,
+        "videoCount": 0,
+        "audioCount": 0,
+        "heights": [],
+        "mediaProbe": null,
+        "manifestProbe": null,
+        "apiError": "The operation was aborted due to timeout"
       }
     ],
     "invidious": [
       {
-        "url": "https://inv.nadeko.net",
-        "provider": "invidious",
-        "official": true,
-        "status": "unknown",
-        "score": 0,
-        "responseMs": null,
-        "heights": []
+        "url": "https://yt.chocolatemoo53.com",
+        "status": "healthy",
+        "responseMs": 1817,
+        "videoCount": 22,
+        "audioCount": 5,
+        "heights": [
+          2160,
+          1440,
+          1080,
+          720,
+          480,
+          360,
+          240,
+          144
+        ],
+        "mediaProbe": {
+          "ok": false,
+          "status": 403,
+          "cors": null,
+          "error": null
+        },
+        "manifestProbe": {
+          "ok": true,
+          "status": 200,
+          "cors": "*",
+          "contentType": "application/dash+xml",
+          "format": "dash",
+          "error": null
+        },
+        "apiError": null
       },
       {
         "url": "https://invidious.nerdvpn.de",
-        "provider": "invidious",
-        "official": true,
-        "status": "unknown",
-        "score": 0,
-        "responseMs": null,
-        "heights": []
+        "status": "unhealthy",
+        "responseMs": 630,
+        "videoCount": 0,
+        "audioCount": 0,
+        "heights": [],
+        "mediaProbe": null,
+        "manifestProbe": null,
+        "apiError": "HTTP 401 from https://invidious.nerdvpn.de/api/v1/videos/dQw4w9WgXcQ?fields=title,lengthSeconds,liveNow,hlsUrl,dashUrl,formatStreams,adaptiveFormats"
       },
       {
-        "url": "https://yt.chocolatemoo53.com",
-        "provider": "invidious",
-        "official": true,
-        "status": "unknown",
-        "score": 0,
-        "responseMs": null,
-        "heights": []
+        "url": "https://inv.nadeko.net",
+        "status": "unhealthy",
+        "responseMs": 735,
+        "videoCount": 0,
+        "audioCount": 0,
+        "heights": [],
+        "mediaProbe": null,
+        "manifestProbe": null,
+        "apiError": "HTTP 403 from https://inv.nadeko.net/api/v1/videos/dQw4w9WgXcQ?fields=title,lengthSeconds,liveNow,hlsUrl,dashUrl,formatStreams,adaptiveFormats"
       },
       {
         "url": "https://invidious.tiekoetter.com",
-        "provider": "invidious",
-        "official": true,
-        "status": "unknown",
-        "score": 0,
-        "responseMs": null,
-        "heights": []
+        "status": "unhealthy",
+        "responseMs": 1329,
+        "videoCount": 0,
+        "audioCount": 0,
+        "heights": [],
+        "mediaProbe": null,
+        "manifestProbe": null,
+        "apiError": "HTTP 403 from https://invidious.tiekoetter.com/api/v1/videos/dQw4w9WgXcQ?fields=title,lengthSeconds,liveNow,hlsUrl,dashUrl,formatStreams,adaptiveFormats"
       }
     ]
   },
@@ -184,6 +257,13 @@
     "onlyOfficialDirectories": true,
     "onlyHttps": true,
     "failedInstancesAreRetained": true,
-    "healthyInstancesFirst": true
+    "healthyInstancesFirst": true,
+    "mediaRangeAndManifestAreProbed": true,
+    "excludedNetworks": [
+      "Yggdrasil",
+      "I2P",
+      "Tor"
+    ],
+    "probeVideoId": "dQw4w9WgXcQ"
   }
 }
