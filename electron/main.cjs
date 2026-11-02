@@ -36,10 +36,9 @@ async function prepareTools() {
       catch { await fs.copyFile(path.join(__dirname, 'bin', name), dest); }
     }
   } catch (error) {
-    // The desktop package may be distributed without optional extractor binaries.
-    // Resolve the tool promise safely so the renderer can fall back to Piped instead of
-    // causing an unhandled rejection that can terminate the Electron process.
-    console.warn('[EdAll] Optional yt-dlp/Deno binaries are unavailable; using Piped fallback.', error);
+    // Desktop playback requires the bundled yt-dlp and Deno tools.
+    // Do not switch to remote Piped servers when local extraction tools are missing.
+    console.error('[EdAll] yt-dlp/Deno binaries are unavailable; desktop extraction cannot start.', error);
     return null;
   }
   // yt-dlp's own updater verifies release hashes. Failed checks retain the installed binary.
@@ -64,7 +63,7 @@ async function extract(id, force) {
   if (jobs.has(id)) return jobs.get(id);
   const task = (async () => {
     const dir = await toolReady;
-    if (!dir) throw new Error('The optional desktop extractor is not installed; Piped playback should be used instead.');
+    if (!dir) throw new Error('The desktop yt-dlp extractor is not installed.');
     const raw = await run(path.join(dir, 'yt-dlp.exe'), [
       '--dump-single-json', '--no-playlist', '--skip-download', '--no-warnings', '--socket-timeout', '15',
       '--js-runtimes', 'deno:' + path.join(dir, 'deno.exe'), 'https://www.youtube.com/watch?v=' + id
