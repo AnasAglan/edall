@@ -506,6 +506,29 @@
       } catch (_) {}
     };
 
+    const loadProgressiveFallback = async (current, preferredHeight) => {
+      muxedVideos = current.muxedVideos.slice().sort((a, b) => b.height - a.height || b.bitrate - a.bitrate);
+      qualityHeights = Array.from(new Set(muxedVideos.map(item => Number(item.height)))).sort((a, b) => b - a);
+
+      if (qualityHeights.length) {
+        mode = 'direct';
+        selectedHeight = getPreferredHeight(qualityHeights, preferredHeight);
+        const initial = chooseMuxed(muxedVideos, selectedHeight);
+        if (!initial) throw new Error('No compatible progressive stream matched the selected quality.');
+        await waitForCanPlay(video, initial.url, 18000);
+        return;
+      }
+
+      if (current.hls && video.canPlayType('application/vnd.apple.mpegurl')) {
+        mode = 'native-hls';
+        qualityHeights = [];
+        await waitForCanPlay(video, current.hls, 18000);
+        return;
+      }
+
+      throw new Error('No compatible DASH, HLS or progressive video stream was returned.');
+    };
+
     const loadBundle = async (next, restoreState, preferredHeight) => {
       await resetEngine();
       bundle = next;
@@ -514,66 +537,57 @@
       const supported = hasShaka && !!(window.MediaSource || window.ManagedMediaSource) &&
         (!window.shaka.Player.isBrowserSupported || window.shaka.Player.isBrowserSupported());
 
+      let loadedWithShaka = false;
       if (manifest && supported) {
         const shakaPlayer = new window.shaka.Player();
         engine = shakaPlayer;
-        await shakaPlayer.attach(video);
-        shakaPlayer.configure({
-          abr: { enabled: false },
-          streaming: {
-            bufferingGoal: 20,
-            rebufferingGoal: 3,
-            bufferBehind: 45,
-            retryParameters: {
-              maxAttempts: 4,
-              baseDelay: 500,
-              backoffFactor: 2,
-              fuzzFactor: 0.25,
-              timeout: 20000
+        try {
+          await shakaPlayer.attach(video);
+          shakaPlayer.configure({
+            abr: { enabled: false },
+            streaming: {
+              bufferingGoal: 20,
+              rebufferingGoal: 3,
+              bufferBehind: 45,
+              retryParameters: {
+                maxAttempts: 4,
+                baseDelay: 500,
+                backoffFactor: 2,
+                fuzzFactor: 0.25,
+                timeout: 20000
+              }
             }
-          }
-        });
-        configureProxy(shakaPlayer, next);
-        await shakaPlayer.load(manifest.uri, null, manifest.mime);
-        if (disposed || engine !== shakaPlayer) throw new Error('Playback was closed while loading.');
-        variantTracks = shakaPlayer.getVariantTracks().filter(track => Number(track.height) > 0);
-        qualityHeights = Array.from(new Set(variantTracks.map(track => Number(track.height)))).sort((a, b) => b - a);
-        if (!qualityHeights.length) throw new Error('Piped returned a DASH stream without selectable video qualities.');
-        mode = 'shaka';
-        selectedHeight = getPreferredHeight(qualityHeights, preferredHeight);
-        const selectedTrack = chooseVariant(variantTracks, selectedHeight);
-        if (selectedTrack) shakaPlayer.selectVariantTrack(selectedTrack, true);
-      } else {
-        muxedVideos = next.muxedVideos.slice().sort((a, b) => b.height - a.height || b.bitrate - a.bitrate);
-        qualityHeights = Array.from(new Set(muxedVideos.map(item => Number(item.height)))).sort((a, b) => b - a);
-        if (!qualityHeights.length) {
-          if (next.hls && video.canPlayType('application/vnd.apple.mpegurl')) {
-            mode = 'native-hls';
-            qualityHeights = [];
-            video.src = next.hls;
-            video.load();
-            await new Promise((resolve, reject) => {
-              const timer = setTimeout(() => finish(new Error('HLS stream timed out.')), 15000);
-              const finish = error => {
-                clearTimeout(timer);
-                video.removeEventListener('canplay', ready);
-                video.removeEventListener('error', failed);
-                error ? reject(error) : resolve();
-              };
-              const ready = () => finish();
-              const failed = () => finish(new Error('HLS stream could not be played.'));
-              video.addEventListener('canplay', ready, { once: true });
-              video.addEventListener('error', failed, { once: true });
-            });
-          } else {
-            throw new Error('No compatible DASH or progressive video stream was returned.');
-          }
-        } else {
-          mode = 'direct';
+          });
+          configureProxy(shakaPlayer, next);
+          await shakaPlayer.load(manifest.uri, null, manifest.mime);
+          if (disposed || engine !== shakaPlayer) throw new Error('Playback was closed while loading.');
+          variantTracks = shakaPlayer.getVariantTracks().filter(track => Number(track.height) > 0);
+          qualityHeights = Array.from(new Set(variantTracks.map(track => Number(track.height)))).sort((a, b) => b - a);
+          if (!qualityHeights.length) throw new Error('The DASH manifest contains no selectable video qualities.');
+          mode = 'shaka';
           selectedHeight = getPreferredHeight(qualityHeights, preferredHeight);
-          const initial = chooseMuxed(muxedVideos, selectedHeight);
-          await waitForCanPlay(video, initial.url, 18000);
+          const selectedTrack = chooseVariant(variantTracks, selectedHeight);
+          if (!selectedTrack) throw new Error('The requested initial video quality is not present in the DASH manifest.');
+          if (!selectedTrack.active) shakaPlayer.selectVariantTrack(selectedTrack, true, 0);
+          loadedWithShaka = true;
+        } catch (shakaError) {
+          if (disposed) throw shakaError;
+          console.warn('[ED-ALL] Piped DASH/Shaka load failed; trying direct streams from the same API response:', shakaError);
+          if (engine === shakaPlayer) engine = null;
+          try { await shakaPlayer.destroy(); } catch (_) {}
+          try { video.pause(); video.removeAttribute('src'); video.load(); } catch (_) {}
+          variantTracks = [];
+          qualityHeights = [];
+          mode = '';
+          if (!next.muxedVideos.length && !next.hls) throw shakaError;
         }
+      }
+
+      if (!loadedWithShaka) {
+        if (manifest && !supported) {
+          console.warn('[ED-ALL] Shaka/MSE is unavailable; using progressive or native HLS Piped streams.');
+        }
+        await loadProgressiveFallback(next, preferredHeight);
       }
 
       if (restoreState) {
@@ -589,7 +603,7 @@
       return qualityHeights.slice();
     };
 
-    const selectQuality = async height => {
+        const selectQuality = async height => {
       if (disposed || switching || recovering || !height) return;
       const requested = Number(height);
       if (!qualityHeights.includes(requested) || requested === selectedHeight) return;
