@@ -1,0 +1,36 @@
+name: ED Piped player checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "public/ed_piped_player.js"
+      - "src/test/ed-piped-player.test.ts"
+      - "package.json"
+      - ".github/workflows/ed-piped-player-checks.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund --no-package-lock
+
+      - name: Run Piped player regression tests
+        run: npm test -- --reporter=verbose
+
+      - name: Build platform
+        run: npm run build
