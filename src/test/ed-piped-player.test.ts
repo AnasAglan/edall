@@ -134,6 +134,7 @@ describe("ED ALL Piped player", () => {
 
     expect(bundle).not.toBeNull();
     expect(bundle.videoOnly.map(stream => stream.height)).toEqual([1080, 720]);
+    expect(bundle.videos.map(stream => stream.height)).toEqual([1080, 720]);
     expect(bundle.audioStreams).toHaveLength(1);
     expect(bundle.videoOnly[0].url).toContain("https://");
     expect(bundle.title).toBe("ED ALL quality test");
@@ -164,6 +165,64 @@ describe("ED ALL Piped player", () => {
     expect(manifest).toContain('contentType="audio"');
     expect(manifest).toContain("itag=137");
     expect(manifest).toContain("itag=140");
+  });
+
+
+  it("normalizes Invidious formatStreams and adaptiveFormats into the unified stream model", () => {
+    const helpers = loadHelpers();
+    const bundle = helpers.normalize({
+      title: "Invidious quality test",
+      lengthSeconds: 180,
+      formatStreams: [{
+        url: "https://media.example/video-360.mp4",
+        type: 'video/mp4; codecs="avc1.42001E, mp4a.40.2"',
+        qualityLabel: "360p",
+        resolution: "640x360",
+        bitrate: "500000",
+      }],
+      adaptiveFormats: [
+        {
+          url: "https://media.example/video-1080.mp4",
+          type: 'video/mp4; codecs="avc1.640028"',
+          qualityLabel: "1080p",
+          resolution: "1920x1080",
+          bitrate: "4000000",
+        },
+        {
+          url: "https://media.example/audio.m4a",
+          type: 'audio/mp4; codecs="mp4a.40.2"',
+          bitrate: "128000",
+          audioQuality: "AUDIO_QUALITY_MEDIUM",
+        },
+      ],
+    });
+
+    expect(bundle).not.toBeNull();
+    expect(bundle.provider).toBe("piped");
+    expect(bundle.videos.map(stream => stream.height).sort((a, b) => b - a)).toEqual([1080, 360]);
+    expect(bundle.videoOnly.map(stream => stream.height)).toEqual([1080]);
+    expect(bundle.muxedVideos.map(stream => stream.height)).toEqual([360]);
+    expect(bundle.audioStreams).toHaveLength(1);
+    expect(bundle.duration).toBe(180);
+    expect(helpers.scoreBundle(bundle)).toBeGreaterThan(0);
+  });
+
+  it("scores normalized Piped bundles using their actual videoStreams field", () => {
+    const helpers = loadHelpers();
+    const bundle = helpers.normalize({
+      videoStreams: [{
+        url: "https://media.example/360.mp4",
+        mimeType: "video/mp4",
+        format: "MPEG_4",
+        quality: "360p",
+        height: 360,
+        videoOnly: false,
+      }],
+      audioStreams: [],
+    });
+    expect(bundle).not.toBeNull();
+    expect(bundle.videos).toHaveLength(1);
+    expect(helpers.scoreBundle(bundle)).toBeGreaterThan(0);
   });
 
   it("keeps video-only and audio streams available when DASH ranges are absent", () => {

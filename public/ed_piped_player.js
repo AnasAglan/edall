@@ -5,7 +5,9 @@
   const CACHE_KEY = 'ed_piped_instances_v2';
   const LAST_KEY = 'ed_piped_last_instance_v2';
   const QUALITY_KEY = 'ed_piped_quality_v2';
-  const CACHE_TTL = 6 * 60 * 60 * 1000;
+  const CACHE_TTL = 24 * 60 * 60 * 1000;
+  const REGISTRY_URL = '/video-instances.json';
+  const HEALTH_KEY = 'ed_video_instance_health_v1';
   const FALLBACKS = [
     'https://pipedapi.kavin.rocks',
     'https://pipedapi.leptons.xyz',
@@ -44,46 +46,113 @@
     return result;
   }
 
+  function readInstanceHealth() {
+    try {
+      const value = JSON.parse(localStorage.getItem(HEALTH_KEY) || '{}');
+      return value && typeof value === 'object' ? value : {};
+    } catch (_) { return {}; }
+  }
+
+  function rememberInstanceOutcome(base, succeeded, elapsedMs) {
+    try {
+      const health = readInstanceHealth();
+      const previous = health[base] || { successes: 0, failures: 0, averageMs: 0 };
+      if (succeeded) {
+        previous.successes = Math.min(100, Number(previous.successes || 0) + 1);
+        previous.failures = Math.max(0, Number(previous.failures || 0) - 1);
+        previous.lastSuccessAt = Date.now();
+        const oldAverage = Number(previous.averageMs) || Number(elapsedMs) || 0;
+        previous.averageMs = oldAverage ? Math.round(oldAverage * 0.7 + Number(elapsedMs || 0) * 0.3) : Number(elapsedMs) || 0;
+      } else {
+        previous.failures = Math.min(100, Number(previous.failures || 0) + 1);
+        previous.lastFailureAt = Date.now();
+      }
+      health[base] = previous;
+      const entries = Object.entries(health);
+      if (entries.length > 80) {
+        entries.sort((a, b) => Number(b[1].lastSuccessAt || 0) - Number(a[1].lastSuccessAt || 0));
+        for (const [key] of entries.slice(80)) delete health[key];
+      }
+      localStorage.setItem(HEALTH_KEY, JSON.stringify(health));
+    } catch (_) {}
+  }
+
   async function getInstances() {
     const now = Date.now();
-    let cached = [];
+    let registry = null;
     try {
       const data = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
-      if (data && Array.isArray(data.instances) && now - Number(data.savedAt) < CACHE_TTL) {
-        cached = mergeInstances(data.instances);
-      }
+      if (data && data.registry && now - Number(data.savedAt) < CACHE_TTL) registry = data.registry;
     } catch (_) {}
 
-    const last = (() => { try { return localStorage.getItem(LAST_KEY); } catch (_) { return null; } })();
-    if (cached.length) return mergeInstances([last, ...cached, ...FALLBACKS]);
+    if (!registry) {
+      try {
+        const response = await fetch(REGISTRY_URL, {
+          method: 'GET',
+          cache: 'no-store',
+          headers: { Accept: 'application/json' },
+          signal: AbortSignal.timeout ? AbortSignal.timeout(6500) : undefined
+        });
+        if (response.ok) {
+          const payload = await response.json();
+          if (payload && payload.schemaVersion === 1 && payload.sources) {
+            registry = payload;
+            try { localStorage.setItem(CACHE_KEY, JSON.stringify({ savedAt: now, registry })); } catch (_) {}
+          }
+        }
+      } catch (error) {
+        console.warn('[ED-ALL] Daily instance registry unavailable; using last known/fallback Piped list.', error);
+      }
+    }
 
     let discovered = [];
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
-    try {
-      const response = await fetch(DOCS_URL, {
-        method: 'GET',
-        cache: 'no-store',
-        signal: controller.signal,
-        headers: { Accept: 'text/plain' }
-      });
-      if (response.ok) {
-        const markdown = await response.text();
-        markdown.split(/\r?\n/).forEach(line => {
-          if (!line.includes('|')) return;
-          line.split('|').forEach(cell => {
-            const match = String(cell || '').match(/https:\/\/[a-z0-9.-]+/i);
-            if (match && /piped|:\/\/pa\./i.test(match[0])) discovered.push(match[0]);
-          });
-        });
-      }
-    } catch (_) {
-      // The official instance list may be unavailable; use the known public fallback list.
-    } finally { clearTimeout(timer); }
+    if (registry && Array.isArray(registry.sources && registry.sources.piped)) {
+      discovered = registry.sources.piped
+        .filter(item => item && item.official !== false)
+        .sort((a, b) =>
+          Number(b.status === 'healthy') - Number(a.status === 'healthy') ||
+          Number(b.score || 0) - Number(a.score || 0) ||
+          Number(a.responseMs || 999999) - Number(b.responseMs || 999999)
+        )
+        .map(item => typeof item === 'string' ? item : item.url);
+    }
 
-    const instances = mergeInstances([...discovered, ...FALLBACKS]);
-    try { localStorage.setItem(CACHE_KEY, JSON.stringify({ savedAt: now, instances })); } catch (_) {}
-    return mergeInstances([last, ...instances]);
+    if (!discovered.length) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5000);
+      try {
+        const response = await fetch(DOCS_URL, {
+          method: 'GET',
+          cache: 'no-store',
+          signal: controller.signal,
+          headers: { Accept: 'text/plain' }
+        });
+        if (response.ok) {
+          const markdown = await response.text();
+          markdown.split(/\r?\n/).forEach(line => {
+            if (!line.includes('|')) return;
+            line.split('|').forEach(cell => {
+              const match = String(cell || '').match(/https:\/\/[a-z0-9.-]+/i);
+              if (match && /piped|:\/\/pa\./i.test(match[0])) discovered.push(match[0]);
+            });
+          });
+        }
+      } catch (_) {
+        // The last known registry and hard-coded compatibility list remain available.
+      } finally { clearTimeout(timer); }
+    }
+
+    const last = (() => { try { return localStorage.getItem(LAST_KEY); } catch (_) { return null; } })();
+    const health = readInstanceHealth();
+    const list = mergeInstances([...discovered, ...FALLBACKS]);
+    list.sort((a, b) => {
+      const ah = health[a] || {};
+      const bh = health[b] || {};
+      const aScore = Number(ah.successes || 0) * 25 - Number(ah.failures || 0) * 100 - Number(ah.averageMs || 0) / 100;
+      const bScore = Number(bh.successes || 0) * 25 - Number(bh.failures || 0) * 100 - Number(bh.averageMs || 0) / 100;
+      return bScore - aScore;
+    });
+    return mergeInstances([last, ...list]);
   }
 
   function safeHttps(value) {
@@ -116,7 +185,70 @@
     } catch (_) { return false; }
   }
 
+  function normalizeInvidiousData(data) {
+    if (!data || (!Array.isArray(data.formatStreams) && !Array.isArray(data.adaptiveFormats))) return data;
+    const videoStreams = [];
+    const audioStreams = [];
+
+    const parseStream = (stream, adaptive) => {
+      if (!stream || !stream.url) return;
+      const type = String(stream.type || stream.mimeType || '');
+      const mimeType = type.split(';')[0].trim().toLowerCase();
+      const codecMatch = type.match(/codecs\s*=\s*["']?([^"';]+)/i);
+      const codec = String(stream.codec || codecMatch && codecMatch[1] || stream.encoding || '').split(',')[0].trim();
+      const rawQuality = String(stream.qualityLabel || stream.resolution || stream.quality || '');
+      const dimension = rawQuality.match(/x(\d{3,4})\b/i);
+      const label = rawQuality.match(/(\d{3,4})p\b/i);
+      const generic = rawQuality.match(/(?:^|\D)(\d{3,4})(?:\D|$)/);
+      const height = Number(dimension && dimension[1] || label && label[1] || generic && generic[1]) || 0;
+      const base = {
+        url: stream.url,
+        mimeType,
+        codec,
+        format: /webm/i.test(mimeType) ? 'WEBM' : (/mp4/i.test(mimeType) ? 'MPEG_4' : ''),
+        bitrate: Number(stream.bitrate) || 0,
+        audioTrackId: stream.audioTrackId || stream.audioTrackLocale || 'default',
+        itag: stream.itag || stream.id || ''
+      };
+
+      if (mimeType.indexOf('video/') === 0) {
+        if (!height) return;
+        videoStreams.push({
+          ...base,
+          quality: rawQuality || (height + 'p'),
+          height,
+          width: Number(String(stream.resolution || '').split('x')[0]) || Number(stream.width) || 0,
+          videoOnly: !!adaptive
+        });
+      } else if (mimeType.indexOf('audio/') === 0) {
+        audioStreams.push({
+          ...base,
+          audioTrackLocale: stream.audioTrackLocale || 'und',
+          audioSamplingRate: Number(stream.audioSampleRate) || 0
+        });
+      }
+    };
+
+    (Array.isArray(data.formatStreams) ? data.formatStreams : []).forEach(stream => parseStream(stream, false));
+    (Array.isArray(data.adaptiveFormats) ? data.adaptiveFormats : []).forEach(stream => parseStream(stream, true));
+
+    return {
+      ...data,
+      title: data.title || '',
+      duration: Number(data.duration) || Number(data.lengthSeconds) || 0,
+      livestream: data.livestream === true || data.liveNow === true,
+      dash: data.dash || data.dashUrl || null,
+      hls: data.hls || data.hlsUrl || null,
+      videoStreams,
+      audioStreams
+    };
+  }
+
   function normalize(data) {
+    if (data && !Array.isArray(data.videoStreams) &&
+        (Array.isArray(data.formatStreams) || Array.isArray(data.adaptiveFormats))) {
+      data = normalizeInvidiousData(data);
+    }
     if (!data || !Array.isArray(data.videoStreams)) return null;
     const videoProbe = document.createElement('video');
     const audioProbe = document.createElement('audio');
@@ -174,6 +306,7 @@
     if (videoOnly.length && !audioStreams.length && !dash && !hls && !muxedVideos.length) return null;
 
     return {
+      provider: String(data.provider || 'piped'),
       title: String(data.title || ''),
       duration: Number(data.duration) || 0,
       proxyUrl,
@@ -181,6 +314,7 @@
       hls,
       livestream: data.livestream === true,
       videoStreams,
+      videos: videoStreams,
       videoOnly,
       muxedVideos,
       audioStreams
@@ -277,16 +411,147 @@
   }
 
   function scoreBundle(bundle) {
-    const heights = Array.from(new Set((bundle.videos || []).map(item => Number(item.height)).filter(Number.isFinite)));
+    const videos = (bundle && (bundle.videoStreams || bundle.videos)) || [];
+    const heights = Array.from(new Set(videos.map(item => Number(item.height)).filter(Number.isFinite)));
     const maxHeight = heights.length ? Math.max(...heights) : 0;
-    // Prefer the instance that exposes the most real selectable resolutions,
-    // then favor the higher ceiling and the presence of adaptive audio/video.
     return heights.length * 100000 +
       Math.min(maxHeight, 4320) * 10 +
       (bundle.videoOnly && bundle.videoOnly.length && bundle.audioStreams && bundle.audioStreams.length ? 500 : 0) +
       (bundle.muxedVideos && bundle.muxedVideos.length ? 100 : 0) +
       (bundle.dash ? 50 : 0) +
       (bundle.hls ? 25 : 0);
+  }
+
+  function readErrorMessage(error) {
+    return String(error && error.message || error || 'Unknown extraction error');
+  }
+
+  async function fetchPipedBundle(videoId, excluded) {
+    const instances = (await getInstances()).filter(base => !excluded.has(base));
+    const batchSize = 8;
+    let best = null;
+    let bestScore = -1;
+    for (let offset = 0; offset < instances.length; offset += batchSize) {
+      const controllers = [];
+      const requests = instances.slice(offset, offset + batchSize).map(base => {
+        const controller = new AbortController();
+        controllers.push(controller);
+        let timer = null;
+        const started = Date.now();
+        return new Promise((resolve, reject) => {
+          timer = setTimeout(() => controller.abort(), 4500);
+          fetch(base + '/streams/' + encodeURIComponent(videoId), {
+            method: 'GET',
+            cache: 'no-store',
+            signal: controller.signal,
+            headers: { Accept: 'application/json' }
+          }).then(async response => {
+            if (!response.ok) throw new Error('Piped HTTP ' + response.status);
+            const data = await response.json();
+            const bundle = normalize(data);
+            if (!bundle) throw new Error('No compatible video streams');
+            const elapsed = Date.now() - started;
+            rememberInstanceOutcome(base, true, elapsed);
+            resolve({ ...bundle, instance: base, provider: 'piped' });
+          }).catch(error => {
+            rememberInstanceOutcome(base, false, Date.now() - started);
+            reject(error);
+          }).finally(() => clearTimeout(timer));
+        });
+      });
+      const results = await Promise.allSettled(requests);
+      controllers.forEach(controller => { try { controller.abort(); } catch (_) {} });
+      for (const result of results) {
+        if (result.status !== 'fulfilled') continue;
+        const candidate = result.value;
+        const score = scoreBundle(candidate);
+        if (score > bestScore) {
+          best = candidate;
+          bestScore = score;
+        }
+      }
+
+      const bestHeights = best
+        ? Array.from(new Set((best.videoStreams || best.videos || []).map(item => Number(item.height)))).filter(height => height > 0)
+        : [];
+      if (bestHeights.length >= 3 && Math.max(...bestHeights) >= 720) break;
+    }
+    if (!best) throw new Error('All public Piped API instances failed or returned no compatible streams.');
+    try { localStorage.setItem(LAST_KEY, best.instance); } catch (_) {}
+    console.info('[ED-ALL] Selected Piped instance:', {
+      instance: best.instance,
+      qualities: (best.videoStreams || []).map(item => item.height),
+      videoOnly: best.videoOnly.length,
+      muxed: best.muxedVideos.length,
+      audio: best.audioStreams.length
+    });
+    return best;
+  }
+
+  async function fetchInvidiousBundle(videoId, excluded) {
+    const config = options.extractorConfig || {};
+    if (!config.supabaseUrl || !config.anonKey) {
+      throw new Error('Invidious extraction is not configured for this page.');
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 11000);
+    try {
+      const response = await fetch(String(config.supabaseUrl).replace(/\/$/, '') + '/functions/v1/extract-youtube-stream', {
+        method: 'POST',
+        cache: 'no-store',
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': config.anonKey,
+          'Authorization': 'Bearer ' + config.anonKey,
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+          videoId,
+          excludeInstances: Array.from(excluded).filter(value => /^https:\/\/[a-z0-9.-]+$/i.test(String(value)))
+        })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.success) {
+        throw new Error('Invidious extractor HTTP ' + response.status + ': ' + readErrorMessage(payload.error || payload.message));
+      }
+      const bundle = normalize(payload);
+      if (!bundle) throw new Error('Invidious returned no browser-compatible streams.');
+      if (!payload.instance) throw new Error('Invidious response omitted the selected instance.');
+      return { ...bundle, instance: payload.instance, provider: 'invidious' };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async function fetchBundle(videoId, excluded) {
+    const results = await Promise.allSettled([
+      fetchPipedBundle(videoId, excluded),
+      fetchInvidiousBundle(videoId, excluded)
+    ]);
+    const candidates = results
+      .filter(result => result.status === 'fulfilled')
+      .map(result => result.value);
+    if (!candidates.length) {
+      const errors = results.map(result => result.status === 'rejected' ? readErrorMessage(result.reason) : '');
+      throw new Error('Piped and Invidious extraction failed. ' + errors.filter(Boolean).join(' | '));
+    }
+    candidates.sort((a, b) => {
+      const score = scoreBundle(b) - scoreBundle(a);
+      if (score) return score;
+      return (a.provider === 'piped' ? -1 : 1);
+    });
+    const best = candidates[0];
+    try { localStorage.setItem(LAST_KEY, best.instance); } catch (_) {}
+    console.info('[ED-ALL] Unified extractor selected a source:', {
+      provider: best.provider,
+      instance: best.instance,
+      qualities: (best.videoStreams || []).map(item => item.height),
+      videoOnly: best.videoOnly.length,
+      muxed: best.muxedVideos.length,
+      audio: best.audioStreams.length
+    });
+    return best;
   }
 
   async function fetchBundle(videoId, excluded) {
@@ -519,7 +784,7 @@
     };
 
     const createManifest = current => {
-      if (current.livestream && current.hls) return { uri: current.hls, mime: 'application/x-mpegurl' };
+      if (current.hls) return { uri: current.hls, mime: 'application/x-mpegurl' };
       if (current.dash) {
         try {
           // Keep Piped's DASH URL untouched. Piped Proxy rewrites manifest media URLs
@@ -626,14 +891,24 @@
         );
         separateAudioStream = matchingAudio || current.audioStreams[0];
         if (!initial || !separateAudioStream) throw new Error('Piped returned adaptive video without a compatible audio stream.');
-        await Promise.all([
-          waitForCanPlay(video, initial.url, 18000),
-          waitForCanPlay(audio, separateAudioStream.url, 18000)
-        ]);
-        audio.volume = video.volume;
-        audio.muted = video.muted;
-        audio.playbackRate = video.playbackRate;
-        return;
+        try {
+          await Promise.all([
+            waitForCanPlay(video, initial.url, 18000),
+            waitForCanPlay(audio, separateAudioStream.url, 18000)
+          ]);
+          audio.volume = video.volume;
+          audio.muted = video.muted;
+          audio.playbackRate = video.playbackRate;
+          return;
+        } catch (adaptiveError) {
+          console.warn('[ED-ALL] Adaptive video/audio pair failed; trying muxed streams from the same response:', adaptiveError);
+          try { video.pause(); video.removeAttribute('src'); video.load(); } catch (_) {}
+          try { audio.pause(); audio.removeAttribute('src'); audio.load(); } catch (_) {}
+          separateAudioStream = null;
+          mode = '';
+          qualityHeights = [];
+          selectedHeight = 0;
+        }
       }
 
       qualityHeights = Array.from(new Set(muxedVideos.map(item => Number(item.height)))).sort((a, b) => b - a);
@@ -1055,6 +1330,6 @@
 
   window.EDPipedPlayer = Object.freeze({
     open,
-    __test: Object.freeze({ cleanBase, mergeInstances, normalize, buildDashDataUri, validRange, getPreferredHeight, browserSupports, chooseMuxed, scoreBundle })
+    __test: Object.freeze({ cleanBase, mergeInstances, normalize, normalizeInvidiousData, buildDashDataUri, validRange, getPreferredHeight, browserSupports, chooseMuxed, scoreBundle })
   });
 })();

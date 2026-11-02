@@ -3528,18 +3528,23 @@ cleanups.push(() => {
                             videoId: vid,
                             language: currentLanguage,
                             desktopBridge: null,
+                            extractorConfig: {
+                                supabaseUrl: SUPABASE_URL,
+                                anonKey: SUPABASE_ANON_KEY,
+                                origin: window.location.origin
+                            },
                             toast: (message, type) => showToast(message, type || 'info')
                         });
                         _edAttachWatermark(playback && playback.wrap);
                         setButton(true, false);
                         return;
                     } catch (pipedError) {
-                        console.error('[ED-ALL] Browser Piped playback failed:', pipedError);
+                        console.error('[ED-ALL] Unified browser video extraction failed:', pipedError);
                         _edClose(container);
                         showToast(
                             currentLanguage === 'ar'
-                                ? 'تعذر استخراج الجودات من خوادم Piped حاليًا؛ سيعمل المشغّل الاحتياطي بجودته التلقائية فقط.'
-                                : 'Piped could not provide playable quality streams right now. The fallback player will use automatic quality only.',
+                                ? 'تعذر استخراج تدفقات تشغيل صالحة من Piped وInvidious؛ سيتم استخدام مشغل YouTube الاحتياطي بجودته التلقائية.'
+                                : 'Piped and Invidious could not provide playable streams. The YouTube fallback will use automatic quality.',
                             'error'
                         );
                     }
@@ -3613,8 +3618,8 @@ cleanups.push(() => {
                 if (!isAndroidApp) {
                     showToast(
                         currentLanguage === 'ar'
-                            ? 'تعذر استخراج الجودات من خوادم Piped حاليًا؛ يعمل الفيديو الآن بجودة YouTube التلقائية.'
-                            : 'Piped quality extraction is currently unavailable; YouTube automatic quality is being used.',
+                            ? 'تعذر استخراج الجودات من مصادر التشغيل؛ يعمل الفيديو الآن بجودة YouTube التلقائية.'
+                            : 'Stream extraction is currently unavailable; YouTube automatic quality is being used.',
                         'warning'
                     );
                 }
