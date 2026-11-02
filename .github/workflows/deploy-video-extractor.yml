@@ -28,3 +28,11 @@ jobs:
             exit 1
           fi
           npx --yes supabase@latest functions deploy extract-youtube-stream --project-ref iuaddjoofgrirzslzqfy
+
+      - name: Set up Node.js for deployment smoke test
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Verify deployed Invidious extractor
+        run: node scripts/supabase-extractor-smoke-test.mjs

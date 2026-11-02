@@ -26,13 +26,11 @@ try { payload = JSON.parse(responseText); }
 catch { payload = { raw: responseText.slice(0, 600) }; }
 
 if (response.status === 404) {
-  console.warn("SUPABASE EXTRACTOR NOT DEPLOYED: the project returned HTTP 404 for /functions/v1/extract-youtube-stream. The repository source file is not a live function until it is deployed to Supabase.");
+  throw new Error("SUPABASE EXTRACTOR NOT DEPLOYED: HTTP 404 for /functions/v1/extract-youtube-stream. Deploy the Edge Function before claiming Invidious fallback is active.");
 } else if (!response.ok) {
   throw new Error("Supabase Edge Function returned HTTP " + response.status + ": " +
     String(payload && (payload.message || payload.error) || responseText).slice(0, 500));
 }
-
-if (response.status === 404) process.exit(0);
 
 const qualities = Array.isArray(payload.qualities)
   ? payload.qualities.filter(item => item && Number(item.height) > 0 && /^https:\/\//i.test(String(item.url || "")))

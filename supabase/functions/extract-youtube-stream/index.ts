@@ -24,6 +24,7 @@ function cleanBase(value: unknown): string | null {
     const url = new URL(String(value || ""));
     if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) return null;
     if (url.pathname !== "/" && url.pathname !== "") return null;
+    if (url.hostname.toLowerCase().endsWith(".ygg")) return null;
     return url.origin;
   } catch {
     return null;

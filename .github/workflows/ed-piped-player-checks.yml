@@ -50,6 +50,14 @@ jobs:
       - name: Check sync script syntax
         run: node --check scripts/sync-video-instances.mjs
 
+      - name: Check Deno Edge Function
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Type-check Invidious Edge Function
+        run: deno check supabase/functions/extract-youtube-stream/index.ts
+
       - name: Validate daily instance registry
         run: |
           node -e "const r=require('./public/video-instances.json'); if(r.schemaVersion!==1 || !Array.isArray(r.sources?.piped) || !Array.isArray(r.sources?.invidious) || !r.sources.piped.length || !r.sources.invidious.length) process.exit(1); console.log('Piped:',r.sources.piped.length,'Invidious:',r.sources.invidious.length);"
