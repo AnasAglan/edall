@@ -234,6 +234,7 @@
 
     return {
       ...data,
+      provider: 'invidious',
       title: data.title || '',
       duration: Number(data.duration) || Number(data.lengthSeconds) || 0,
       livestream: data.livestream === true || data.liveNow === true,
@@ -488,8 +489,8 @@
     return best;
   }
 
-  async function fetchInvidiousBundle(videoId, excluded) {
-    const config = options.extractorConfig || {};
+  async function fetchInvidiousBundle(videoId, excluded, extractorConfig) {
+    const config = extractorConfig || {};
     if (!config.supabaseUrl || !config.anonKey) {
       throw new Error('Invidious extraction is not configured for this page.');
     }
@@ -524,10 +525,10 @@
     }
   }
 
-  async function fetchBundle(videoId, excluded) {
+  async function fetchBundle(videoId, excluded, extractorConfig) {
     const results = await Promise.allSettled([
       fetchPipedBundle(videoId, excluded),
-      fetchInvidiousBundle(videoId, excluded)
+      fetchInvidiousBundle(videoId, excluded, extractorConfig)
     ]);
     const candidates = results
       .filter(result => result.status === 'fulfilled')
@@ -547,64 +548,6 @@
       provider: best.provider,
       instance: best.instance,
       qualities: (best.videoStreams || []).map(item => item.height),
-      videoOnly: best.videoOnly.length,
-      muxed: best.muxedVideos.length,
-      audio: best.audioStreams.length
-    });
-    return best;
-  }
-
-  async function fetchBundle(videoId, excluded) {
-    const instances = (await getInstances()).filter(base => !excluded.has(base));
-    const batchSize = 4;
-    let best = null;
-    let bestScore = -1;
-    for (let offset = 0; offset < instances.length; offset += batchSize) {
-      const controllers = [];
-      const requests = instances.slice(offset, offset + batchSize).map(base => {
-        const controller = new AbortController();
-        controllers.push(controller);
-        let timer = null;
-        return new Promise((resolve, reject) => {
-          timer = setTimeout(() => controller.abort(), 5200);
-          fetch(base + '/streams/' + encodeURIComponent(videoId), {
-            method: 'GET',
-            cache: 'no-store',
-            signal: controller.signal,
-            headers: { Accept: 'application/json' }
-          }).then(async response => {
-            if (!response.ok) throw new Error('Piped HTTP ' + response.status);
-            const data = await response.json();
-            const bundle = normalize(data);
-            if (!bundle) throw new Error('No compatible video streams');
-            resolve({ ...bundle, instance: base });
-          }).catch(reject).finally(() => clearTimeout(timer));
-        });
-      });
-      const results = await Promise.allSettled(requests);
-      controllers.forEach(controller => { try { controller.abort(); } catch (_) {} });
-      for (const result of results) {
-        if (result.status !== 'fulfilled') continue;
-        const candidate = result.value;
-        const score = scoreBundle(candidate);
-        if (score > bestScore) {
-          best = candidate;
-          bestScore = score;
-        }
-      }
-
-      // Stop after a strong instance is found; otherwise continue searching
-      // the next batch so a single low-resolution server does not hide better streams.
-      const bestHeights = best
-        ? Array.from(new Set(best.videos.map(item => Number(item.height)))).filter(height => height > 0)
-        : [];
-      if (bestHeights.length >= 3 && Math.max(...bestHeights) >= 720) break;
-    }
-    if (!best) throw new Error('All public Piped API instances failed or returned no compatible streams.');
-    try { localStorage.setItem(LAST_KEY, best.instance); } catch (_) {}
-    console.info('[ED-ALL] Selected Piped instance with the richest compatible formats:', {
-      instance: best.instance,
-      qualities: best.videos.map(item => item.height),
       videoOnly: best.videoOnly.length,
       muxed: best.muxedVideos.length,
       audio: best.audioStreams.length
@@ -784,7 +727,6 @@
     };
 
     const createManifest = current => {
-      if (current.hls) return { uri: current.hls, mime: 'application/x-mpegurl' };
       if (current.dash) {
         try {
           // Keep Piped's DASH URL untouched. Piped Proxy rewrites manifest media URLs
@@ -794,6 +736,7 @@
           if (url.protocol === 'https:') return { uri: url.toString(), mime: 'application/dash+xml' };
         } catch (_) {}
       }
+      if (current.hls) return { uri: current.hls, mime: 'application/x-mpegurl' };
       const generated = buildDashDataUri(current);
       return generated ? { uri: generated, mime: 'application/dash+xml' } : null;
     };
@@ -1202,7 +1145,7 @@
       if (bundle.instance) excluded.add(bundle.instance);
       try {
         for (let attempt = 0; attempt < 6 && !disposed; attempt++) {
-          const next = await fetchBundle(videoId, excluded);
+          const next = await fetchBundle(videoId, excluded, options.extractorConfig);
           excluded.add(next.instance);
           try {
             const heights = await loadBundle(next, state, preferred);

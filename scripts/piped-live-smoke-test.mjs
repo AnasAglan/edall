@@ -1,6 +1,6 @@
 const DOCS_URL = "https://raw.githubusercontent.com/TeamPiped/documentation/main/content/docs/public-instances/index.md";
 const VIDEO_IDS = ["dQw4w9WgXcQ", "aqz-KE-bpKQ", "jNQXAC9IVRw"];
-const ORIGIN = "https://edymaster.lovable.app";
+const ORIGIN = "https://edall.lovable.app";
 const FALLBACKS = [
   "https://pipedapi.kavin.rocks",
   "https://pipedapi.leptons.xyz",

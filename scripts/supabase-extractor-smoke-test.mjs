@@ -15,7 +15,7 @@ const response = await fetch(endpoint, {
     "Content-Type": "application/json",
     "apikey": anonKey,
     "Authorization": "Bearer " + anonKey,
-    "Origin": "https://edymaster.lovable.app",
+    "Origin": "https://edall.lovable.app",
   },
   body: JSON.stringify({ videoId: "dQw4w9WgXcQ" }),
   signal: AbortSignal.timeout(22000),
@@ -61,7 +61,7 @@ if (!payload.success || (!qualities.length && !videoStreams.length && !payload.h
 const sampleUrl = qualities[0]?.url || videoStreams[0]?.url;
 if (sampleUrl) {
   const media = await fetch(sampleUrl, {
-    headers: { Range: "bytes=0-1", Origin: "https://edymaster.lovable.app" },
+    headers: { Range: "bytes=0-1", Origin: "https://edall.lovable.app" },
     signal: AbortSignal.timeout(10000),
   });
   const mediaSummary = {

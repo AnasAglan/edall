@@ -198,7 +198,7 @@ describe("ED ALL Piped player", () => {
     });
 
     expect(bundle).not.toBeNull();
-    expect(bundle.provider).toBe("piped");
+    expect(bundle.provider).toBe("invidious");
     expect(bundle.videos.map(stream => stream.height).sort((a, b) => b - a)).toEqual([1080, 360]);
     expect(bundle.videoOnly.map(stream => stream.height)).toEqual([1080]);
     expect(bundle.muxedVideos.map(stream => stream.height)).toEqual([360]);

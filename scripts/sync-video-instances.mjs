@@ -13,6 +13,7 @@ function cleanBase(value) {
     if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) return null;
     if (url.pathname !== "/" && url.pathname !== "") return null;
     if (url.port && url.port !== "443") return null;
+    if (url.hostname.toLowerCase().endsWith(".ygg")) return null;
     return url.origin;
   } catch {
     return null;
@@ -97,7 +98,7 @@ function discoverInvidious(payload) {
 }
 
 function parseQuality(stream) {
-  const raw = String(stream.qualityLabel || stream.resolution || stream.quality || "");
+  const raw = String(stream.height || stream.qualityLabel || stream.resolution || stream.quality || "");
   const dimension = raw.match(/x(\d{3,4})\b/i);
   const label = raw.match(/(\d{3,4})p\b/i);
   const number = raw.match(/(?:^|\D)(\d{3,4})(?:\D|$)/);
@@ -198,8 +199,8 @@ async function main() {
   })();
 
   const [pipedResult, invidiousResult] = await Promise.allSettled([
-    fetchText(PIPED_SOURCE).then(discoverPiped),
-    fetchJson(INVIDIOUS_SOURCE).then(discoverInvidious),
+    fetchText(PIPED_SOURCE).then((text) => { const list = discoverPiped(text); if (!list.length) throw new Error("Piped directory contained no validated API endpoints."); return list; }),
+    fetchJson(INVIDIOUS_SOURCE).then((json) => { const list = discoverInvidious(json); if (!list.length) throw new Error("Invidious directory contained no validated public HTTPS endpoints."); return list; }),
   ]);
 
   const sourceErrors = [];
