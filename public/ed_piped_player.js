@@ -456,8 +456,7 @@
             const bundle = normalize(data);
             if (!bundle) throw new Error('No compatible video streams');
             const elapsed = Date.now() - started;
-            rememberInstanceOutcome(base, true, elapsed);
-            resolve({ ...bundle, instance: base, provider: 'piped' });
+            resolve({ ...bundle, instance: base, provider: 'piped', requestElapsedMs: elapsed });
           }).catch(error => {
             rememberInstanceOutcome(base, false, Date.now() - started);
             reject(error);
@@ -1179,6 +1178,7 @@
           try {
             const heights = await loadBundle(next, state, preferred);
             if (disposed) return;
+            rememberInstanceOutcome(next.instance, true, Number(next.requestElapsedMs || (next.diagnostics && next.diagnostics.selectedInstanceMs) || 0));
             watchEngineErrors();
             try { localStorage.setItem(LAST_KEY, next.instance); } catch (_) {}
             if (heights.join(',') !== qualityHeights.join(',')) installPlyr();
@@ -1189,7 +1189,8 @@
             toast(options.language === 'ar' ? 'تم الانتقال إلى خادم فيديو بديل.' : 'Switched to a backup video server.', 'success');
             return;
           } catch (error) {
-            console.warn('[ED-ALL] Backup Piped instance failed:', next.instance, error);
+            rememberInstanceOutcome(next.instance, false, Number(next.requestElapsedMs || 0));
+            console.warn('[ED-ALL] Backup video instance failed during playback:', next.instance, error);
             excluded.add(next.instance);
           }
         }
@@ -1216,12 +1217,14 @@
         try {
           await loadBundle(next, null, preferred);
           if (!qualityHeights.length && mode !== 'native-hls') throw new Error('The API returned no selectable qualities.');
+          rememberInstanceOutcome(next.instance, true, Number(next.requestElapsedMs || (next.diagnostics && next.diagnostics.selectedInstanceMs) || 0));
           bundle = next;
           try { localStorage.setItem(LAST_KEY, next.instance); } catch (_) {}
           loaded = true;
           break;
         } catch (error) {
-          console.warn('[ED-ALL] Piped instance did not provide playable streams:', next.instance, error);
+          rememberInstanceOutcome(next.instance, false, Number(next.requestElapsedMs || 0));
+          console.warn('[ED-ALL] Video instance did not provide playable streams:', next.instance, error);
           excluded.add(next.instance);
           await resetEngine();
         }
