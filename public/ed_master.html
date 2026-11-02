@@ -3493,7 +3493,14 @@ cleanups.push(() => {
             try {
                 // Native apps use their own extractors: yt-dlp on desktop and NewPipe
                 // inside the Android app. They must not load or probe public Piped servers.
-                await _edLoadLib({ nativeOnly: isDesktop || isAndroidApp });
+                try {
+                    await _edLoadLib({ nativeOnly: isDesktop || isAndroidApp });
+                } catch (dependencyError) {
+                    console.warn('[ED-ALL] Plyr dependency failed to load:', dependencyError);
+                    // Native application players still require their app-side UI bridge.
+                    // Ordinary browsers can continue with the direct YouTube iframe fallback below.
+                    if (isDesktop || isAndroidApp) throw dependencyError;
+                }
 
                 const vid = _edUnpack(btn.dataset.k1, btn.dataset.k2, btn.dataset.k3);
                 if (!/^[a-zA-Z0-9_-]{11}$/.test(String(vid || ''))) {
@@ -3548,6 +3555,36 @@ cleanups.push(() => {
                             'error'
                         );
                     }
+                }
+
+                // If Plyr's CDN is unavailable, keep YouTube playback available with a native iframe.
+                // The iframe controls quality automatically; no manual quality selector is claimed.
+                if (!window.Plyr) {
+                    const directWrap = document.createElement('div');
+                    directWrap.className = 'edv-wrap edv-youtube-direct-fallback';
+                    directWrap.style.cssText = 'position:relative;width:100%;aspect-ratio:16/9;min-height:220px;border-radius:var(--radius);overflow:hidden;background:#000;';
+                    const directFrame = document.createElement('iframe');
+                    directFrame.src = 'https://www.youtube-nocookie.com/embed/' + encodeURIComponent(vid) + '?rel=0&playsinline=1&modestbranding=1&controls=1';
+                    directFrame.title = 'YouTube video player';
+                    directFrame.loading = 'eager';
+                    directFrame.referrerPolicy = 'strict-origin-when-cross-origin';
+                    directFrame.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
+                    directFrame.allowFullscreen = true;
+                    directFrame.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;';
+                    directWrap.appendChild(directFrame);
+                    container.replaceChildren(directWrap);
+                    container.style.display = 'block';
+                    _edAttachWatermark(directWrap);
+                    setButton(true, false);
+                    if (!isAndroidApp) {
+                        showToast(
+                            currentLanguage === 'ar'
+                                ? 'يعمل الفيديو عبر مشغل YouTube الاحتياطي.'
+                                : 'The video is using the YouTube iframe fallback.',
+                            'warning'
+                        );
+                    }
+                    return;
                 }
 
                 // Honest last-resort fallback: YouTube controls playback automatically.

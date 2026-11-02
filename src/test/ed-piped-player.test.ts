@@ -93,6 +93,8 @@ describe("ED ALL Piped player", () => {
     expect(electronMain).toContain("The desktop yt-dlp extractor is not installed.");
     expect(platformHtml).not.toContain("edall.anasaglan.deno.net");
     expect(platformHtml).toContain("The fallback player will use automatic quality only.");
+    expect(platformHtml).toContain("www.youtube-nocookie.com/embed/");
+    expect(platformHtml).toContain("Plyr dependency failed to load:");
     expect(platformHtml).toContain("المشغّل الاحتياطي بجودته التلقائية فقط");
   });
 
