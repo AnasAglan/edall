@@ -14,7 +14,7 @@ function cleanBase(value) {
     if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) return null;
     if (url.pathname !== "/" && url.pathname !== "") return null;
     if (url.port && url.port !== "443") return null;
-    if (url.hostname.toLowerCase().endsWith(".ygg")) return null;
+    if (/(^|[-.])(ygg|i2p|onion)([.-]|$)/i.test(url.hostname)) return null;
     return url.origin;
   } catch {
     return null;
@@ -129,7 +129,7 @@ function invidiousHasStreams(data) {
 }
 
 async function probeMediaRange(url) {
-  if (!url) return { ok: false, status: null, cors: null, error: "No media URL was returned." };
+  if (!url) return { ok: false, status: null, cors: null, error: "No direct media URL was returned." };
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 4000);
   try {
@@ -154,6 +154,48 @@ async function probeMediaRange(url) {
   }
 }
 
+async function probeManifest(url) {
+  if (!url) return { ok: false, status: null, cors: null, contentType: null, format: null, error: "No DASH/HLS manifest URL was returned." };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 4000);
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Accept: "application/dash+xml, application/vnd.apple.mpegurl, application/x-mpegURL, */*",
+        Origin: "https://edall.lovable.app",
+      },
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    const cors = response.headers.get("access-control-allow-origin");
+    const contentType = response.headers.get("content-type");
+    const body = response.ok ? await response.text() : "";
+    const isDash = /<MPD\b/i.test(body);
+    const isHls = /#EXTM3U/i.test(body);
+    const format = isDash ? "dash" : isHls ? "hls" : null;
+    const corsAllowed = cors === "*" || cors === "https://edall.lovable.app";
+    return {
+      ok: response.ok && !!format && corsAllowed,
+      status: response.status,
+      cors,
+      contentType,
+      format,
+      error: !response.ok
+        ? "Manifest HTTP " + response.status
+        : !format
+          ? "The response was not a DASH MPD or HLS playlist."
+          : !corsAllowed
+            ? "Manifest CORS does not allow https://edall.lovable.app."
+            : null,
+    };
+  } catch (error) {
+    return { ok: false, status: null, cors: null, contentType: null, format: null, error: String(error && error.message || error).slice(0, 180) };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function probeInstance(instance) {
   const started = Date.now();
   const endpoint = instance.provider === "piped"
@@ -170,24 +212,33 @@ async function probeInstance(instance) {
       : [...(Array.isArray(data.formatStreams) ? data.formatStreams : []), ...(Array.isArray(data.adaptiveFormats) ? data.adaptiveFormats : [])]
           .filter((stream) => String(stream && stream.type || "").startsWith("video/"));
     const sampleMedia = videoItems.find((stream) => stream && /^https:\/\//i.test(String(stream.url || "")));
-    const mediaProbe = await probeMediaRange(sampleMedia && sampleMedia.url);
+    const manifestUrls = instance.provider === "piped"
+      ? [data.dash, data.hls]
+      : [data.dashUrl, data.hlsUrl];
+    const [mediaProbe, ...manifestProbes] = await Promise.all([
+      probeMediaRange(sampleMedia && sampleMedia.url),
+      ...manifestUrls.filter(Boolean).map(probeManifest),
+    ]);
+    const manifestProbe = manifestProbes.find((probe) => probe.ok) || manifestProbes[0] || null;
+    const playbackVerified = mediaProbe.ok || !!(manifestProbe && manifestProbe.ok);
     const responseMs = Date.now() - started;
     const score = 1000 +
       Math.min(inspected.heights.length, 10) * 45 +
       Math.min(Math.max(...inspected.heights, 0), 2160) / 4 +
       (inspected.audioCount ? 100 : 0) +
-      (mediaProbe.ok ? 250 : -150) +
+      (mediaProbe.ok ? 250 : -100) +
+      (manifestProbe && manifestProbe.ok ? 300 : 0) +
       (mediaProbe.status === 206 ? 50 : 0) +
       (instance.uptime || 0) * 2 -
       Math.min(responseMs, 10000) / 20;
     return {
       ...instance,
-      // An API-only response is not enough to call an endpoint healthy:
-      // the sample media URL must also answer a byte-range request.
-      status: mediaProbe.ok ? "healthy" : "degraded",
+      // Prefer endpoints whose direct media or CORS-enabled DASH/HLS path was actually verified.
+      status: playbackVerified ? "healthy" : "degraded",
       score: Math.round(score),
       responseMs,
       mediaProbe,
+      manifestProbe,
       videoCount: inspected.videoCount,
       audioCount: inspected.audioCount,
       heights: inspected.heights.sort((a, b) => b - a),
@@ -201,6 +252,8 @@ async function probeInstance(instance) {
       status: "unhealthy",
       score: Math.max(0, Math.round((instance.uptime || 0) * 2)),
       responseMs: Date.now() - started,
+      mediaProbe: null,
+      manifestProbe: null,
       videoCount: 0,
       audioCount: 0,
       heights: [],
@@ -305,6 +358,7 @@ async function main() {
     audioCount: item.audioCount,
     heights: item.heights,
     mediaProbe: item.mediaProbe || null,
+    manifestProbe: item.manifestProbe || null,
     apiError: item.error || null,
   }));
   console.log(JSON.stringify({

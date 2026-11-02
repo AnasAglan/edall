@@ -98,6 +98,7 @@ describe("Daily extractor instance discovery", () => {
       ["inv.nadeko.net", { type: "https", uri: "https://inv.nadeko.net", monitor: { uptime: 99.5 } }],
       ["legacy.example", { type: "http", uri: "http://legacy.example" }],
       ["onion.example", { type: "https", uri: "https://onion.example/path" }],
+      ["inv-ygg.nadeko.net", { type: "https", uri: "https://inv-ygg.nadeko.net" }],
     ]);
     expect(instances.map(item => item.url)).toEqual(["https://inv.nadeko.net"]);
   });
