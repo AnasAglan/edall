@@ -5,7 +5,7 @@
   const CACHE_KEY = 'ed_piped_instances_v2';
   const LAST_KEY = 'ed_piped_last_instance_v2';
   const QUALITY_KEY = 'ed_piped_quality_v2';
-  const CACHE_TTL = 24 * 60 * 60 * 1000;
+  const CACHE_TTL = 6 * 60 * 60 * 1000;
   const REGISTRY_URL = '/video-instances.json';
   const HEALTH_KEY = 'ed_video_instance_health_v1';
   const FALLBACKS = [
@@ -156,7 +156,7 @@
 
     const last = (() => { try { return localStorage.getItem(LAST_KEY); } catch (_) { return null; } })();
     const health = readInstanceHealth();
-    const list = mergeInstances([...discovered, ...FALLBACKS]);
+    const list = mergeInstances(discovered.length ? discovered : FALLBACKS);
     list.sort((a, b) => {
       const ah = health[a] || {};
       const bh = health[b] || {};
