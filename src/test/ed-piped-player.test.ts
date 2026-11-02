@@ -90,6 +90,7 @@ describe("ED ALL Piped player", () => {
     expect(platformHtml).not.toContain("same Piped + Shaka engine in browsers, Android WebView and Electron");
     expect(electronMain).not.toMatch(/piped/i);
     expect(electronMain).toContain("yt-dlp.exe");
+    expect(electronMain).toContain("The desktop yt-dlp extractor is not installed.");
     expect(platformHtml).not.toContain("edall.anasaglan.deno.net");
     expect(platformHtml).toContain("The fallback player will use automatic quality only.");
     expect(platformHtml).toContain("المشغّل الاحتياطي بجودته التلقائية فقط");
