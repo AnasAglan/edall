@@ -29,6 +29,13 @@
       "when": 1790520287888,
       "tag": "0003_exam_attempts_server_timer",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793591236353,
+      "tag": "0004_add_exam_drafts_cloud_sync",
+      "breakpoints": true
     }
   ]
 }

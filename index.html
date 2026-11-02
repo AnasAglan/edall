@@ -1,6 +1,12 @@
 <!doctype html>
 <html lang="ar" dir="rtl">
-  <head>
+    <head>
+    <script>
+      // تجاوز فوري لصفحة المنصة بدون وميض شاشة التحميل
+      if (location.pathname === "/" && !location.pathname.startsWith("/.lovable")) {
+        location.replace("/ed_master.html");
+      }
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ED ALL — منصة تعليمية متطورة</title>
