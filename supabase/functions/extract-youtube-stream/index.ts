@@ -67,14 +67,18 @@ async function loadOfficialInstances(): Promise<Array<{ url: string; score: numb
   if (!response.ok) throw new Error("Official Invidious instance directory returned HTTP " + response.status);
   const payload = await response.json();
   if (!Array.isArray(payload)) throw new Error("Invalid Invidious instance directory response.");
-  return payload.map((row: any[]) => {
+  const instances: Array<{ url: string; score: number }> = [];
+  for (const row of payload as any[]) {
     const meta = row?.[1] || {};
-    return {
-      url: String(meta.type || "").toLowerCase() === "https" ? cleanBase(meta.uri) : null,
+    if (String(meta.type || "").toLowerCase() !== "https") continue;
+    const url = cleanBase(meta.uri);
+    if (!url || url.toLowerCase().endsWith(".ygg")) continue;
+    instances.push({
+      url,
       score: Number(meta.monitor?.uptime) || 0,
-      official: true,
-    };
-  }).filter((item: any) => item.url);
+    });
+  }
+  return instances;
 }
 
 function parseHeight(stream: any): number {
@@ -157,7 +161,7 @@ function cleanMediaUrl(value: unknown): string | null {
 }
 
 function bundleScore(bundle: any): number {
-  const heights = [...new Set(bundle.videoStreams.map((stream: any) => Number(stream.height)).filter((height: number) => height > 0))];
+  const heights: number[] = [...new Set<number>(bundle.videoStreams.map((stream: any) => Number(stream.height)).filter((height: number) => height > 0))];
   const maxHeight = Math.max(0, ...heights);
   return heights.length * 100000 +
     Math.min(maxHeight, 4320) * 10 +
