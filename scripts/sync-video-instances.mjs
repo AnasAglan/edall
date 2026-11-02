@@ -297,9 +297,31 @@ async function main() {
     console.log("The instance registry is unchanged.");
   }
 
+  const summarizeInstances = (items) => items.map((item) => ({
+    url: item.url,
+    status: item.status,
+    responseMs: item.responseMs,
+    videoCount: item.videoCount,
+    audioCount: item.audioCount,
+    heights: item.heights,
+    mediaProbe: item.mediaProbe || null,
+    apiError: item.error || null,
+  }));
   console.log(JSON.stringify({
-    piped: { total: checkedPiped.length, healthy: checkedPiped.filter((x) => x.status === "healthy").length },
-    invidious: { total: checkedInvidious.length, healthy: checkedInvidious.filter((x) => x.status === "healthy").length },
+    piped: {
+      total: checkedPiped.length,
+      healthy: checkedPiped.filter((x) => x.status === "healthy").length,
+      degraded: checkedPiped.filter((x) => x.status === "degraded").length,
+      unhealthy: checkedPiped.filter((x) => x.status === "unhealthy").length,
+      instances: summarizeInstances(checkedPiped),
+    },
+    invidious: {
+      total: checkedInvidious.length,
+      healthy: checkedInvidious.filter((x) => x.status === "healthy").length,
+      degraded: checkedInvidious.filter((x) => x.status === "degraded").length,
+      unhealthy: checkedInvidious.filter((x) => x.status === "unhealthy").length,
+      instances: summarizeInstances(checkedInvidious),
+    },
     sourceErrors,
   }, null, 2));
 
