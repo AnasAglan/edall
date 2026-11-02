@@ -156,7 +156,7 @@ async function inspectInstance(base, activeControllers) {
     if (adaptiveVideos.length && !audios.length && !muxedVideo) {
       throw new Error("Video-only qualities were returned without any separate audio stream");
     }
-    const video = videos[0];
+    const video = adaptiveVideos[0] || muxedVideo || videos[0];
     const matchingAudio = adaptiveVideos.length && video.audioTrackId
       ? audios.find(stream => stream.audioTrackId && stream.audioTrackId === video.audioTrackId)
       : null;
@@ -175,7 +175,7 @@ async function inspectInstance(base, activeControllers) {
       audioCount: audios.length,
       heights,
       usedSeparateAudio: !!audio,
-      videoOnlyAvailable: !!adaptiveVideo,
+      videoOnlyAvailable: adaptiveVideos.length > 0,
       apiCors: ORIGIN,
       videoRangeStatus: videoProbe.status,
       videoCors: videoProbe.cors,
