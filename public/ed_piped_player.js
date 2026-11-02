@@ -723,13 +723,21 @@
         } else if (mode === 'separate') {
           const target = chooseMuxed(bundle.videoOnly, requested);
           if (!target || !separateAudioStream) throw new Error('The selected adaptive video/audio pair is unavailable.');
+          const matchingAudio = bundle.audioStreams.find(item =>
+            target.audioTrackId && target.audioTrackId !== 'default' &&
+            item.audioTrackId && item.audioTrackId === target.audioTrackId
+          );
+          const nextAudioStream = matchingAudio || separateAudioStream;
           video.pause();
           audio.pause();
-          await waitForCanPlay(video, target.url, 18000);
-          await waitForCanPlay(audio, separateAudioStream.url, 18000);
+          await Promise.all([
+            waitForCanPlay(video, target.url, 18000),
+            waitForCanPlay(audio, nextAudioStream.url, 18000)
+          ]);
           if (savedState.time > 0) {
             await Promise.all([seekVideo(video, savedState.time), seekVideo(audio, savedState.time)]);
           }
+          separateAudioStream = nextAudioStream;
           video.playbackRate = savedState.rate;
           video.volume = savedState.volume;
           video.muted = savedState.muted;
