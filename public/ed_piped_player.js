@@ -1182,7 +1182,7 @@
       try { preferred = Number(localStorage.getItem(QUALITY_KEY)) || 720; } catch (_) {}
       let loaded = false;
       for (let attempt = 0; attempt < 10 && !disposed; attempt++) {
-        const next = await fetchBundle(videoId, excluded);
+        const next = await fetchBundle(videoId, excluded, options.extractorConfig);
         excluded.add(next.instance);
         try {
           await loadBundle(next, null, preferred);
