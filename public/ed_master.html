@@ -3383,9 +3383,12 @@ cleanups.push(() => {
                     markdown.split(/\r?\n/).forEach(line => {
                         if (!line.includes('|')) return;
                         const cells = line.split('|');
-                        const apiCell = (cells[2] || '').trim();
-                        const match = apiCell.match(/https:\/\/[a-z0-9.-]+/i);
-                        if (match) discovered.push(match[0]);
+                        cells.forEach(cell => {
+                            const match = String(cell || '').match(/https:\/\/[a-z0-9.-]+/i);
+                            if (!match) return;
+                            const host = match[0].toLowerCase();
+                            if (host.includes('piped') || host.includes('://pa.')) discovered.push(match[0]);
+                        });
                     });
                 }
             } catch (_) {
@@ -3670,6 +3673,7 @@ const _edQKey = 'ed_yt_quality';
 
                 let player = null, disposed = false, bundle = null, activeQuality = null;
                 let switchingQuality = false, recovering = false, recoveryCount = 0;
+                let stalledTimer = null;
                 const excludedInstances = new Set();
                 const cleanups = [];
                 const listen = (element, eventName, handler) => {
@@ -3680,6 +3684,7 @@ const _edQKey = 'ed_yt_quality';
                 container._desktopCleanup = () => {
                     disposed = true;
                     switchingQuality = true;
+                    clearTimeout(stalledTimer);
                     cleanups.splice(0).forEach(cleanup => { try { cleanup(); } catch (_) {} });
                     try { audio.pause(); audio.removeAttribute('src'); audio.load(); } catch (_) {}
                     try { video.pause(); video.removeAttribute('src'); video.load(); } catch (_) {}
@@ -3783,6 +3788,9 @@ const _edQKey = 'ed_yt_quality';
                             bundle = next;
                             try {
                                 await applyBundleQuality(target, savedState);
+                                if (player && player.quality !== target.height) {
+                                    try { player.quality = target.height; } catch (_) {}
+                                }
                                 recoveryCount = 0;
                                 showToast(currentLanguage === 'ar' ? 'تم الانتقال تلقائيًا إلى خادم فيديو بديل.' : 'Switched automatically to a backup video server.', 'success');
                                 return;
@@ -3819,8 +3827,12 @@ const _edQKey = 'ed_yt_quality';
                     } catch (error) {
                         console.warn('[ED-ALL] Piped quality switch failed:', error);
                         if (previous) {
-                            try { await applyBundleQuality(previous, savedState); }
-                            catch (_) { await recoverWithAnotherInstance(previous.height); }
+                            try {
+                                await applyBundleQuality(previous, savedState);
+                                if (player && player.quality !== previous.height) {
+                                    try { player.quality = previous.height; } catch (_) {}
+                                }
+                            } catch (_) { await recoverWithAnotherInstance(previous.height); }
                         } else {
                             await recoverWithAnotherInstance(Number(height));
                         }
@@ -3834,12 +3846,26 @@ const _edQKey = 'ed_yt_quality';
                         if (recoveryCount <= 2) void recoverWithAnotherInstance(activeQuality.height);
                     }
                 };
-                listen(video, 'playing', () => { recoveryCount = 0; playSeparateAudio(); });
+                listen(video, 'playing', () => {
+                    clearTimeout(stalledTimer);
+                    recoveryCount = 0;
+                    playSeparateAudio();
+                });
+                listen(video, 'waiting', () => {
+                    audio.pause();
+                    clearTimeout(stalledTimer);
+                    if (!video.paused && !switchingQuality && !recovering) {
+                        stalledTimer = setTimeout(() => {
+                            if (!disposed && !video.paused && video.readyState < 3) onMediaError();
+                        }, 16000);
+                    }
+                });
                 listen(video, 'pause', () => audio.pause());
                 listen(video, 'waiting', () => audio.pause());
                 listen(video, 'seeking', () => audio.pause());
                 listen(video, 'seeked', playSeparateAudio);
                 listen(video, 'timeupdate', () => {
+                    if (video.readyState >= 3) clearTimeout(stalledTimer);
                     if (!switchingQuality && activeQuality && !activeQuality.hasAudio && !video.paused
                         && Math.abs((audio.currentTime || 0) - (video.currentTime || 0)) > 0.55) {
                         try { audio.currentTime = video.currentTime; } catch (_) {}
