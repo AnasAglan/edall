@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { runInNewContext, Script } from "node:vm";
 import { TextEncoder } from "node:util";
 
-const playerSource = readFileSync(new URL("../../public/ed_piped_player.js", import.meta.url), "utf8");
+const playerSource = readFileSync(resolve(process.cwd(), "public/ed_piped_player.js"), "utf8");
 
 function loadHelpers(canPlayTypeResult = "probably") {
   const sandbox = {
