@@ -239,7 +239,7 @@ describe("ED ALL Piped player", () => {
   });
 
   it("allows the slower secondary extractor time to provide higher resolutions", () => {
-    expect(playerSource).toContain("setTimeout(() => resolve(null), 4000)");
+    expect(playerSource).toContain("setTimeout(() => resolve(null), 7000)");
   });
 
   it("prioritizes registry health before last-instance stickiness", () => {
