@@ -3461,37 +3461,75 @@ cleanups.push(() => {
             }
             const isAndroidApp = !!((window.edallAndroid && window.edallAndroid.isApp && window.edallAndroid.isApp()) || /EdAllAndroid/i.test(navigator.userAgent));
             
-            // إذا كان المستخدم على متصفح عادي (مثل الآيفون أو الماك)
+            // إذا كان المستخدم على متصفح عادي (آيفون، آيباد، ماك، متصفح كمبيوتر)
             if (!isAndroidApp) {
                 btn.disabled = true;
-                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ' + (currentLanguage === 'ar' ? 'جاري تجهيز المشغل...' : 'Loading video...');
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ' + (currentLanguage === 'ar' ? 'جاري تجهيز الجودات...' : 'Loading qualities...');
 
                 try {
-                    // طلب استخراج الجودات من الدالة السحابية
-                    let extracted = null;
-                    if (window.sb && window.sb.functions) {
-                        const { data } = await window.sb.functions.invoke('extract-youtube-stream', {
-                            body: { videoId: vid }
-                        });
-                        if (data && data.success && data.qualities && data.qualities.length > 0) {
-                            extracted = data.qualities;
+                    // استدعاء محرك Deno السحابي المجاني لاستخراج الجودات
+                    const streamRes = await fetch('https://edall.anasaglan.deno.net', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ videoId: vid })
+                    });
+
+                    if (streamRes.ok) {
+                        const streamData = await streamRes.json();
+                        if (streamData && streamData.success && Array.isArray(streamData.qualities) && streamData.qualities.length > 0) {
+                            // إنشاء مشغل الفيديو HTML5 مع دعم الجودات والعلامة المائية
+                            const wrap = document.createElement('div');
+                            wrap.className = 'edv-wrap ed-desktop-player';
+                            const video = document.createElement('video');
+                            video.playsInline = true;
+                            video.preload = 'metadata';
+                            video.controls = true;
+                            wrap.appendChild(video);
+                            container.replaceChildren(wrap);
+                            container.style.display = 'block';
+
+                            const defaultQuality = streamData.qualities[0];
+                            video.src = defaultQuality.url;
+
+                            // تهيئة مشغل Plyr مع قائمة الجودات
+                            const pPlayer = new Plyr(video, {
+                                title: streamData.title || '',
+                                controls: ['play-large', 'rewind', 'play', 'fast-forward', 'progress', 'current-time', 'mute', 'volume', 'settings', 'fullscreen'],
+                                settings: ['quality', 'speed'],
+                                quality: {
+                                    default: defaultQuality.height,
+                                    options: streamData.qualities.map(q => q.height),
+                                    forced: true,
+                                    onChange: (newH) => {
+                                        const target = streamData.qualities.find(q => q.height === Number(newH));
+                                        if (target && target.url) {
+                                            const curTime = video.currentTime;
+                                            const wasPlaying = !video.paused;
+                                            video.src = target.url;
+                                            video.currentTime = curTime;
+                                            if (wasPlaying) video.play().catch(() => {});
+                                        }
+                                    }
+                                },
+                                speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] }
+                            });
+
+                            // تفعيل العلامة المائية للطالب
+                            _edAttachWatermark(wrap);
+
+                            btn.innerHTML = '<i class="fas fa-eye-slash"></i> ' + hideLbl + ' (' + num + ')';
+                            btn.disabled = false;
+                            return;
                         }
                     }
-
-                    // إذا توفرت الجودات المباشرة، نشغلها في مشغل فيديو نقي مع خيارات الجودة
-                    if (extracted) {
-                        const formats = extracted.map(q => ({ h: q.height, url: q.url }));
-                        await _edDesktopOpen(btn, container, vid, num, showLbl, hideLbl, formats);
-                        return;
-                    }
                 } catch (fetchErr) {
-                    console.warn('[ED-ALL] Cloud extraction fallback:', fetchErr);
+                    console.warn('[ED-ALL] Deno stream fallback:', fetchErr);
                 } finally {
                     btn.disabled = false;
                 }
-
-                // خطة الأمان البديلة: في حال تعذر الاستخراج يفتح المشغل المضمّن فوراً مع الحماية
+                // في حال فشل الاستخراج، سيكمل الكود تلقائياً لفتح المشغل المضمّن كشبكة أمان
             }
+
 
 
             const cls = 'edv-' + Math.random().toString(36).slice(2, 9);
