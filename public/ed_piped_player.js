@@ -495,7 +495,7 @@
       throw new Error('Invidious extraction is not configured for this page.');
     }
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 11000);
+    const timer = setTimeout(() => controller.abort(), 18500);
     try {
       const response = await fetch(String(config.supabaseUrl).replace(/\/$/, '') + '/functions/v1/extract-youtube-stream', {
         method: 'POST',
@@ -526,21 +526,46 @@
   }
 
   async function fetchBundle(videoId, excluded, extractorConfig) {
-    const results = await Promise.allSettled([
-      fetchPipedBundle(videoId, excluded),
-      fetchInvidiousBundle(videoId, excluded, extractorConfig)
-    ]);
-    const candidates = results
-      .filter(result => result.status === 'fulfilled')
-      .map(result => result.value);
-    if (!candidates.length) {
-      const errors = results.map(result => result.status === 'rejected' ? readErrorMessage(result.reason) : '');
-      throw new Error('Piped and Invidious extraction failed. ' + errors.filter(Boolean).join(' | '));
+    const pipedPromise = fetchPipedBundle(videoId, excluded)
+      .then(bundle => ({ provider: 'piped', bundle }))
+      .catch(error => ({ provider: 'piped', error }));
+    const invidiousPromise = fetchInvidiousBundle(videoId, excluded, extractorConfig)
+      .then(bundle => ({ provider: 'invidious', bundle }))
+      .catch(error => ({ provider: 'invidious', error }));
+
+    const first = await Promise.race([pipedPromise, invidiousPromise]);
+    if (first.error) {
+      const other = await (first.provider === 'piped' ? invidiousPromise : pipedPromise);
+      if (other.error) {
+        throw new Error('Piped and Invidious extraction failed. ' +
+          first.provider + ': ' + readErrorMessage(first.error) + ' | ' +
+          other.provider + ': ' + readErrorMessage(other.error));
+      }
+      try { localStorage.setItem(LAST_KEY, other.bundle.instance); } catch (_) {}
+      return other.bundle;
     }
+
+    const firstBundle = first.bundle;
+    const heights = Array.from(new Set((firstBundle.videoStreams || []).map(item => Number(item.height)).filter(height => height > 0)));
+    const hasPlayablePath = firstBundle.muxedVideos.length > 0 ||
+      (firstBundle.videoOnly.length > 0 && firstBundle.audioStreams.length > 0) ||
+      !!firstBundle.dash || !!firstBundle.hls;
+    const alreadyStrong = hasPlayablePath && heights.length >= 2 && Math.max(...heights) >= 720;
+
+    let candidates = [firstBundle];
+    if (!alreadyStrong) {
+      const otherPromise = first.provider === 'piped' ? invidiousPromise : pipedPromise;
+      const second = await Promise.race([
+        otherPromise,
+        new Promise(resolve => setTimeout(() => resolve(null), 2800))
+      ]);
+      if (second && second.bundle) candidates.push(second.bundle);
+    }
+
     candidates.sort((a, b) => {
       const score = scoreBundle(b) - scoreBundle(a);
       if (score) return score;
-      return (a.provider === 'piped' ? -1 : 1);
+      return a.provider === 'piped' ? -1 : 1;
     });
     const best = candidates[0];
     try { localStorage.setItem(LAST_KEY, best.instance); } catch (_) {}
