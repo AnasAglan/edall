@@ -3448,18 +3448,39 @@ cleanups.push(() => {
                 return;
             }
             const isAndroidApp = !!((window.edallAndroid && window.edallAndroid.isApp && window.edallAndroid.isApp()) || /EdAllAndroid/i.test(navigator.userAgent));
+            
+            // إذا كان المستخدم على متصفح عادي (مثل الآيفون أو الماك)
             if (!isAndroidApp) {
-                const ar = currentLanguage === 'ar';
-                container.innerHTML = '<div style="padding:28px 16px;text-align:center;border:1px dashed var(--border, #888);border-radius:var(--radius);">'
-                    + '<i class="fas fa-download" style="font-size:2rem;margin-bottom:10px;"></i>'
-                    + '<div style="font-weight:800;margin-bottom:14px;">' + (ar ? 'لفتح الفيديو يجب عليك تنزيل البرنامج' : 'To watch this video you must download the app') + '</div>'
-                    + '<button type="button" class="btn" onclick="openReleasesPage()" style="text-decoration:none;"><i class="fas fa-download"></i> ' + (ar ? 'تنزيل البرنامج' : 'Download the app') + '</button>'
-                    + '</div>';
-                container.style.display = 'block';
-                btn.innerHTML = '<i class="fas fa-eye-slash"></i> ' + hideLbl + ' (' + num + ')';
-                try { const f = document.createElement('iframe'); f.style.display = 'none'; f.src = 'edall://open'; document.body.appendChild(f); setTimeout(() => f.remove(), 3000); } catch (_) {}
-                return;
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ' + (currentLanguage === 'ar' ? 'جاري تجهيز المشغل...' : 'Loading video...');
+
+                try {
+                    // طلب استخراج الجودات من الدالة السحابية
+                    let extracted = null;
+                    if (window.sb && window.sb.functions) {
+                        const { data } = await window.sb.functions.invoke('extract-youtube-stream', {
+                            body: { videoId: vid }
+                        });
+                        if (data && data.success && data.qualities && data.qualities.length > 0) {
+                            extracted = data.qualities;
+                        }
+                    }
+
+                    // إذا توفرت الجودات المباشرة، نشغلها في مشغل فيديو نقي مع خيارات الجودة
+                    if (extracted) {
+                        const formats = extracted.map(q => ({ h: q.height, url: q.url }));
+                        await _edDesktopOpen(btn, container, vid, num, showLbl, hideLbl, formats);
+                        return;
+                    }
+                } catch (fetchErr) {
+                    console.warn('[ED-ALL] Cloud extraction fallback:', fetchErr);
+                } finally {
+                    btn.disabled = false;
+                }
+
+                // خطة الأمان البديلة: في حال تعذر الاستخراج يفتح المشغل المضمّن فوراً مع الحماية
             }
+
 
             const cls = 'edv-' + Math.random().toString(36).slice(2, 9);
             const wrap = document.createElement('div');
