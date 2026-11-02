@@ -66,116 +66,135 @@ async function probeRange(stream, kind, controller) {
 async function inspectInstance(base, activeControllers) {
   const controller = new AbortController();
   activeControllers.push(controller);
-  const timer = setTimeout(() => controller.abort(), 22000);
+  const timer = setTimeout(() => controller.abort(), 26000);
   try {
-    let data = null;
-    let selectedVideoId = "";
+    const candidates = [];
     const sampleErrors = [];
 
     for (const videoId of VIDEO_IDS) {
-      const response = await fetch(base + "/streams/" + videoId, {
-        method: "GET",
-        cache: "no-store",
-        headers: { Accept: "application/json", Origin: ORIGIN },
-        signal: controller.signal,
-      });
-      if (!response.ok) throw new Error("API returned HTTP " + response.status + " for " + videoId);
-      if (!hasCorsAccess(response)) {
-        throw new Error("API CORS header was " +
-          (response.headers.get("access-control-allow-origin") || "(missing)") +
-          " for origin " + ORIGIN);
-      }
+      try {
+        const response = await fetch(base + "/streams/" + videoId, {
+          method: "GET",
+          cache: "no-store",
+          headers: { Accept: "application/json", Origin: ORIGIN },
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          sampleErrors.push(videoId + ": HTTP " + response.status);
+          continue;
+        }
+        if (!hasCorsAccess(response)) {
+          sampleErrors.push(videoId + ": CORS header did not allow " + ORIGIN);
+          continue;
+        }
 
-      const candidate = await response.json();
-      if (!candidate || !Array.isArray(candidate.videoStreams)) {
-        sampleErrors.push(videoId + ": response omitted videoStreams");
-        continue;
-      }
+        const data = await response.json();
+        if (!data || !Array.isArray(data.videoStreams)) {
+          sampleErrors.push(videoId + ": response omitted videoStreams");
+          continue;
+        }
 
-      const videos = candidate.videoStreams.filter(stream => {
-        if (!stream || typeof stream.url !== "string" || !/^https:\/\//i.test(stream.url)) return false;
-        const mimeType = String(stream.mimeType || (
-          stream.format === "MPEG_4" ? "video/mp4" :
-          stream.format === "WEBM" ? "video/webm" : ""
-        )).split(";")[0].trim();
-        const height = Number(stream.height) ||
-          Number((String(stream.quality || "").match(/(\d{3,4})p/i) || [])[1]);
-        return Number(height) > 0 && /^video\/(mp4|webm)$/i.test(mimeType);
-      });
-      if (!videos.length) {
-        const sample = candidate.videoStreams.slice(0, 2).map(stream => ({
-          height: stream && stream.height,
-          quality: stream && stream.quality,
-          format: stream && stream.format,
-          mimeType: stream && stream.mimeType,
-          urlProtocol: stream && typeof stream.url === "string" ? stream.url.slice(0, 8) : "",
-        }));
-        sampleErrors.push(videoId + ": no usable video streams; raw=" +
-          candidate.videoStreams.length + "; sample=" + JSON.stringify(sample) +
-          "; apiError=" + String(candidate.error || ""));
-        continue;
+        const videos = data.videoStreams.map(stream => {
+          const mimeType = String(stream && stream.mimeType || (
+            stream && stream.format === "MPEG_4" ? "video/mp4" :
+            stream && stream.format === "WEBM" ? "video/webm" : ""
+          )).split(";")[0].trim();
+          const height = Number(stream && stream.height) ||
+            Number((String(stream && stream.quality || "").match(/(\d{3,4})p/i) || [])[1]);
+          return { ...stream, mimeType, height };
+        }).filter(stream =>
+          stream && typeof stream.url === "string" && /^https:\/\//i.test(stream.url) &&
+          Number(stream.height) > 0 && /^video\/(mp4|webm)$/i.test(stream.mimeType)
+        );
+
+        if (!videos.length) {
+          const sample = data.videoStreams.slice(0, 2).map(stream => ({
+            height: stream && stream.height,
+            quality: stream && stream.quality,
+            format: stream && stream.format,
+            mimeType: stream && stream.mimeType,
+          }));
+          sampleErrors.push(videoId + ": no usable video streams; raw=" +
+            data.videoStreams.length + "; sample=" + JSON.stringify(sample));
+          continue;
+        }
+
+        const audios = (Array.isArray(data.audioStreams) ? data.audioStreams : []).map(stream => {
+          const mimeType = String(stream && stream.mimeType || (
+            stream && stream.format === "M4A" ? "audio/mp4" :
+            stream && (stream.format === "OPUS" || stream.format === "OGG") ? "audio/ogg" :
+            stream && stream.format === "WEBM" ? "audio/webm" : ""
+          )).split(";")[0].trim();
+          return { ...stream, mimeType };
+        }).filter(stream =>
+          stream && typeof stream.url === "string" && /^https:\/\//i.test(stream.url) &&
+          /^audio\/(mp4|webm|ogg|mpeg)$/i.test(stream.mimeType)
+        );
+
+        videos.sort((a, b) =>
+          Number(b.height) - Number(a.height) ||
+          Number(b.mimeType === "video/mp4") - Number(a.mimeType === "video/mp4")
+        );
+        const adaptiveVideos = videos.filter(stream => stream.videoOnly === true || stream.videoOnly === "true");
+        const muxedVideo = videos.find(stream => stream.videoOnly !== true && stream.videoOnly !== "true");
+        if (adaptiveVideos.length && !audios.length && !muxedVideo) {
+          sampleErrors.push(videoId + ": video-only formats returned without audio");
+          continue;
+        }
+        const heights = [...new Set(videos.map(stream => Number(stream.height)))].sort((a, b) => b - a);
+        candidates.push({
+          data,
+          videoId,
+          videos,
+          audios,
+          heights,
+          adaptiveVideos,
+          muxedVideo,
+        });
+      } catch (error) {
+        sampleErrors.push(videoId + ": " + String(error && error.message || error));
+        if (controller.signal.aborted) break;
       }
-      data = candidate;
-      selectedVideoId = videoId;
-      break;
     }
 
-    if (!data) throw new Error(sampleErrors.join(" | ") || "No sample video returned usable streams");
-
-    const videos = data.videoStreams.map(stream => {
-      const mimeType = String(stream.mimeType || (
-        stream.format === "MPEG_4" ? "video/mp4" :
-        stream.format === "WEBM" ? "video/webm" : ""
-      )).split(";")[0].trim();
-      const height = Number(stream.height) ||
-        Number((String(stream.quality || "").match(/(\d{3,4})p/i) || [])[1]);
-      return { ...stream, mimeType, height };
-    }).filter(stream =>
-      typeof stream.url === "string" && /^https:\/\//i.test(stream.url) &&
-      Number(stream.height) > 0 && /^video\/(mp4|webm)$/i.test(stream.mimeType)
-    );
-
-    const audios = (Array.isArray(data.audioStreams) ? data.audioStreams : []).map(stream => {
-      const mimeType = String(stream && stream.mimeType || (
-        stream && stream.format === "M4A" ? "audio/mp4" :
-        stream && (stream.format === "OPUS" || stream.format === "OGG") ? "audio/ogg" :
-        stream && stream.format === "WEBM" ? "audio/webm" : ""
-      )).split(";")[0].trim();
-      return { ...stream, mimeType };
-    }).filter(stream =>
-      stream && typeof stream.url === "string" && /^https:\/\//i.test(stream.url) &&
-      /^audio\/(mp4|webm|ogg|mpeg)$/i.test(stream.mimeType)
-    );
-
-    videos.sort((a, b) =>
-      Number(b.height) - Number(a.height) ||
-      Number(b.mimeType === "video/mp4") - Number(a.mimeType === "video/mp4")
-    );
-    const adaptiveVideos = videos.filter(stream => stream.videoOnly === true || stream.videoOnly === "true");
-    const muxedVideo = videos.find(stream => stream.videoOnly !== true && stream.videoOnly !== "true");
-    if (adaptiveVideos.length && !audios.length && !muxedVideo) {
-      throw new Error("Video-only qualities were returned without any separate audio stream");
+    if (!candidates.length) {
+      throw new Error(sampleErrors.join(" | ") || "No sample video returned usable streams");
     }
-    const video = adaptiveVideos[0] || muxedVideo || videos[0];
-    const matchingAudio = adaptiveVideos.length && video.audioTrackId
-      ? audios.find(stream => stream.audioTrackId && stream.audioTrackId === video.audioTrackId)
+
+    candidates.sort((a, b) =>
+      b.heights.length - a.heights.length ||
+      Math.max(...b.heights) - Math.max(...a.heights) ||
+      Number(b.adaptiveVideos.length > 0 && b.audios.length > 0) -
+        Number(a.adaptiveVideos.length > 0 && a.audios.length > 0)
+    );
+
+    const best = candidates[0];
+    const video = best.adaptiveVideos[0] || best.muxedVideo || best.videos[0];
+    const matchingAudio = best.adaptiveVideos.length && video.audioTrackId
+      ? best.audios.find(stream => stream.audioTrackId && stream.audioTrackId === video.audioTrackId)
       : null;
-    const audio = adaptiveVideos.length && audios.length ? (matchingAudio || audios[0]) : null;
+    const audio = best.adaptiveVideos.length && best.audios.length
+      ? (matchingAudio || best.audios[0])
+      : null;
+
     const [videoProbe, audioProbe] = await Promise.all([
       probeRange(video, "Video", controller),
       audio ? probeRange(audio, "Audio", controller) : Promise.resolve(null),
     ]);
 
-    const heights = [...new Set(videos.map(stream => Number(stream.height)))].sort((a, b) => b - a);
     return {
       instance: base,
-      videoId: selectedVideoId,
-      title: String(data.title || ""),
-      videoCount: videos.length,
-      audioCount: audios.length,
-      heights,
+      videoId: best.videoId,
+      title: String(best.data.title || ""),
+      videoCount: best.videos.length,
+      audioCount: best.audios.length,
+      heights: best.heights,
       usedSeparateAudio: !!audio,
-      videoOnlyAvailable: adaptiveVideos.length > 0,
+      videoOnlyAvailable: best.adaptiveVideos.length > 0,
+      testedSamples: candidates.map(item => ({
+        videoId: item.videoId,
+        heights: item.heights,
+      })),
       apiCors: ORIGIN,
       videoRangeStatus: videoProbe.status,
       videoCors: videoProbe.cors,
