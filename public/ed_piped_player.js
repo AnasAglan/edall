@@ -111,7 +111,7 @@
     if (!mime || !probe || typeof probe.canPlayType !== 'function') return false;
     const supported = value => value === 'probably' || value === 'maybe';
     try {
-      if (codec && supported(probe.canPlayType(mime + '; codecs="' + codec + '"'))) return true;
+      if (codec) return supported(probe.canPlayType(mime + '; codecs="' + codec + '"'));
       return supported(probe.canPlayType(mime));
     } catch (_) { return false; }
   }
@@ -963,16 +963,19 @@
       const startSeparateAudio = () => {
         if (mode !== 'separate' || !separateAudioStream || disposed || video.paused) return;
         syncSeparateAudio(true);
+        if (!audio.paused) return;
         audio.play().catch(error => {
           if (!disposed && mode === 'separate' && !video.paused) {
             console.warn('[ED-ALL] Separate Piped audio could not start:', error);
+            const state = captureState();
             video.pause();
-            toast(options.language === 'ar'
-              ? 'تعذر تشغيل مسار الصوت من خادم Piped؛ جرّب فتح الفيديو مرة أخرى.'
-              : 'The Piped audio stream could not start. Please reopen the video.', 'error');
+            void recover(error, state);
           }
         });
       };
+      // Start the companion audio as soon as the media element receives play,
+      // while the user's play gesture is still active; keep playing as a retry.
+      listen(video, 'play', startSeparateAudio);
       listen(video, 'playing', startSeparateAudio);
       listen(video, 'pause', () => { if (mode === 'separate') audio.pause(); });
       listen(video, 'waiting', () => { if (mode === 'separate') audio.pause(); });
@@ -985,9 +988,9 @@
       });
       listen(video, 'ended', () => { if (mode === 'separate') audio.pause(); });
       listen(audio, 'error', () => {
-        if (!disposed && mode === 'separate' && !switching && !video.paused) {
-          video.pause();
-          toast(options.language === 'ar' ? 'تعذر تحميل الصوت من خادم Piped.' : 'The Piped audio stream failed to load.', 'error');
+        if (!disposed && mode === 'separate' && !switching && !recovering) {
+          const state = captureState();
+          void recover(new Error('The separate Piped audio stream failed.'), state);
         }
       });
 
