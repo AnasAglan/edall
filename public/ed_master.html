@@ -5106,7 +5106,7 @@ window.triggerModalClose = function() {
                 updateUI();
                 hideBtnLoading(btn);
                 showPage('mainPage');
-                showToast(currentLanguage === 'ar' ? `مرحباً ${currentUser.name || currentUser.email}` : `Welcome ${currentUser.name || currentUser.email}`, 'success');
+                showToast(currentLanguage === 'ar' ? `مرحباً ${edEsc(currentUser.name || currentUser.email)}` : `Welcome ${edEsc(currentUser.name || currentUser.email)}`, 'success');
             } catch (error) {
                 hideBtnLoading(btn);
                 console.error('Error signing in:', error);
@@ -8599,10 +8599,10 @@ exam.questions.forEach((question, index) => {
             return `
             <div class="list-item" ${isBanned ? 'style="opacity:0.6;border-right:4px solid var(--danger);"' : ''}>
                 <div>
-                    <strong>${user.name || user.email}</strong>
+                    <strong>${edEsc(user.name || user.email)}</strong>
                     ${isBanned ? '<span class="badge" style="background:var(--danger);color:white;margin-right:8px;">' + (currentLanguage === 'ar' ? 'محظور' : 'Banned') + '</span>' : ''}
                     <div style="color: var(--text-muted); font-size: 0.9rem;">
-                        ${user.email} | ${user.roles ? user.roles.join(', ') : 'student'}
+                        ${edEsc(user.email)} | ${user.roles ? user.roles.join(', ') : 'student'}
                     </div>
                 </div>
                 <div style="display: flex; gap: 8px; flex-wrap:wrap;">
@@ -8757,11 +8757,11 @@ exam.questions.forEach((question, index) => {
                     <div class="user-details-grid">
                         <div class="user-detail-card">
                             <h4>${currentLanguage === 'ar' ? 'الاسم' : 'Name'}</h4>
-                            <p>${user.name || (currentLanguage === 'ar' ? 'غير محدد' : 'Not set')}</p>
+                            <p>${edEsc(user.name) || (currentLanguage === 'ar' ? 'غير محدد' : 'Not set')}</p>
                         </div>
                         <div class="user-detail-card">
                             <h4>${currentLanguage === 'ar' ? 'البريد الإلكتروني' : 'Email'}</h4>
-                            <p>${user.email}</p>
+                            <p>${edEsc(user.email)}</p>
                         </div>
                         <div class="user-detail-card">
                             <h4>${currentLanguage === 'ar' ? 'الصلاحيات' : 'Roles'}</h4>
@@ -8888,7 +8888,7 @@ exam.questions.forEach((question, index) => {
                         
                         files.forEach((f, i) => {
                             const idx = _base + i;
-                            preview.insertAdjacentHTML('beforeend', `<div style="padding:5px;color:var(--text-muted);"><i class="fas fa-file-pdf" style="color:var(--danger);"></i> ${f.name} <span style="font-size:0.8rem;">(${(f.size / 1024 / 1024).toFixed(1)} MB)</span></div>`);
+                            preview.insertAdjacentHTML('beforeend', `<div style="padding:5px;color:var(--text-muted);"><i class="fas fa-file-pdf" style="color:var(--danger);"></i> ${edEsc(f.name)} <span style="font-size:0.8rem;">(${(f.size / 1024 / 1024).toFixed(1)} MB)</span></div>`);
                             
                             // Add progress bar for each file
                             progressContainer.insertAdjacentHTML('beforeend', `
@@ -9272,8 +9272,8 @@ exam.questions.forEach((question, index) => {
                         <div style="color:var(--text-muted);font-size:0.8rem;margin-bottom:8px;">
                             <i class="fas fa-camera"></i> ${currentLanguage === 'ar' ? 'اضغط على الصورة لتغييرها' : 'Click image to change'}
                         </div>
-                        <h3>${currentUser.name || currentUser.email}</h3>
-                        <p style="color: var(--text-muted);">${currentUser.email}</p>
+                        <h3>${edEsc(currentUser.name || currentUser.email)}</h3>
+                        <p style="color: var(--text-muted);">${edEsc(currentUser.email)}</p>
                         ${currentUser.public_id ? `<div style="margin-top:6px;font-weight:800;"><span style="background:var(--bg-lighter);padding:6px 12px;border-radius:999px;letter-spacing:2px;font-family:monospace;"><i class="fas fa-id-badge"></i> ${currentLanguage === 'ar' ? 'المعرف:' : 'ID:'} ${currentUser.public_id}</span></div>` : ''}
                         <div style="display: flex; gap: 10px; justify-content: center; margin-top: 10px;">
                             ${currentUser.roles && currentUser.roles.map(role => 
@@ -9343,8 +9343,8 @@ exam.questions.forEach((question, index) => {
             return `
             <div class="list-item" style="${notification.read ? 'opacity: 0.7;' : ''}">
                 <div>
-                    <strong>${notification.title}</strong>
-                    <div style="color: var(--text-muted); font-size: 0.9rem;">${notification.message}</div>
+                    <strong>${edEsc(notification.title)}</strong>
+                    <div style="color: var(--text-muted); font-size: 0.9rem;">${edEsc(notification.message)}</div>
                     <div style="color: var(--text-dark); font-size: 0.8rem; margin-top: 5px;">
                         ${new Date(notification.timestamp).toLocaleString(currentLanguage === 'ar' ? 'ar-EG' : 'en-US')}
                     </div>
@@ -9746,7 +9746,7 @@ exam.questions.forEach((question, index) => {
                     <div style="text-align:center;margin-bottom:20px;">
                         ${teacherAvatarHtml}
                         <h2>${edEsc(teacher.name)}</h2>
-                        <p style="color:var(--text-muted);">${teacher.email}</p>
+                        <p style="color:var(--text-muted);">${edEsc(teacher.email)}</p>
                         <div style="display:flex;gap:10px;justify-content:center;margin-top:10px;">
                             ${(teacher.roles || ['student']).map(role => 
                                 `<span class="badge ${role === 'admin' ? 'badge-primary' : role === 'teacher' ? 'badge-accent' : 'badge-success'}">${role === 'admin' ? (currentLanguage === 'ar' ? 'مدير' : 'Admin') : role === 'teacher' ? (currentLanguage === 'ar' ? 'مدرس' : 'Teacher') : (currentLanguage === 'ar' ? 'طالب' : 'Student')}</span>`
@@ -9841,7 +9841,7 @@ exam.questions.forEach((question, index) => {
                     ${lesson.files && lesson.files.length > 0 ? `
                         <div style="margin-top:10px;">
                             <strong>${currentLanguage === 'ar' ? 'الملفات الحالية:' : 'Current files:'}</strong>
-                            ${lesson.files.map((f, idx) => `<div class="list-item" style="margin:6px 0;"><div><i class="fas fa-file-pdf" style="color:var(--danger);"></i> ${f.name}</div><button class="btn btn-sm btn-danger" onclick="removeLessonFile('${courseId}', '${lessonId}', '${f.id || ''}', decodeURIComponent('${encodeURIComponent(f.url || '')}'), ${idx})"><i class="fas fa-times"></i></button></div>`).join('')}
+                            ${lesson.files.map((f, idx) => `<div class="list-item" style="margin:6px 0;"><div><i class="fas fa-file-pdf" style="color:var(--danger);"></i> ${edEsc(f.name)}</div><button class="btn btn-sm btn-danger" onclick="removeLessonFile('${courseId}', '${lessonId}', '${f.id || ''}', decodeURIComponent('${encodeURIComponent(f.url || '')}'), ${idx})"><i class="fas fa-times"></i></button></div>`).join('')}
                         </div>
                     ` : ''}
                     
@@ -9864,7 +9864,7 @@ exam.questions.forEach((question, index) => {
                         const _base = _activePdfUploads.length;
                         files.forEach((f, i) => {
                             const idx = _base + i;
-                            preview.insertAdjacentHTML('beforeend', `<div style="padding:5px;color:var(--text-muted);"><i class="fas fa-file-pdf" style="color:var(--danger);"></i> ${f.name} <span style="font-size:0.8rem;">(${(f.size / 1024 / 1024).toFixed(1)} MB)</span></div>`);
+                            preview.insertAdjacentHTML('beforeend', `<div style="padding:5px;color:var(--text-muted);"><i class="fas fa-file-pdf" style="color:var(--danger);"></i> ${edEsc(f.name)} <span style="font-size:0.8rem;">(${(f.size / 1024 / 1024).toFixed(1)} MB)</span></div>`);
                             if (progressContainer) progressContainer.insertAdjacentHTML('beforeend', `
                                 <div id="pdfProgress_${idx}" style="display:flex;align-items:center;gap:8px;margin:5px 0;">
                                     <div style="flex:1;background:var(--bg-lighter);border-radius:8px;height:8px;overflow:hidden;">
