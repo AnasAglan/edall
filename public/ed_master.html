@@ -4949,8 +4949,8 @@ window.triggerModalClose = function() {
                         html += `<div style="padding:10px 15px;cursor:pointer;border-bottom:1px solid var(--bg-lighter);transition:var(--transition-fast);" 
                             onmouseover="this.style.background='var(--bg-lighter)'" onmouseout="this.style.background=''" 
                             onclick="document.getElementById('searchResultsDropdown')?.remove(); showCourseDetails('${c.id}')">
-                            <div style="font-weight:600;">${c.title}</div>
-                            ${teacher ? `<div style="font-size:0.8rem;color:var(--text-muted);"><i class="fas fa-chalkboard-teacher"></i> ${teacher.name}</div>` : ''}
+                            <div style="font-weight:600;">${edEsc(c.title)}</div>
+                            ${teacher ? `<div style="font-size:0.8rem;color:var(--text-muted);"><i class="fas fa-chalkboard-teacher"></i> ${edEsc(teacher.name)}</div>` : ''}
                         </div>`;
                     });
                 }
@@ -4967,8 +4967,8 @@ window.triggerModalClose = function() {
                                 ${t.avatar_url ? `<img src="${t.avatar_url}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : t.name.charAt(0).toUpperCase()}
                             </div>
                             <div>
-                                <div style="font-weight:600;">${t.name}</div>
-                                <div style="font-size:0.8rem;color:var(--text-muted);">${t.email}</div>
+                                <div style="font-weight:600;">${edEsc(t.name)}</div>
+                                <div style="font-size:0.8rem;color:var(--text-muted);">${edEsc(t.email)}</div>
                             </div>
                         </div>`;
                     });
@@ -5527,7 +5527,7 @@ window.triggerModalClose = function() {
                             
                             ${course.image ? `
                                 <div class="course-image">
-                                    <img src="${course.image}" alt="${course.title}">
+                                    <img src="${edEsc(course.image)}" alt="${edEsc(course.title)}">
                                     <button class="course-favorite ${isFavorite ? 'active' : ''}" data-course-id="${course.id}">
                                         <i class="fas fa-heart"></i>
                                     </button>
@@ -5541,7 +5541,7 @@ window.triggerModalClose = function() {
                                 </div>
                             `}
                             <div class="card-header">
-                                <div class="card-title">${course.title}</div>
+                                <div class="card-title">${edEsc(course.title)}</div>
                                 <div class="card-badge">${getCourseLessonCount(course)} ${currentLanguage === 'ar' ? 'محاضرة' : 'lessons'}</div>
                             </div>
                             <div style="margin:6px 0 8px;">
@@ -5549,10 +5549,10 @@ window.triggerModalClose = function() {
                                     ? `<span class="badge badge-accent" style="background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;padding:4px 10px;border-radius:999px;font-weight:900;"><i class="fas fa-tag"></i> ${currentLanguage === 'ar' ? 'السعر:' : 'Price:'} ${Number(course.price)}</span>`
                                     : `<span class="badge badge-success" style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:4px 10px;border-radius:999px;font-weight:900;"><i class="fas fa-gift"></i> ${currentLanguage === 'ar' ? 'كورس مجاني' : 'Free Course'}</span>`}
                             </div>
-                            <div class="card-desc">${course.description || (currentLanguage === 'ar' ? 'لا يوجد وصف' : 'No description')}</div>
+                            <div class="card-desc">${edEsc(course.description) || (currentLanguage === 'ar' ? 'لا يوجد وصف' : 'No description')}</div>
                             ${(() => {
                                 const teacher = users.find(u => u.id === course.createdBy);
-                                return teacher ? `<div style="color:var(--text-muted);font-size:0.85rem;margin-bottom:8px;cursor:pointer;" onclick="showTeacherProfile('${course.createdBy}')"><i class="fas fa-chalkboard-teacher"></i> ${currentLanguage === 'ar' ? 'المدرس:' : 'Teacher:'} <span style="color:var(--primary);text-decoration:underline;">${teacher.name}</span></div>` : '';
+                                return teacher ? `<div style="color:var(--text-muted);font-size:0.85rem;margin-bottom:8px;cursor:pointer;" onclick="showTeacherProfile('${course.createdBy}')"><i class="fas fa-chalkboard-teacher"></i> ${currentLanguage === 'ar' ? 'المدرس:' : 'Teacher:'} <span style="color:var(--primary);text-decoration:underline;">${edEsc(teacher.name)}</span></div>` : '';
                             })()}
                             ${currentUser && currentUser.roles && currentUser.roles.includes('student') ? `
                                 <div class="progress-bar">
@@ -5652,7 +5652,7 @@ window.triggerModalClose = function() {
                         <div class="card">
                             ${course.image ? `
                                 <div class="course-image">
-                                    <img src="${course.image}" alt="${course.title}">
+                                    <img src="${edEsc(course.image)}" alt="${edEsc(course.title)}">
                                     <button class="course-favorite ${isFavorite ? 'active' : ''}" data-course-id="${course.id}">
                                         <i class="fas fa-heart"></i>
                                     </button>
@@ -5666,10 +5666,10 @@ window.triggerModalClose = function() {
                                 </div>
                             `}
                             <div class="card-header">
-                                <div class="card-title">${course.title}</div>
+                                <div class="card-title">${edEsc(course.title)}</div>
                                 <div class="card-badge">${getCourseLessonCount(course)} محاضرة</div>
                             </div>
-                            <div class="card-desc">${course.description || 'لا يوجد وصف'}</div>
+                            <div class="card-desc">${edEsc(course.description) || 'لا يوجد وصف'}</div>
                             <div class="progress-bar">
                                 <div class="progress-fill" style="width: ${completionStatus.progress}%"></div>
                             </div>
@@ -5735,7 +5735,7 @@ window.triggerModalClose = function() {
                         <div class="card">
                             ${course.image ? `
                                 <div class="course-image">
-                                    <img src="${course.image}" alt="${course.title}">
+                                    <img src="${edEsc(course.image)}" alt="${edEsc(course.title)}">
                                     <button class="course-favorite active" data-course-id="${course.id}">
                                         <i class="fas fa-heart"></i>
                                     </button>
@@ -5749,10 +5749,10 @@ window.triggerModalClose = function() {
                                 </div>
                             `}
                             <div class="card-header">
-                                <div class="card-title">${course.title}</div>
+                                <div class="card-title">${edEsc(course.title)}</div>
                                 <div class="card-badge">${getCourseLessonCount(course)} محاضرة</div>
                             </div>
-                            <div class="card-desc">${course.description || 'لا يوجد وصف'}</div>
+                            <div class="card-desc">${edEsc(course.description) || 'لا يوجد وصف'}</div>
                             <div class="card-footer">
                                 <button class="card-btn card-btn-primary" data-action="view" data-course-id="${course.id}">
                                     <i class="fas fa-eye"></i> عرض
@@ -5797,7 +5797,7 @@ window.triggerModalClose = function() {
                         <div class="card">
                             ${course.image ? `
                                 <div class="course-image">
-                                    <img src="${course.image}" alt="${course.title}">
+                                    <img src="${edEsc(course.image)}" alt="${edEsc(course.title)}">
                                 </div>
                             ` : `
                                 <div class="course-image">
@@ -5805,10 +5805,10 @@ window.triggerModalClose = function() {
                                 </div>
                             `}
                             <div class="card-header">
-                                <div class="card-title">${course.title}</div>
+                                <div class="card-title">${edEsc(course.title)}</div>
                                 <div class="card-badge">${getCourseLessonCount(course)} محاضرة</div>
                             </div>
-                            <div class="card-desc">${course.description || 'لا يوجد وصف'}</div>
+                            <div class="card-desc">${edEsc(course.description) || 'لا يوجد وصف'}</div>
                             <div style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 10px;">
                                 <i class="fas fa-users"></i> ${studentCount} طالب منضم
                             </div>
@@ -6067,8 +6067,8 @@ window.triggerModalClose = function() {
                 
                 showModal(`
                     <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">${currentLanguage === 'ar' ? 'تعديل الكورس' : 'Edit Course'}</div>
-                    <input id="editCourseTitle" placeholder="${currentLanguage === 'ar' ? 'عنوان الكورس' : 'Course title'}" value="${course.title}">
-                    <textarea id="editCourseDesc" rows="3" placeholder="${currentLanguage === 'ar' ? 'وصف الكورس' : 'Course description'}">${course.description || ''}</textarea>
+                    <input id="editCourseTitle" placeholder="${currentLanguage === 'ar' ? 'عنوان الكورس' : 'Course title'}" value="${edEsc(course.title)}">
+                    <textarea id="editCourseDesc" rows="3" placeholder="${currentLanguage === 'ar' ? 'وصف الكورس' : 'Course description'}">${edEsc(course.description) || ''}</textarea>
                     <div style="margin:10px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                         <label style="display:flex;align-items:center;gap:6px;font-weight:700;cursor:pointer;">
                             <input type="checkbox" id="editCourseFree" ${Number(course.price || 0) === 0 ? 'checked' : ''} onchange="document.getElementById('editCoursePrice').disabled=this.checked; if(this.checked)document.getElementById('editCoursePrice').value='';">
@@ -6082,7 +6082,7 @@ window.triggerModalClose = function() {
                     <div class="image-upload-container">
                         ${course.image ? `
                             <div class="image-preview" style="display:block;">
-                                <img src="${course.image}" alt="Current Image">
+                                <img src="${edEsc(course.image)}" alt="Current Image">
                             </div>
                         ` : ''}
                         <label class="upload-btn">
@@ -6212,20 +6212,20 @@ window.triggerModalClose = function() {
                 const canEditCourse = canUserEditCourse(course);
                 
                 const teacher = users.find(u => u.id === course.createdBy);
-                const teacherLink = teacher ? `<div style="color:var(--text-muted);font-size:0.9rem;margin-bottom:12px;cursor:pointer;" onclick="closeModal(); showTeacherProfile('${course.createdBy}')"><i class="fas fa-chalkboard-teacher"></i> ${currentLanguage === 'ar' ? 'المدرس:' : 'Teacher:'} <span style="color:var(--primary);text-decoration:underline;">${teacher.name}</span></div>` : '';
+                const teacherLink = teacher ? `<div style="color:var(--text-muted);font-size:0.9rem;margin-bottom:12px;cursor:pointer;" onclick="closeModal(); showTeacherProfile('${course.createdBy}')"><i class="fas fa-chalkboard-teacher"></i> ${currentLanguage === 'ar' ? 'المدرس:' : 'Teacher:'} <span style="color:var(--primary);text-decoration:underline;">${edEsc(teacher.name)}</span></div>` : '';
                 
                 let modalContent = `
-                    <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">${course.title}</div>
+                    <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">${edEsc(course.title)}</div>
                     ${teacherLink}
                     
                     ${course.image ? `
                         <div style="text-align:center;margin-bottom:20px;">
-                            <img src="${course.image}" alt="${course.title}" style="max-width:100%;border-radius:var(--radius);">
+                            <img src="${edEsc(course.image)}" alt="${edEsc(course.title)}" style="max-width:100%;border-radius:var(--radius);">
                         </div>
                     ` : ''}
                     
                     <div style="margin-bottom:20px;">
-                        <p>${course.description || (currentLanguage === 'ar' ? 'لا يوجد وصف للكورس' : 'No course description')}</p>
+                        <p>${edEsc(course.description) || (currentLanguage === 'ar' ? 'لا يوجد وصف للكورس' : 'No course description')}</p>
                     </div>
                     
                     <div class="completion-tracker">
@@ -6275,14 +6275,14 @@ window.triggerModalClose = function() {
                                 <div style="flex:1;">
                                     <strong>
                                         ${isLocked ? '<i class="fas fa-lock lock-icon"></i>' : ''}
-                                        ${currentLanguage === 'ar' ? 'المحاضرة' : 'Lesson'} ${index + 1}: ${lesson.title}
+                                        ${currentLanguage === 'ar' ? 'المحاضرة' : 'Lesson'} ${index + 1}: ${edEsc(lesson.title)}
                                         ${(Number(course.price || 0) <= 0 || lesson.isFree)
                                             ? `<span style="display:inline-block;font-size:.72rem;font-weight:800;padding:2px 9px;border-radius:999px;margin-inline-start:6px;background:rgba(34,197,94,.15);color:#22c55e;vertical-align:middle;">${currentLanguage === 'ar' ? 'مجانية' : 'Free'}</span>`
                                             : `<span style="display:inline-block;font-size:.72rem;font-weight:800;padding:2px 9px;border-radius:999px;margin-inline-start:6px;background:rgba(249,115,22,.15);color:#f97316;vertical-align:middle;">${currentLanguage === 'ar' ? 'مدفوعة' : 'Paid'}</span>`}
                                     </strong>
                                     ${isLocked ? `<div style="color:var(--danger);font-size:0.85rem;"><i class="fas fa-exclamation-triangle"></i> ${currentLanguage === 'ar' ? 'يجب النجاح في امتحان المحاضرة السابقة أولاً' : 'Must pass previous lesson exam first'}</div>` : ''}
                                     <div style="color:var(--text-muted);font-size:0.9rem;">
-                                        ${lesson.content || (currentLanguage === 'ar' ? 'لا يوجد وصف للمحاضرة' : 'No lesson description')}
+                                        ${edEsc(lesson.content) || (currentLanguage === 'ar' ? 'لا يوجد وصف للمحاضرة' : 'No lesson description')}
                                     </div>
                                     <div class="progress-bar" style="margin:8px 0;">
                                         <div class="progress-fill" style="width: ${lessonProgress}%"></div>
@@ -6383,10 +6383,10 @@ window.triggerModalClose = function() {
                 trackLessonProgress(courseId, lessonId, 'opened', true);
                 
                 let modalContent = `
-                    <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">${lesson.title}</div>
+                    <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">${edEsc(lesson.title)}</div>
                     
                     <div style="margin-bottom:20px;">
-                        <p>${lesson.content || (currentLanguage === 'ar' ? 'لا يوجد محتوى للمحاضرة' : 'No lesson content')}</p>
+                        <p>${edEsc(lesson.content) || (currentLanguage === 'ar' ? 'لا يوجد محتوى للمحاضرة' : 'No lesson content')}</p>
                     </div>
                 `;
                 
@@ -6410,7 +6410,7 @@ window.triggerModalClose = function() {
                                 <div class="list-item" style="margin:5px 0;">
                                     <div>
                                         <i class="fas fa-file-pdf" style="color:var(--danger);"></i>
-                                        <span>${file.name || (currentLanguage === 'ar' ? 'ملف' : 'File')}</span>
+                                        <span>${edEsc(file.name) || (currentLanguage === 'ar' ? 'ملف' : 'File')}</span>
                                     </div>
                                     <a href="${file.url}" target="_blank" class="btn btn-sm" onclick="trackLessonProgress('${courseId}', '${lessonId}', 'pdfOpened', true)">
                                         <i class="fas fa-external-link-alt"></i> ${currentLanguage === 'ar' ? 'فتح' : 'Open'}
@@ -6428,7 +6428,7 @@ window.triggerModalClose = function() {
                             <div class="list-item">
                                 <div>
                                     <i class="fas fa-file-pdf"></i>
-                                    <span>${lesson.pdfName || (currentLanguage === 'ar' ? 'ملف PDF' : 'PDF File')}</span>
+                                    <span>${edEsc(lesson.pdfName) || (currentLanguage === 'ar' ? 'ملف PDF' : 'PDF File')}</span>
                                 </div>
                                 <button class="btn btn-sm" onclick="trackLessonProgress('${courseId}', '${lessonId}', 'pdfOpened', true); showPdfModal('${lesson.pdfData}')">
                                     <i class="fas fa-eye"></i> ${currentLanguage === 'ar' ? 'عرض' : 'View'}
@@ -6459,7 +6459,7 @@ window.triggerModalClose = function() {
                         
                         modalContent += `
                             <div style="background:var(--card-light);border-radius:var(--radius);padding:15px;margin:10px 0;border-right:4px solid var(--primary);">
-                                <div style="font-weight:bold;margin-bottom:8px;">${exam.title || ((currentLanguage === 'ar' ? 'امتحان ' : 'Exam ') + (examIndex + 1))}</div>
+                                <div style="font-weight:bold;margin-bottom:8px;">${edEsc(exam.title) || ((currentLanguage === 'ar' ? 'امتحان ' : 'Exam ') + (examIndex + 1))}</div>
                                 <div style="margin-bottom:10px;">
                                     <span style="color:var(--text-muted);">${currentLanguage === 'ar' ? 'عدد الأسئلة:' : 'Questions:'} ${exam.questions.length}</span>
                                     ${exam.timeLimit ? `<span style="color:var(--text-muted);margin-right:15px;margin-left:15px;"><i class="fas fa-clock"></i> ${exam.timeLimit} ${currentLanguage === 'ar' ? 'دقيقة' : 'min'}</span>` : ''}
@@ -6958,7 +6958,7 @@ function migrateExamsToArray() {
                     
                     <div style="margin-bottom:15px;">
                         <label style="font-weight:bold;display:block;margin-bottom:5px;">${currentLanguage === 'ar' ? 'عنوان الامتحان' : 'Exam Title'}</label>
-                        <input type="text" id="examTitle" value="${exam.title || ''}">
+                        <input type="text" id="examTitle" value="${edEsc(exam.title) || ''}">
                     </div>
                     
                     <div style="margin-bottom:15px;">
@@ -7295,8 +7295,8 @@ async function takeExam(courseId, lessonId, examIndex) {
                 );
 
             const msg = currentLanguage === 'ar'
-                ? `هل أنت مستعد لبدء امتحان "${exam.title || lesson.title}"؟\n- عدد الأسئلة: ${qCount}\n- ${durTxt}\n\nتنبيه: سيبدأ احتساب الوقت فور الضغط على موافق.`
-                : `Ready to start exam "${exam.title || lesson.title}"?\n- Questions: ${qCount}\n- ${durTxt}\n\nNote: Timer starts immediately.`;
+                ? `هل أنت مستعد لبدء امتحان "${edEsc(exam.title) || lesson.title}"؟\n- عدد الأسئلة: ${qCount}\n- ${durTxt}\n\nتنبيه: سيبدأ احتساب الوقت فور الضغط على موافق.`
+                : `Ready to start exam "${edEsc(exam.title) || lesson.title}"?\n- Questions: ${qCount}\n- ${durTxt}\n\nNote: Timer starts immediately.`;
 
             const confirmed = await showExamConfirm(msg, {
                 title: currentLanguage === 'ar'
@@ -7452,7 +7452,7 @@ async function takeExam(courseId, lessonId, examIndex) {
         showModal(`
             <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">
                 <i class="fas fa-clipboard-list"></i>
-                ${exam.title || (currentLanguage === 'ar' ? 'امتحان' : 'Exam')}: ${lesson.title}
+                ${edEsc(exam.title) || (currentLanguage === 'ar' ? 'امتحان' : 'Exam')}: ${edEsc(lesson.title)}
             </div>
 
             ${timerHTML}
@@ -8098,7 +8098,7 @@ exam.questions.forEach((question, index) => {
                     createNotification(
                         course.createdBy,
                         currentLanguage === 'ar' ? 'امتحان يحتاج تصحيح' : 'Exam needs grading',
-                        currentLanguage === 'ar' ? `الطالب ${currentUser.name} أكمل امتحان "${lesson.title}" ويحتاج تصحيح الأسئلة المقالية` : `Student ${currentUser.name} completed exam "${lesson.title}" and needs essay grading`,
+                        currentLanguage === 'ar' ? `الطالب ${currentUser.name} أكمل امتحان "${edEsc(lesson.title)}" ويحتاج تصحيح الأسئلة المقالية` : `Student ${currentUser.name} completed exam "${edEsc(lesson.title)}" and needs essay grading`,
                         'exam'
                     );
                 }
@@ -8392,8 +8392,8 @@ exam.questions.forEach((question, index) => {
                     if (x) { Object.assign(x, { score, passed, essay_graded: true, answers }); localStorage.setItem('_rawExamResults', JSON.stringify(raw)); }
                 } catch (e) {}
                 createNotification(r.user_id, _t('تم تصحيح امتحانك', 'Your exam has been graded'),
-                    _t(`تم تصحيح امتحان "${lesson.title}". الدرجة النهائية: ${score}% - ${passed ? 'ناجح ✅' : 'راسب ❌'}`,
-                       `Exam "${lesson.title}" graded. Final score: ${score}% - ${passed ? 'Passed ✅' : 'Failed ❌'}`), 'exam_result');
+                    _t(`تم تصحيح امتحان "${edEsc(lesson.title)}". الدرجة النهائية: ${score}% - ${passed ? 'ناجح ✅' : 'راسب ❌'}`,
+                       `Exam "${edEsc(lesson.title)}" graded. Final score: ${score}% - ${passed ? 'Passed ✅' : 'Failed ❌'}`), 'exam_result');
                 hideBtnLoading(_gradeBtn);
                 showToast(_t('تم حفظ التصحيح بنجاح', 'Grades saved successfully'), 'success');
                 renderGradingAttempts(r.user_id);
@@ -8528,7 +8528,7 @@ exam.questions.forEach((question, index) => {
                 adminCoursesList.innerHTML = courses.map(course => `
                     <div class="list-item">
                         <div>
-                            <strong>${course.title}</strong>
+                            <strong>${edEsc(course.title)}</strong>
                             <div style="color: var(--text-muted); font-size: 0.9rem;">
                                 ${getCourseLessonCount(course)} ${currentLanguage === 'ar' ? 'محاضرة' : 'lessons'} | ${getEnrolledStudentsCount(course.id)} ${currentLanguage === 'ar' ? 'طالب' : 'students'}
                             </div>
@@ -8785,7 +8785,7 @@ exam.questions.forEach((question, index) => {
                             <h4>${currentLanguage === 'ar' ? 'الكورسات المنضمة:' : 'Enrolled Courses:'}</h4>
                             ${enrolledCourses.map(course => `
                                 <div class="list-item" style="margin: 5px 0;">
-                                    <span>${course.title}</span>
+                                    <span>${edEsc(course.title)}</span>
                                 </div>
                             `).join('')}
                         </div>
@@ -9315,7 +9315,7 @@ exam.questions.forEach((question, index) => {
                         return `
                             <div class="list-item">
                                 <div>
-                                    <strong>${course.title}</strong>
+                                    <strong>${edEsc(course.title)}</strong>
                                     <div class="progress-bar" style="margin: 5px 0; width: 200px;">
                                         <div class="progress-fill" style="width: ${completionStatus.progress}%"></div>
                                     </div>
@@ -9737,7 +9737,7 @@ exam.questions.forEach((question, index) => {
                 const teacherCourses = courses.filter(c => c.createdBy === teacherId);
                 
                 const teacherAvatarHtml = teacher.avatar_url
-                    ? `<img src="${teacher.avatar_url}" alt="${teacher.name}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid var(--accent);margin-bottom:10px;">`
+                    ? `<img src="${teacher.avatar_url}" alt="${edEsc(teacher.name)}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid var(--accent);margin-bottom:10px;">`
                     : `<div style="width:80px;height:80px;border-radius:50%;background:var(--accent);display:inline-flex;align-items:center;justify-content:center;font-size:2rem;color:white;margin-bottom:10px;">
                         ${teacher.name ? teacher.name.charAt(0).toUpperCase() : '?'}
                     </div>`;
@@ -9745,7 +9745,7 @@ exam.questions.forEach((question, index) => {
                 let html = `
                     <div style="text-align:center;margin-bottom:20px;">
                         ${teacherAvatarHtml}
-                        <h2>${teacher.name}</h2>
+                        <h2>${edEsc(teacher.name)}</h2>
                         <p style="color:var(--text-muted);">${teacher.email}</p>
                         <div style="display:flex;gap:10px;justify-content:center;margin-top:10px;">
                             ${(teacher.roles || ['student']).map(role => 
@@ -9761,7 +9761,7 @@ exam.questions.forEach((question, index) => {
                     html += teacherCourses.map(course => `
                         <div class="list-item" style="margin:8px 0;">
                             <div>
-                                <strong>${course.title}</strong>
+                                <strong>${edEsc(course.title)}</strong>
                                 <div style="color:var(--text-muted);font-size:0.9rem;">${getCourseLessonCount(course)} ${currentLanguage === 'ar' ? 'محاضرة' : 'lessons'}</div>
                             </div>
                             <button class="btn btn-sm" onclick="closeModal(); showCourseDetails('${course.id}');">
@@ -9801,8 +9801,8 @@ exam.questions.forEach((question, index) => {
 
                 showModal(`
                     <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">${currentLanguage === 'ar' ? 'تعديل المحاضرة' : 'Edit Lesson'}</div>
-                    <input id="editLessonTitle" value="${lesson.title}" placeholder="${currentLanguage === 'ar' ? 'عنوان المحاضرة' : 'Lesson title'}">
-                    <textarea id="editLessonContent" rows="3" placeholder="${currentLanguage === 'ar' ? 'محتوى المحاضرة' : 'Lesson content'}">${lesson.content || ''}</textarea>
+                    <input id="editLessonTitle" value="${edEsc(lesson.title)}" placeholder="${currentLanguage === 'ar' ? 'عنوان المحاضرة' : 'Lesson title'}">
+                    <textarea id="editLessonContent" rows="3" placeholder="${currentLanguage === 'ar' ? 'محتوى المحاضرة' : 'Lesson content'}">${edEsc(lesson.content) || ''}</textarea>
                     ${Number(course.price || 0) > 0 ? `<div style="margin:10px 0;padding:10px;background:var(--bg-lighter);border-radius:8px;"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:700;"><input type="checkbox" id="editLessonIsFree" ${lesson.isFree ? 'checked' : ''}><span>${currentLanguage === 'ar' ? 'محاضرة مجانية (يمكن للجميع فتحها)' : 'Free lesson (open for everyone)'}</span></label></div>` : ''}
                     
                     <div style="font-weight:bold;margin:10px 0 5px;">${currentLanguage === 'ar' ? 'روابط الفيديو:' : 'Video URLs:'}</div>
