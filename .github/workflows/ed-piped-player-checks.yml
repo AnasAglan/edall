@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - "public/ed_piped_player.js"
+      - "public/ed_master.html"
+      - "scripts/piped-live-smoke-test.mjs"
       - "src/test/ed-piped-player.test.ts"
       - "package.json"
       - ".github/workflows/ed-piped-player-checks.yml"
