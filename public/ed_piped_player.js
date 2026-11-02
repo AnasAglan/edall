@@ -621,7 +621,7 @@
         if (previousHeight && player) {
           try { player.quality = previousHeight; } catch (_) {}
         }
-        let restored = mode !== 'direct';
+        let restored = false;
         if (mode === 'direct' && previousHeight) {
           const previousStream = chooseMuxed(muxedVideos, previousHeight);
           if (previousStream) {
