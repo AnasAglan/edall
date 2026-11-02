@@ -1,0 +1,189 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-11-02T00:00:00.000Z",
+  "refreshedDaily": false,
+  "sources": {
+    "piped": [
+      {
+        "url": "https://pipedapi.kavin.rocks",
+        "provider": "piped",
+        "official": true,
+        "status": "unknown",
+        "score": 0,
+        "responseMs": null,
+        "heights": []
+      },
+      {
+        "url": "https://pipedapi.leptons.xyz",
+        "provider": "piped",
+        "official": true,
+        "status": "unknown",
+        "score": 0,
+        "responseMs": null,
+        "heights": []
+      },
+      {
+        "url": "https://pipedapi.nosebs.ru",
+        "provider": "piped",
+        "official": true,
+        "status": "unknown",
+        "score": 0,
+        "responseMs": null,
+        "heights": []
+      },
+      {
+        "url": "https://pipedapi-libre.kavin.rocks",
+        "provider": "piped",
+        "official": true,
+        "status": "unknown",
+        "score": 0,
+        "responseMs": null,
+        "heights": []
+      },
+      {
+        "url": "https://piped-api.privacy.com.de",
+        "provider": "piped",
+        "official": true,
+        "status": "unknown",
+        "score": 0,
+        "responseMs": null,
+        "heights": []
+      },
+      {
+        "url": "https://pipedapi.adminforge.de",
+        "provider": "piped",
+        "official": true,
+        "status": "unknown",
+        "score": 0,
+        "responseMs": null,
+        "heights": []
+      },
+      {
+        "url": "https://api.piped.yt",
+        "provider": "piped",
+        "official": true,
+        "status": "unknown",
+        "score": 0,
+        "responseMs": null,
+        "heights": []
+      },
+      {
+        "url": "https://pipedapi.drgns.space",
+        "provider": "piped",
+        "official": true,
+        "status": "unknown",
+        "score": 0,
+        "responseMs": null,
+        "heights": []
+      },
+      {
+        "url": "https://pipedapi.owo.si",
+        "provider": "piped",
+        "official": true,
+        "status": "unknown",
+        "score": 0,
+        "responseMs": null,
+        "heights": []
+      },
+      {
+        "url": "https://pipedapi.ducks.party",
+        "provider": "piped",
+        "official": true,
+        "status": "unknown",
+        "score": 0,
+        "responseMs": null,
+        "heights": []
+      },
+      {
+        "url": "https://piped-api.codespace.cz",
+        "provider": "piped",
+        "official": true,
+        "status": "unknown",
+        "score": 0,
+        "responseMs": null,
+        "heights": []
+      },
+      {
+        "url": "https://pipedapi.reallyaweso.me",
+        "provider": "piped",
+        "official": true,
+        "status": "unknown",
+        "score": 0,
+        "responseMs": null,
+        "heights": []
+      },
+      {
+        "url": "https://api.piped.private.coffee",
+        "provider": "piped",
+        "official": true,
+        "status": "unknown",
+        "score": 0,
+        "responseMs": null,
+        "heights": []
+      },
+      {
+        "url": "https://pipedapi.darkness.services",
+        "provider": "piped",
+        "official": true,
+        "status": "unknown",
+        "score": 0,
+        "responseMs": null,
+        "heights": []
+      },
+      {
+        "url": "https://pipedapi.orangenet.cc",
+        "provider": "piped",
+        "official": true,
+        "status": "unknown",
+        "score": 0,
+        "responseMs": null,
+        "heights": []
+      }
+    ],
+    "invidious": [
+      {
+        "url": "https://inv.nadeko.net",
+        "provider": "invidious",
+        "official": true,
+        "status": "unknown",
+        "score": 0,
+        "responseMs": null,
+        "heights": []
+      },
+      {
+        "url": "https://invidious.nerdvpn.de",
+        "provider": "invidious",
+        "official": true,
+        "status": "unknown",
+        "score": 0,
+        "responseMs": null,
+        "heights": []
+      },
+      {
+        "url": "https://yt.chocolatemoo53.com",
+        "provider": "invidious",
+        "official": true,
+        "status": "unknown",
+        "score": 0,
+        "responseMs": null,
+        "heights": []
+      },
+      {
+        "url": "https://invidious.tiekoetter.com",
+        "provider": "invidious",
+        "official": true,
+        "status": "unknown",
+        "score": 0,
+        "responseMs": null,
+        "heights": []
+      }
+    ]
+  },
+  "sourceErrors": [],
+  "policy": {
+    "onlyOfficialDirectories": true,
+    "onlyHttps": true,
+    "failedInstancesAreRetained": true,
+    "healthyInstancesFirst": true
+  }
+}
