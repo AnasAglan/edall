@@ -32,5 +32,9 @@ jobs:
       - name: Run Piped player regression tests
         run: npm test -- --reporter=verbose
 
+      - name: Best-effort live Piped API and media check
+        continue-on-error: true
+        run: node scripts/piped-live-smoke-test.mjs
+
       - name: Build platform
         run: npm run build
