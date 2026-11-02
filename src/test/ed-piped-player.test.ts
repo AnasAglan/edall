@@ -238,6 +238,13 @@ describe("ED ALL Piped player", () => {
     expect(helpers.scoreBundle(bundle)).toBeGreaterThan(0);
   });
 
+  it("prioritizes registry health before last-instance stickiness", () => {
+    const source = playerSource;
+    expect(source).toContain("const aRegistryRank = rank(ar.status);");
+    expect(source).toContain("if (aRegistryRank !== bRegistryRank) return bRegistryRank - aRegistryRank;");
+    expect(source).toContain("The last successful server is only the final tie-breaker.");
+  });
+
   it("scores normalized Piped bundles using their actual videoStreams field", () => {
     const helpers = loadHelpers();
     const bundle = helpers.normalize({

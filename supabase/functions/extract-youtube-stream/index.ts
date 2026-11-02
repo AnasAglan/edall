@@ -46,7 +46,7 @@ async function fetchWithTimeout(url: string, timeout = REQUEST_TIMEOUT_MS) {
   }
 }
 
-async function loadOfficialInstances(): Promise<Array<{ url: string; score: number }>> {
+async function loadOfficialInstances(): Promise<Array<{ url: string; score: number; status: string }>> {
   try {
     const registryResponse = await fetchWithTimeout(REGISTRY_URL, 4500);
     if (registryResponse.ok) {
@@ -55,6 +55,7 @@ async function loadOfficialInstances(): Promise<Array<{ url: string; score: numb
       const cleaned = entries.map((item: any) => ({
         url: cleanBase(item?.url),
         score: Number(item?.score) || 0,
+        status: String(item?.status || "unknown"),
         official: item?.official === true,
       })).filter((item: any) => item.url && item.official);
       if (cleaned.length) return cleaned;
@@ -67,7 +68,7 @@ async function loadOfficialInstances(): Promise<Array<{ url: string; score: numb
   if (!response.ok) throw new Error("Official Invidious instance directory returned HTTP " + response.status);
   const payload = await response.json();
   if (!Array.isArray(payload)) throw new Error("Invalid Invidious instance directory response.");
-  const instances: Array<{ url: string; score: number }> = [];
+  const instances: Array<{ url: string; score: number; status: string }> = [];
   for (const row of payload as any[]) {
     const meta = row?.[1] || {};
     if (String(meta.type || "").toLowerCase() !== "https") continue;
@@ -76,6 +77,7 @@ async function loadOfficialInstances(): Promise<Array<{ url: string; score: numb
     instances.push({
       url,
       score: Number(meta.monitor?.uptime) || 0,
+      status: "unknown",
     });
   }
   return instances;
@@ -171,7 +173,7 @@ function bundleScore(bundle: any): number {
     (bundle.hls ? 25 : 0);
 }
 
-async function probeInstance(instance: { url: string; score: number }, videoId: string) {
+async function probeInstance(instance: { url: string; score: number; status: string }, videoId: string) {
   const url = instance.url + "/api/v1/videos/" + encodeURIComponent(videoId) +
     "?fields=title,lengthSeconds,liveNow,hlsUrl,dashUrl,formatStreams,adaptiveFormats";
   const controller = new AbortController();
@@ -206,7 +208,10 @@ async function extract(videoId: string, excluded: string[]) {
   const excludedSet = new Set((excluded || []).map(cleanBase).filter(Boolean));
   const instances = (await loadOfficialInstances())
     .filter((item) => !excludedSet.has(item.url))
-    .sort((a, b) => b.score - a.score || a.url.localeCompare(b.url));
+    .sort((a, b) => {
+      const rank = (status: string) => status === "healthy" ? 3 : status === "degraded" ? 2 : status === "unknown" ? 1 : 0;
+      return rank(b.status) - rank(a.status) || b.score - a.score || a.url.localeCompare(b.url);
+    });
 
   if (!instances.length) throw new Error("No official HTTPS Invidious instances are available.");
   const failures: string[] = [];

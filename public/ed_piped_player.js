@@ -106,14 +106,26 @@
     }
 
     let discovered = [];
+    const registryHealth = new Map();
     if (registry && Array.isArray(registry.sources && registry.sources.piped)) {
-      discovered = registry.sources.piped
-        .filter(item => item && item.official !== false)
-        .sort((a, b) =>
-          Number(b.status === 'healthy') - Number(a.status === 'healthy') ||
-          Number(b.score || 0) - Number(a.score || 0) ||
-          Number(a.responseMs || 999999) - Number(b.responseMs || 999999)
-        )
+      const registered = registry.sources.piped.filter(item => item && item.official !== false);
+      registered.forEach(item => {
+        const url = typeof item === 'string' ? item : item.url;
+        if (url) registryHealth.set(url, typeof item === 'string' ? { status: 'unknown', score: 0, responseMs: 999999 } : {
+          status: item.status || 'unknown',
+          score: Number(item.score) || 0,
+          responseMs: Number(item.responseMs) || 999999
+        });
+      });
+      discovered = registered
+        .sort((a, b) => {
+          const ah = typeof a === 'string' ? {} : a;
+          const bh = typeof b === 'string' ? {} : b;
+          const rank = value => value === 'healthy' ? 3 : value === 'degraded' ? 2 : value === 'unknown' ? 1 : 0;
+          return rank(bh.status) - rank(ah.status) ||
+            Number(bh.score || 0) - Number(ah.score || 0) ||
+            Number(ah.responseMs || 999999) - Number(bh.responseMs || 999999);
+        })
         .map(item => typeof item === 'string' ? item : item.url);
     }
 
@@ -148,10 +160,18 @@
     list.sort((a, b) => {
       const ah = health[a] || {};
       const bh = health[b] || {};
-      const aScore = Number(ah.successes || 0) * 25 - Number(ah.failures || 0) * 100 - Number(ah.averageMs || 0) / 100;
-      const bScore = Number(bh.successes || 0) * 25 - Number(bh.failures || 0) * 100 - Number(bh.averageMs || 0) / 100;
-      if (aScore !== bScore) return bScore - aScore;
-      // Prefer the previously successful endpoint only as a tie-breaker, never ahead of a known healthier server.
+      const ar = registryHealth.get(a) || {};
+      const br = registryHealth.get(b) || {};
+      const aLocalScore = Number(ah.successes || 0) * 25 - Number(ah.failures || 0) * 100 - Number(ah.averageMs || 0) / 100;
+      const bLocalScore = Number(bh.successes || 0) * 25 - Number(bh.failures || 0) * 100 - Number(bh.averageMs || 0) / 100;
+      const rank = value => value === 'healthy' ? 3 : value === 'degraded' ? 2 : value === 'unknown' ? 1 : value === 'unhealthy' ? 0 : 1;
+      const aRegistryRank = rank(ar.status);
+      const bRegistryRank = rank(br.status);
+      if (aRegistryRank !== bRegistryRank) return bRegistryRank - aRegistryRank;
+      if (aLocalScore !== bLocalScore) return bLocalScore - aLocalScore;
+      if (Number(ar.score || 0) !== Number(br.score || 0)) return Number(br.score || 0) - Number(ar.score || 0);
+      if (Number(ar.responseMs || 999999) !== Number(br.responseMs || 999999)) return Number(ar.responseMs || 999999) - Number(br.responseMs || 999999);
+      // The last successful server is only the final tie-breaker.
       if (a === last) return -1;
       if (b === last) return 1;
       return 0;
