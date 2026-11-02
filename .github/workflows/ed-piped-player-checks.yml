@@ -7,6 +7,7 @@ on:
       - "public/ed_piped_player.js"
       - "public/ed_master.html"
       - "scripts/piped-live-smoke-test.mjs"
+      - "scripts/supabase-extractor-smoke-test.mjs"
       - "src/test/ed-piped-player.test.ts"
       - "package.json"
       - ".github/workflows/ed-piped-player-checks.yml"
@@ -37,6 +38,10 @@ jobs:
       - name: Best-effort live Piped API and media check
         continue-on-error: true
         run: node scripts/piped-live-smoke-test.mjs
+
+      - name: Best-effort deployed Supabase extractor check
+        continue-on-error: true
+        run: node scripts/supabase-extractor-smoke-test.mjs
 
       - name: Build platform
         run: npm run build
