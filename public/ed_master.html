@@ -3093,7 +3093,7 @@ if (existingWatermark && !layerHost.contains(existingWatermark)) {
         }
 
         function _edLoadLib() {
-            if (window.Plyr && window.EDPipedPlayer) return Promise.resolve();
+            if (window.Plyr && window.EDPipedPlayer && window.shaka && window.shaka.Player) return Promise.resolve();
             if (_edLibP) return _edLibP;
 
             if (!document.getElementById('_edpc')) {
@@ -3113,9 +3113,10 @@ if (existingWatermark && !layerHost.contains(existingWatermark)) {
                 if (window.shaka && window.shaka.polyfill && window.shaka.polyfill.installAll) {
                     window.shaka.polyfill.installAll();
                 }
-                if (!window.EDPipedPlayer) {
+                if (!window.EDPipedPlayer || !window.shaka || !window.shaka.Player) {
                     const failure = optionalLoads.find(result => result.status === 'rejected');
-                    console.warn('[ED-ALL] Piped playback engine unavailable:', failure && failure.reason);
+                    console.warn('[ED-ALL] A video dependency is unavailable; playback will use supported fallbacks:', failure && failure.reason);
+                    _edLibP = null;
                 }
             })().catch(error => {
                 _edLibP = null;
