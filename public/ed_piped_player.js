@@ -108,10 +108,11 @@
   }
 
   function browserSupports(probe, mime, codec) {
-    if (!mime) return false;
+    if (!mime || !probe || typeof probe.canPlayType !== 'function') return false;
+    const supported = value => value === 'probably' || value === 'maybe';
     try {
-      if (codec && probe.canPlayType(mime + '; codecs="' + codec + '"')) return true;
-      return !!probe.canPlayType(mime);
+      if (codec && supported(probe.canPlayType(mime + '; codecs="' + codec + '"'))) return true;
+      return supported(probe.canPlayType(mime));
     } catch (_) { return false; }
   }
 
@@ -158,7 +159,7 @@
         codec,
         height,
         bitrate: Number(stream.bitrate) || 0,
-        videoOnly: stream.videoOnly === true,
+        videoOnly: stream.videoOnly === true || stream.videoOnly === 'true',
         audioTrackId: stream.audioTrackId || 'default'
       };
     }).filter(Boolean);
@@ -196,8 +197,10 @@
   }
 
   function validRange(stream) {
+    if (!stream) return false;
     const values = ['indexStart', 'indexEnd', 'initStart', 'initEnd'].map(key => Number(stream[key]));
-    return values.every(Number.isFinite) && values[1] >= values[0] && values[3] >= values[2];
+    return values.every(value => Number.isSafeInteger(value) && value >= 0) &&
+      values[1] > values[0] && values[3] > values[2];
   }
 
   function toRepresentation(stream, type, index) {
@@ -350,6 +353,10 @@
       };
       const ready = () => finish();
       const failed = () => finish(new Error('The selected Piped media URL could not be played.'));
+      if (video.src === url && video.readyState >= 3) {
+        resolve();
+        return;
+      }
       const timer = setTimeout(() => finish(new Error('Timed out while loading the selected Piped media URL.')), timeoutMs || 15000);
       video.addEventListener('canplay', ready, { once: true });
       video.addEventListener('error', failed, { once: true });
@@ -394,7 +401,11 @@
     video.preload = 'auto';
     video.controls = false;
     video.setAttribute('playsinline', '');
-    wrap.appendChild(video);
+    const audio = document.createElement('audio');
+    audio.preload = 'auto';
+    audio.hidden = true;
+    audio.setAttribute('aria-hidden', 'true');
+    wrap.append(video, audio);
     container.replaceChildren(wrap);
     container.style.display = 'block';
 
@@ -407,6 +418,7 @@
     let qualityHeights = [];
     let variantTracks = [];
     let muxedVideos = [];
+    let separateAudioStream = null;
     let switching = false;
     let recovering = false;
     let recoveryCount = 0;
@@ -446,9 +458,11 @@
           }
         } catch (_) {}
       }
-      try { video.pause(); } catch (_) {}
+      try { video.pause(); audio.pause(); } catch (_) {}
       if (engine) { const old = engine; engine = null; old.destroy().catch(() => {}); }
       try { video.removeAttribute('src'); video.load(); } catch (_) {}
+      try { audio.removeAttribute('src'); audio.load(); } catch (_) {}
+      separateAudioStream = null;
     };
     container._desktopCleanup = cleanup;
 
@@ -459,6 +473,8 @@
         try { await old.destroy(); } catch (_) {}
       }
       try { video.pause(); video.removeAttribute('src'); video.load(); } catch (_) {}
+      try { audio.pause(); audio.removeAttribute('src'); audio.load(); } catch (_) {}
+      separateAudioStream = null;
       mode = '';
       variantTracks = [];
       muxedVideos = [];
@@ -468,9 +484,11 @@
       if (current.livestream && current.hls) return { uri: current.hls, mime: 'application/x-mpegurl' };
       if (current.dash) {
         try {
+          // Keep Piped's DASH URL untouched. Piped Proxy rewrites manifest media URLs
+          // by default; forcing rewrite=false can expose direct GoogleVideo URLs and
+          // make playback fail in browsers that cannot reach those hosts.
           const url = new URL(current.dash);
-          url.searchParams.set('rewrite', 'false');
-          return { uri: url.toString(), mime: 'application/dash+xml' };
+          if (url.protocol === 'https:') return { uri: url.toString(), mime: 'application/dash+xml' };
         } catch (_) {}
       }
       const generated = buildDashDataUri(current);
@@ -531,9 +549,10 @@
         const nextTrack = event && event.newTrack
           ? event.newTrack
           : (event && event.detail && event.detail.newTrack ? event.detail.newTrack : null);
-        if (!nextTrack || String(nextTrack.id) !== String(requestedTrack.id)) return;
-        const active = shakaPlayer.getVariantTracks().find(item => item.active);
-        if (active && String(active.id) === String(requestedTrack.id)) finish();
+        // Shaka's variantchanged event is the confirmation for an explicit
+        // selectVariantTrack call. Do not require a second active-track snapshot,
+        // which may lag behind the event in some WebViews.
+        if (nextTrack && String(nextTrack.id) === String(requestedTrack.id)) finish();
       };
       if (typeof shakaPlayer.addEventListener !== 'function') {
         finish(new Error('Shaka cannot confirm video quality changes.'));
@@ -541,7 +560,7 @@
       }
       shakaPlayer.addEventListener('variantchanged', onVariantChanged);
       try {
-        shakaPlayer.selectVariantTrack(requestedTrack, true, 0);
+        shakaPlayer.selectVariantTrack(requestedTrack, true, 5);
         const activeAfterSelection = shakaPlayer.getVariantTracks().find(item => item.active);
         if (activeAfterSelection && String(activeAfterSelection.id) === String(requestedTrack.id)) finish();
       } catch (error) {
@@ -551,8 +570,35 @@
 
     const loadProgressiveFallback = async (current, preferredHeight) => {
       muxedVideos = current.muxedVideos.slice().sort((a, b) => b.height - a.height || b.bitrate - a.bitrate);
-      qualityHeights = Array.from(new Set(muxedVideos.map(item => Number(item.height)))).sort((a, b) => b - a);
 
+      // If MSE/DASH is unavailable, play the adaptive video-only MP4/WebM file
+      // together with its matching audio stream. This keeps 1080p/1440p/2160p
+      // available on browsers and Android WebViews that cannot load Shaka DASH.
+      const videoOnlyStreams = current.videoOnly.slice().sort((a, b) =>
+        b.height - a.height || Number(b.mimeType === 'video/mp4') - Number(a.mimeType === 'video/mp4') || b.bitrate - a.bitrate
+      );
+      if (videoOnlyStreams.length && current.audioStreams.length) {
+        mode = 'separate';
+        qualityHeights = Array.from(new Set(videoOnlyStreams.map(item => Number(item.height)))).sort((a, b) => b - a);
+        selectedHeight = getPreferredHeight(qualityHeights, preferredHeight);
+        const initial = chooseMuxed(videoOnlyStreams, selectedHeight);
+        const matchingAudio = initial && current.audioStreams.find(item =>
+          initial.audioTrackId && initial.audioTrackId !== 'default' &&
+          item.audioTrackId && item.audioTrackId === initial.audioTrackId
+        );
+        separateAudioStream = matchingAudio || current.audioStreams[0];
+        if (!initial || !separateAudioStream) throw new Error('Piped returned adaptive video without a compatible audio stream.');
+        await Promise.all([
+          waitForCanPlay(video, initial.url, 18000),
+          waitForCanPlay(audio, separateAudioStream.url, 18000)
+        ]);
+        audio.volume = video.volume;
+        audio.muted = video.muted;
+        audio.playbackRate = video.playbackRate;
+        return;
+      }
+
+      qualityHeights = Array.from(new Set(muxedVideos.map(item => Number(item.height)))).sort((a, b) => b - a);
       if (qualityHeights.length) {
         mode = 'direct';
         selectedHeight = getPreferredHeight(qualityHeights, preferredHeight);
@@ -674,6 +720,24 @@
           video.muted = savedState.muted;
           selectedHeight = requested;
           if (savedState.playing) await video.play();
+        } else if (mode === 'separate') {
+          const target = chooseMuxed(bundle.videoOnly, requested);
+          if (!target || !separateAudioStream) throw new Error('The selected adaptive video/audio pair is unavailable.');
+          video.pause();
+          audio.pause();
+          await waitForCanPlay(video, target.url, 18000);
+          await waitForCanPlay(audio, separateAudioStream.url, 18000);
+          if (savedState.time > 0) {
+            await Promise.all([seekVideo(video, savedState.time), seekVideo(audio, savedState.time)]);
+          }
+          video.playbackRate = savedState.rate;
+          video.volume = savedState.volume;
+          video.muted = savedState.muted;
+          audio.playbackRate = savedState.rate;
+          audio.volume = savedState.volume;
+          audio.muted = savedState.muted;
+          selectedHeight = requested;
+          if (savedState.playing) await video.play();
         }
         try { localStorage.setItem(QUALITY_KEY, String(selectedHeight)); } catch (_) {}
       } catch (error) {
@@ -697,6 +761,36 @@
               restored = true;
             } catch (restoreError) {
               console.warn('[ED-ALL] Could not restore the previous Piped quality:', restoreError);
+            }
+          }
+        } else if (mode === 'separate' && previousHeight && separateAudioStream) {
+          const previousStream = chooseMuxed(bundle.videoOnly, previousHeight);
+          if (previousStream) {
+            try {
+              await waitForCanPlay(video, previousStream.url, 18000);
+              await waitForCanPlay(audio, separateAudioStream.url, 18000);
+              if (savedState.time > 0) {
+                await Promise.all([seekVideo(video, savedState.time), seekVideo(audio, savedState.time)]);
+              }
+              video.playbackRate = audio.playbackRate = savedState.rate;
+              video.volume = audio.volume = savedState.volume;
+              video.muted = audio.muted = savedState.muted;
+              selectedHeight = previousHeight;
+              if (savedState.playing) await video.play();
+              restored = true;
+            } catch (restoreError) {
+              console.warn('[ED-ALL] Could not restore the previous Piped video/audio pair:', restoreError);
+            }
+          }
+        } else if (mode === 'shaka' && engine && previousHeight) {
+          const previousTrack = chooseVariant(variantTracks, previousHeight);
+          if (previousTrack) {
+            try {
+              await waitForShakaVariant(engine, previousTrack);
+              selectedHeight = previousHeight;
+              restored = true;
+            } catch (restoreError) {
+              console.warn('[ED-ALL] Could not restore the previous Shaka variant:', restoreError);
             }
           }
         }
@@ -729,7 +823,7 @@
       player = new window.Plyr(video, config);
       container._p = player;
       installDesktopFullscreen();
-      if (typeof options.onReady === 'function') options.onReady({ player, video, wrap, mode, qualities: qualityHeights.slice() });
+      if (typeof options.onReady === 'function') options.onReady({ player, video, audio, wrap, mode, qualities: qualityHeights.slice() });
     };
 
     const installDesktopFullscreen = () => {
@@ -856,7 +950,48 @@
       listen(video, 'playing', () => { clearTimeout(stallTimer); });
       watchEngineErrors();
 
-      return { player, video, wrap, mode, qualities: qualityHeights.slice(), cleanup };
+      const syncSeparateAudio = force => {
+        if (mode !== 'separate' || !separateAudioStream || audio.readyState < 1) return;
+        audio.playbackRate = video.playbackRate;
+        audio.volume = video.volume;
+        audio.muted = video.muted;
+        const drift = Math.abs((Number(audio.currentTime) || 0) - (Number(video.currentTime) || 0));
+        if (force || drift > 0.6) {
+          try { audio.currentTime = Math.max(0, Number(video.currentTime) || 0); } catch (_) {}
+        }
+      };
+      const startSeparateAudio = () => {
+        if (mode !== 'separate' || !separateAudioStream || disposed || video.paused) return;
+        syncSeparateAudio(true);
+        audio.play().catch(error => {
+          if (!disposed && mode === 'separate' && !video.paused) {
+            console.warn('[ED-ALL] Separate Piped audio could not start:', error);
+            video.pause();
+            toast(options.language === 'ar'
+              ? 'تعذر تشغيل مسار الصوت من خادم Piped؛ جرّب فتح الفيديو مرة أخرى.'
+              : 'The Piped audio stream could not start. Please reopen the video.', 'error');
+          }
+        });
+      };
+      listen(video, 'playing', startSeparateAudio);
+      listen(video, 'pause', () => { if (mode === 'separate') audio.pause(); });
+      listen(video, 'waiting', () => { if (mode === 'separate') audio.pause(); });
+      listen(video, 'seeking', () => { if (mode === 'separate') audio.pause(); });
+      listen(video, 'seeked', () => { if (mode === 'separate') { syncSeparateAudio(true); startSeparateAudio(); } });
+      listen(video, 'timeupdate', () => { if (mode === 'separate' && !audio.paused) syncSeparateAudio(false); });
+      listen(video, 'ratechange', () => { if (mode === 'separate') audio.playbackRate = video.playbackRate; });
+      listen(video, 'volumechange', () => {
+        if (mode === 'separate') { audio.volume = video.volume; audio.muted = video.muted; }
+      });
+      listen(video, 'ended', () => { if (mode === 'separate') audio.pause(); });
+      listen(audio, 'error', () => {
+        if (!disposed && mode === 'separate' && !switching && !video.paused) {
+          video.pause();
+          toast(options.language === 'ar' ? 'تعذر تحميل الصوت من خادم Piped.' : 'The Piped audio stream failed to load.', 'error');
+        }
+      });
+
+      return { player, video, audio, wrap, mode, qualities: qualityHeights.slice(), cleanup };
     } catch (error) {
       cleanup();
       if (player) { try { player.destroy(); } catch (_) {} }
@@ -869,6 +1004,6 @@
 
   window.EDPipedPlayer = Object.freeze({
     open,
-    __test: Object.freeze({ cleanBase, mergeInstances, normalize, buildDashDataUri, validRange, getPreferredHeight })
+    __test: Object.freeze({ cleanBase, mergeInstances, normalize, buildDashDataUri, validRange, getPreferredHeight, browserSupports, chooseMuxed })
   });
 })();
