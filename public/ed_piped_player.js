@@ -150,9 +150,13 @@
       const bh = health[b] || {};
       const aScore = Number(ah.successes || 0) * 25 - Number(ah.failures || 0) * 100 - Number(ah.averageMs || 0) / 100;
       const bScore = Number(bh.successes || 0) * 25 - Number(bh.failures || 0) * 100 - Number(bh.averageMs || 0) / 100;
-      return bScore - aScore;
+      if (aScore !== bScore) return bScore - aScore;
+      // Prefer the previously successful endpoint only as a tie-breaker, never ahead of a known healthier server.
+      if (a === last) return -1;
+      if (b === last) return 1;
+      return 0;
     });
-    return mergeInstances([last, ...list]);
+    return list;
   }
 
   function safeHttps(value) {
