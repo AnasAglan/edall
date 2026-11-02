@@ -3420,17 +3420,9 @@ cleanups.push(() => {
                 }
 
                 const isDesktop = !!(window.edallDesktop && window.edallDesktop.isDesktop);
-                if (isDesktop) {
-                    try {
-                        await _edDesktopOpen(container, vid);
-                        setButton(true, false);
-                        return;
-                    } catch (desktopError) {
-                        console.warn('[ED-ALL] Desktop extractor failed; trying Piped:', desktopError);
-                        _edClose(container);
-                    }
-                }
 
+                // Use the same Piped + Shaka engine in browsers, Android WebView and Electron.
+                // Electron's yt-dlp extractor remains a fallback when public Piped servers fail.
                 if (window.EDPipedPlayer && window.Plyr) {
                     try {
                         const playback = await window.EDPipedPlayer.open({
@@ -3445,6 +3437,17 @@ cleanups.push(() => {
                         return;
                     } catch (pipedError) {
                         console.error('[ED-ALL] Piped playback failed:', pipedError);
+                        _edClose(container);
+                    }
+                }
+
+                if (isDesktop) {
+                    try {
+                        await _edDesktopOpen(container, vid);
+                        setButton(true, false);
+                        return;
+                    } catch (desktopError) {
+                        console.warn('[ED-ALL] Desktop extractor fallback failed:', desktopError);
                         _edClose(container);
                     }
                 }
