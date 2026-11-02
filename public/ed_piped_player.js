@@ -597,7 +597,7 @@
       const otherPromise = first.provider === 'piped' ? invidiousPromise : pipedPromise;
       const second = await Promise.race([
         otherPromise,
-        new Promise(resolve => setTimeout(() => resolve(null), 4000))
+        new Promise(resolve => setTimeout(() => resolve(null), 7000))
       ]);
       if (second && second.bundle) candidates.push(second.bundle);
     }
