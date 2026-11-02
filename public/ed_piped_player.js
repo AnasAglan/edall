@@ -276,37 +276,68 @@
     return 'data:application/dash+xml;base64,' + btoa(binary);
   }
 
+  function scoreBundle(bundle) {
+    const heights = Array.from(new Set((bundle.videos || []).map(item => Number(item.height)).filter(Number.isFinite)));
+    const maxHeight = heights.length ? Math.max(...heights) : 0;
+    // Prefer the instance that exposes the most real selectable resolutions,
+    // then favor the higher ceiling and the presence of adaptive audio/video.
+    return heights.length * 100000 +
+      Math.min(maxHeight, 4320) * 10 +
+      (bundle.videoOnly && bundle.videoOnly.length && bundle.audioStreams && bundle.audioStreams.length ? 500 : 0) +
+      (bundle.muxedVideos && bundle.muxedVideos.length ? 100 : 0) +
+      (bundle.dash ? 50 : 0) +
+      (bundle.hls ? 25 : 0);
+  }
+
   async function fetchBundle(videoId, excluded) {
     const instances = (await getInstances()).filter(base => !excluded.has(base));
     const batchSize = 4;
+    let best = null;
+    let bestScore = -1;
     for (let offset = 0; offset < instances.length; offset += batchSize) {
       const controllers = [];
       const requests = instances.slice(offset, offset + batchSize).map(base => {
         const controller = new AbortController();
         controllers.push(controller);
-        const timer = setTimeout(() => controller.abort(), 7500);
-        return fetch(base + '/streams/' + encodeURIComponent(videoId), {
-          method: 'GET',
-          cache: 'no-store',
-          signal: controller.signal,
-          headers: { Accept: 'application/json' }
-        }).then(async response => {
-          if (!response.ok) throw new Error('Piped HTTP ' + response.status);
-          const data = await response.json();
-          const bundle = normalize(data);
-          if (!bundle) throw new Error('No compatible video streams');
-          return { ...bundle, instance: base };
-        }).finally(() => clearTimeout(timer));
+        let timer = null;
+        return new Promise((resolve, reject) => {
+          timer = setTimeout(() => controller.abort(), 5200);
+          fetch(base + '/streams/' + encodeURIComponent(videoId), {
+            method: 'GET',
+            cache: 'no-store',
+            signal: controller.signal,
+            headers: { Accept: 'application/json' }
+          }).then(async response => {
+            if (!response.ok) throw new Error('Piped HTTP ' + response.status);
+            const data = await response.json();
+            const bundle = normalize(data);
+            if (!bundle) throw new Error('No compatible video streams');
+            resolve({ ...bundle, instance: base });
+          }).catch(reject).finally(() => clearTimeout(timer));
+        });
       });
-      try {
-        const winner = await Promise.any(requests);
-        controllers.forEach(controller => { try { controller.abort(); } catch (_) {} });
-        return winner;
-      } catch (_) {
-        controllers.forEach(controller => { try { controller.abort(); } catch (_) {} });
+      const results = await Promise.allSettled(requests);
+      controllers.forEach(controller => { try { controller.abort(); } catch (_) {} });
+      for (const result of results) {
+        if (result.status !== 'fulfilled') continue;
+        const candidate = result.value;
+        const score = scoreBundle(candidate);
+        if (score > bestScore) {
+          best = candidate;
+          bestScore = score;
+        }
       }
     }
-    throw new Error('All public Piped API instances failed or returned no compatible streams.');
+    if (!best) throw new Error('All public Piped API instances failed or returned no compatible streams.');
+    try { localStorage.setItem(LAST_KEY, best.instance); } catch (_) {}
+    console.info('[ED-ALL] Selected Piped instance with the richest compatible formats:', {
+      instance: best.instance,
+      qualities: best.videos.map(item => item.height),
+      videoOnly: best.videoOnly.length,
+      muxed: best.muxedVideos.length,
+      audio: best.audioStreams.length
+    });
+    return best;
   }
 
   function getPreferredHeight(heights, preferred) {
@@ -1017,6 +1048,6 @@
 
   window.EDPipedPlayer = Object.freeze({
     open,
-    __test: Object.freeze({ cleanBase, mergeInstances, normalize, buildDashDataUri, validRange, getPreferredHeight, browserSupports, chooseMuxed })
+    __test: Object.freeze({ cleanBase, mergeInstances, normalize, buildDashDataUri, validRange, getPreferredHeight, browserSupports, chooseMuxed, scoreBundle })
   });
 })();
