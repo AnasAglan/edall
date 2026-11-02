@@ -3096,8 +3096,12 @@ if (existingWatermark && !layerHost.contains(existingWatermark)) {
             return script._edLoadPromise;
         }
 
-        function _edLoadLib() {
-            if (window.Plyr && window.EDPipedPlayer && window.shaka && window.shaka.Player) return Promise.resolve();
+        function _edLoadLib({ nativeOnly = false } = {}) {
+            // Desktop and the Android app must never load or initialize the Piped engine.
+            // Piped + Shaka are reserved for ordinary web browsers only.
+            if (window.Plyr && (nativeOnly || (window.EDPipedPlayer && window.shaka && window.shaka.Player))) {
+                return Promise.resolve();
+            }
             if (_edLibP) return _edLibP;
 
             if (!document.getElementById('_edpc')) {
@@ -3110,6 +3114,9 @@ if (existingWatermark && !layerHost.contains(existingWatermark)) {
 
             _edLibP = (async () => {
                 await _edLoadExternalScript('_edplyr', 'https://cdn.plyr.io/3.7.8/plyr.polyfilled.js', () => !!window.Plyr);
+
+                if (nativeOnly) return;
+
                 const loadShaka = async () => {
                     try {
                         await _edLoadExternalScript(
@@ -3126,6 +3133,7 @@ if (existingWatermark && !layerHost.contains(existingWatermark)) {
                         );
                     }
                 };
+
                 const optionalLoads = await Promise.allSettled([
                     loadShaka(),
                     _edLoadExternalScript('_edpiped', '/ed_piped_player.js', () => !!window.EDPipedPlayer)
@@ -3135,7 +3143,7 @@ if (existingWatermark && !layerHost.contains(existingWatermark)) {
                 }
                 if (!window.EDPipedPlayer || !window.shaka || !window.shaka.Player) {
                     const failure = optionalLoads.find(result => result.status === 'rejected');
-                    console.warn('[ED-ALL] A video dependency is unavailable; playback will use supported fallbacks:', failure && failure.reason);
+                    console.warn('[ED-ALL] A browser video dependency is unavailable; the browser fallback will be used:', failure && failure.reason);
                     _edLibP = null;
                 }
             })().catch(error => {
@@ -3475,52 +3483,65 @@ cleanups.push(() => {
                 return;
             }
 
+            const isDesktop = !!(window.edallDesktop && window.edallDesktop.isDesktop);
+            const isAndroidApp = !!(
+                (window.edallAndroid && typeof window.edallAndroid.isApp === 'function' && window.edallAndroid.isApp()) ||
+                /EdAllAndroid/i.test(navigator.userAgent)
+            );
+
             setButton(false, true);
             try {
-                await _edLoadLib();
+                // Native apps use their own extractors: yt-dlp on desktop and NewPipe
+                // inside the Android app. They must not load or probe public Piped servers.
+                await _edLoadLib({ nativeOnly: isDesktop || isAndroidApp });
+
                 const vid = _edUnpack(btn.dataset.k1, btn.dataset.k2, btn.dataset.k3);
                 if (!/^[a-zA-Z0-9_-]{11}$/.test(String(vid || ''))) {
                     throw new Error('Invalid video ID.');
                 }
 
-                const isDesktop = !!(window.edallDesktop && window.edallDesktop.isDesktop);
+                // Electron: yt-dlp is the only extraction path. Never try Piped first
+                // and never fall back to Piped if the local desktop extractor fails.
+                if (isDesktop) {
+                    try {
+                        await _edDesktopOpen(container, vid);
+                        setButton(true, false);
+                    } catch (desktopError) {
+                        console.error('[ED-ALL] Desktop yt-dlp playback failed:', desktopError);
+                        _edClose(container);
+                        setButton(false, false);
+                        showToast(
+                            currentLanguage === 'ar'
+                                ? 'تعذر تشغيل الفيديو باستخدام yt-dlp. تحقق من أدوات البرنامج وحاول مرة أخرى.'
+                                : 'Could not play this video with yt-dlp. Check the desktop extractor tools and try again.',
+                            'error'
+                        );
+                    }
+                    return;
+                }
 
-                // Use the same Piped + Shaka engine in browsers, Android WebView and Electron.
-                // Electron's yt-dlp extractor remains a fallback when public Piped servers fail.
-                if (window.EDPipedPlayer && window.Plyr) {
+                // Piped is used only by the ordinary web platform, never by the Android app.
+                if (!isAndroidApp && window.EDPipedPlayer && window.Plyr) {
                     try {
                         const playback = await window.EDPipedPlayer.open({
                             container,
                             videoId: vid,
                             language: currentLanguage,
-                            desktopBridge: isDesktop ? window.edallDesktop : null,
+                            desktopBridge: null,
                             toast: (message, type) => showToast(message, type || 'info')
                         });
                         _edAttachWatermark(playback && playback.wrap);
                         setButton(true, false);
                         return;
                     } catch (pipedError) {
-                        console.error('[ED-ALL] Piped playback failed:', pipedError);
+                        console.error('[ED-ALL] Browser Piped playback failed:', pipedError);
                         _edClose(container);
-                        if (!isDesktop) {
-                            showToast(
-                                currentLanguage === 'ar'
-                                    ? 'تعذر استخراج جودات الفيديو من خوادم Piped حاليًا؛ سيعمل المشغّل الاحتياطي بجودته التلقائية فقط.'
-                                    : 'Piped could not provide playable quality streams right now. The fallback player will use automatic quality only.',
-                                'error'
-                            );
-                        }
-                    }
-                }
-
-                if (isDesktop) {
-                    try {
-                        await _edDesktopOpen(container, vid);
-                        setButton(true, false);
-                        return;
-                    } catch (desktopError) {
-                        console.warn('[ED-ALL] Desktop extractor fallback failed:', desktopError);
-                        _edClose(container);
+                        showToast(
+                            currentLanguage === 'ar'
+                                ? 'تعذر استخراج الجودات من خوادم Piped حاليًا؛ سيعمل المشغّل الاحتياطي بجودته التلقائية فقط.'
+                                : 'Piped could not provide playable quality streams right now. The fallback player will use automatic quality only.',
+                            'error'
+                        );
                     }
                 }
 
@@ -3589,12 +3610,14 @@ cleanups.push(() => {
                     applyWatermarkScale(wrap);
                 });
 
-                showToast(
-                    currentLanguage === 'ar'
-                        ? 'تعذر استخراج الجودات من خوادم Piped حاليًا؛ يعمل الفيديو الآن بجودة YouTube التلقائية.'
-                        : 'Piped quality extraction is currently unavailable; YouTube automatic quality is being used.',
-                    'warning'
-                );
+                if (!isAndroidApp) {
+                    showToast(
+                        currentLanguage === 'ar'
+                            ? 'تعذر استخراج الجودات من خوادم Piped حاليًا؛ يعمل الفيديو الآن بجودة YouTube التلقائية.'
+                            : 'Piped quality extraction is currently unavailable; YouTube automatic quality is being used.',
+                        'warning'
+                    );
+                }
                 setButton(true, false);
             } catch (error) {
                 console.error('[ED-ALL] Video open failed:', error);
