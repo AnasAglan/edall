@@ -7070,6 +7070,7 @@ if (!(await showExamConfirm(
             if (!(textarea instanceof HTMLTextAreaElement)) return;
         }
 
+        let _cloudDraftTimer = null;
         function _saveExamDraft() {
             try {
                 const k = _examDraftKey();
@@ -7082,14 +7083,49 @@ if (!(await showExamConfirm(
                     data.essays[t.id] = t.value;
                 });
                 localStorage.setItem(k, JSON.stringify(data));
+
+                // مزامنة سحابية هادئة (تنتظر 1.5 ثانية بعد توقف الطالب عن الكتابة لتفادي الضغط)
+                if (window._examAttempt && window.currentUser && window.currentUser.id && window.sb) {
+                    clearTimeout(_cloudDraftTimer);
+                    _cloudDraftTimer = setTimeout(async () => {
+                        try {
+                            const attId = window._examAttempt ? window._examAttempt.id : null;
+                            if (!attId) return;
+                            await sb.from('exam_drafts').upsert({
+                                attempt_id: attId,
+                                user_id: window.currentUser.id,
+                                draft: data,
+                                saved_at: new Date().toISOString()
+                            }, { onConflict: 'attempt_id' });
+                        } catch (err) {
+                            console.warn('Cloud draft sync error:', err);
+                        }
+                    }, 1500);
+                }
             } catch (e) {}
         }
 
-        function _restoreExamDraft() {
+        async function _restoreExamDraft() {
             try {
                 const k = _examDraftKey();
                 if (!k) return;
-                const saved = JSON.parse(localStorage.getItem(k) || '{}');
+                let saved = JSON.parse(localStorage.getItem(k) || '{}');
+
+                // إذا كانت المسودة فارغة محلياً (مثل تغيير الطالب لجهازه)، يتم جلبها من السحابة
+                const attId = window._examAttempt ? window._examAttempt.id : null;
+                if (attId && window.sb && (!saved.radios || Object.keys(saved.radios).length === 0) && (!saved.essays || Object.keys(saved.essays).length === 0)) {
+                    try {
+                        const { data: cloudRes } = await sb.from('exam_drafts')
+                            .select('draft')
+                            .eq('attempt_id', attId)
+                            .maybeSingle();
+                        if (cloudRes && cloudRes.draft) {
+                            saved = cloudRes.draft;
+                            localStorage.setItem(k, JSON.stringify(saved));
+                        }
+                    } catch (e) {}
+                }
+
                 if (saved.radios) {
                     Object.entries(saved.radios).forEach(([name, val]) => {
                         const rad = document.querySelector(`input[name="${name}"][value="${val}"]`);
@@ -7100,13 +7136,14 @@ if (!(await showExamConfirm(
                     Object.entries(saved.essays).forEach(([id, val]) => {
                         const el = document.getElementById(id);
                         if (el) {
-    const restoredText = String(val == null ? '' : val);
-    el.value = restoredText;
-}
+                            const restoredText = String(val == null ? '' : val);
+                            el.value = restoredText;
+                        }
                     });
                 }
             } catch (e) {}
         }
+
 
 function startExamTimer(courseId, lessonId, examIndex) {
     if (examTimerInterval) clearInterval(examTimerInterval);
@@ -7891,6 +7928,10 @@ if (_attempt) {
         localStorage.removeItem(
             'ed_exam_draft_' + _attempt.id
         );
+        if (window.sb) {
+    sb.from('exam_drafts').delete().eq('attempt_id', _attempt.id).then();
+}
+
     } catch (e) {}
 }
 
