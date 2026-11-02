@@ -2312,6 +2312,18 @@ word-spacing: normal !important;
         const SUPABASE_URL = 'https://iuaddjoofgrirzslzqfy.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml1YWRkam9vZmdyaXJ6c2x6cWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5ODczMjcsImV4cCI6MjA4OTU2MzMyN30.bkMuslyDuH4lkIWhwVoGdTqr_lgM9HMKdo57yj4xT5M';
         const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                // دالة تعقيم وحماية النصوص
+        function edEsc(str) {
+            if (str == null) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+        window.edEsc = edEsc;
+
 
         // Missing UI Functions
         function showLoading() {
