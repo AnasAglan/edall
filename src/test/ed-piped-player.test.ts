@@ -106,6 +106,11 @@ describe("Daily extractor instance discovery", () => {
 
 describe("ED ALL Piped player", () => {
 
+  it("uses the official instance registry when available and only falls back when discovery fails", () => {
+    expect(playerSource).toContain("const list = mergeInstances(discovered.length ? discovered : FALLBACKS);");
+    expect(playerSource).toContain("const CACHE_TTL = 6 * 60 * 60 * 1000;");
+  });
+
   it("keeps Piped playback exclusive to ordinary browsers", () => {
     expect(platformHtml).toContain("_edLoadExternalScript('_edpiped', '/ed_piped_player.js'");
     expect(platformHtml).toContain("window.EDPipedPlayer.open");
