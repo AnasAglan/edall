@@ -531,20 +531,19 @@
   async function fetchInvidiousBundle(videoId, excluded, extractorConfig) {
     const requestStartedAt = Date.now();
     const config = extractorConfig || {};
-    if (!config.supabaseUrl || !config.anonKey) {
-      throw new Error('Invidious extraction is not configured for this page.');
+    const workerUrl = String(config.workerUrl || '').replace(/\/$/, '');
+    if (!workerUrl) {
+      throw new Error('Invidious Cloudflare Worker is not configured for this page.');
     }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 18500);
     try {
-      const response = await fetch(String(config.supabaseUrl).replace(/\/$/, '') + '/functions/v1/extract-youtube-stream', {
+      const response = await fetch(workerUrl, {
         method: 'POST',
         cache: 'no-store',
         signal: controller.signal,
         headers: {
           'Content-Type': 'application/json',
-          'apikey': config.anonKey,
-          'Authorization': 'Bearer ' + config.anonKey,
           'Accept': 'application/json'
         },
         body: JSON.stringify({
