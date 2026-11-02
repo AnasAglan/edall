@@ -174,6 +174,27 @@ describe("ED ALL Piped player", () => {
     expect(helpers.getPreferredHeight([720, 360], 144)).toBe(720);
   });
 
+  it("prefers the Piped instance with the richest selectable quality set", () => {
+    const helpers = loadHelpers();
+    const limited = {
+      videos: [{ height: 360 }],
+      videoOnly: [],
+      muxedVideos: [{ height: 360 }],
+      audioStreams: [],
+      dash: null,
+      hls: null,
+    };
+    const adaptive = {
+      videos: [{ height: 1080 }, { height: 720 }, { height: 360 }],
+      videoOnly: [{ height: 1080 }, { height: 720 }],
+      muxedVideos: [{ height: 360 }],
+      audioStreams: [{ mimeType: "audio/mp4" }],
+      dash: null,
+      hls: null,
+    };
+    expect(helpers.scoreBundle(adaptive)).toBeGreaterThan(helpers.scoreBundle(limited));
+  });
+
   it("cleans and deduplicates only secure Piped API instance URLs", () => {
     const helpers = loadHelpers();
     expect(helpers.cleanBase("https://pipedapi.example")).toBe("https://pipedapi.example");
