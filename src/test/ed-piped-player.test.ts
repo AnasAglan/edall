@@ -5,6 +5,7 @@ import { runInNewContext, Script } from "node:vm";
 import { TextEncoder } from "node:util";
 
 const playerSource = readFileSync(resolve(process.cwd(), "public/ed_piped_player.js"), "utf8");
+const platformHtml = readFileSync(resolve(process.cwd(), "public/ed_master.html"), "utf8");
 
 function loadHelpers(canPlayTypeResult = "probably") {
   const sandbox = {
@@ -76,6 +77,14 @@ const audioTrack = {
 };
 
 describe("ED ALL Piped player", () => {
+
+  it("loads the same Piped engine for browser, Android WebView and Electron playback", () => {
+    expect(platformHtml).toContain("_edLoadExternalScript('_edpiped', '/ed_piped_player.js'");
+    expect(platformHtml).toContain("window.EDPipedPlayer.open");
+    expect(platformHtml).toContain("same Piped + Shaka engine in browsers, Android WebView and Electron");
+    expect(platformHtml).not.toContain("edall.anasaglan.deno.net");
+  });
+
   it("parses the player script without syntax errors", () => {
     expect(() => new Script(playerSource)).not.toThrow();
   });
@@ -86,6 +95,9 @@ describe("ED ALL Piped player", () => {
     expect(helpers.browserSupports({ canPlayType: () => "" }, "audio/mp4")).toBe(false);
     expect(helpers.browserSupports({ canPlayType: () => "maybe" }, "video/mp4")).toBe(true);
     expect(helpers.browserSupports({ canPlayType: () => "probably" }, "audio/mp4")).toBe(true);
+    expect(helpers.browserSupports({
+      canPlayType: type => type.includes("codecs=") ? "" : "probably",
+    }, "video/mp4", "avc1.640028")).toBe(false);
   });
 
   it("normalizes Piped video-only and audio streams into selectable qualities", () => {
