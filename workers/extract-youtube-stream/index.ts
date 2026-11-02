@@ -263,7 +263,7 @@ export default { async fetch(req) {
 
   try {
     const origin = req.headers.get("origin");
-    if (origin && origin !== "https://edall.lovable.app" && origin !== "http://localhost:5173") {
+    if (origin && origin !== "https://edall.lovable.app") {
       return responseJson({ success: false, error: "Origin is not allowed." }, 403);
     }
     const body = await req.json();
