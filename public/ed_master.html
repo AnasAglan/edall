@@ -3502,6 +3502,14 @@ cleanups.push(() => {
                     } catch (pipedError) {
                         console.error('[ED-ALL] Piped playback failed:', pipedError);
                         _edClose(container);
+                        if (!isDesktop) {
+                            showToast(
+                                currentLanguage === 'ar'
+                                    ? 'تعذر استخراج جودات الفيديو من خوادم Piped حاليًا؛ سيعمل المشغّل الاحتياطي بجودته التلقائية فقط.'
+                                    : 'Piped could not provide playable quality streams right now. The fallback player will use automatic quality only.',
+                                'error'
+                            );
+                        }
                     }
                 }
 
