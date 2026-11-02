@@ -181,12 +181,28 @@
   }
 
   function browserSupports(probe, mime, codec) {
-    if (!mime || !probe || typeof probe.canPlayType !== 'function') return false;
+    if (!mime) return false;
+    const contentType = codec ? mime + '; codecs="' + codec + '"' : mime;
     const supported = value => value === 'probably' || value === 'maybe';
+
+    // Prefer the native media element result when it explicitly accepts the codec.
     try {
-      if (codec) return supported(probe.canPlayType(mime + '; codecs="' + codec + '"'));
-      return supported(probe.canPlayType(mime));
-    } catch (_) { return false; }
+      if (probe && typeof probe.canPlayType === 'function' && supported(probe.canPlayType(contentType))) {
+        return true;
+      }
+    } catch (_) {}
+
+    // MSE/Shaka can support codecs that HTMLMediaElement.canPlayType does not report.
+    // Do not reject those streams solely because canPlayType returned an empty string.
+    try {
+      const mediaSource = window.MediaSource || window.ManagedMediaSource;
+      if (mediaSource && typeof mediaSource.isTypeSupported === 'function' &&
+          mediaSource.isTypeSupported(contentType)) {
+        return true;
+      }
+    } catch (_) {}
+
+    return false;
   }
 
   function normalizeInvidiousData(data) {
@@ -493,6 +509,7 @@
   }
 
   async function fetchInvidiousBundle(videoId, excluded, extractorConfig) {
+    const requestStartedAt = Date.now();
     const config = extractorConfig || {};
     if (!config.supabaseUrl || !config.anonKey) {
       throw new Error('Invidious extraction is not configured for this page.');
@@ -522,7 +539,7 @@
       const bundle = normalize(payload);
       if (!bundle) throw new Error('Invidious returned no browser-compatible streams.');
       if (!payload.instance) throw new Error('Invidious response omitted the selected instance.');
-      return { ...bundle, instance: payload.instance, provider: 'invidious' };
+      return { ...bundle, instance: payload.instance, provider: 'invidious', requestElapsedMs: Date.now() - requestStartedAt };
     } finally {
       clearTimeout(timer);
     }

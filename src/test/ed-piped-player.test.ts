@@ -9,9 +9,9 @@ const playerSource = readFileSync(resolve(process.cwd(), "public/ed_piped_player
 const platformHtml = readFileSync(resolve(process.cwd(), "public/ed_master.html"), "utf8");
 const electronMain = readFileSync(resolve(process.cwd(), "electron/main.cjs"), "utf8");
 
-function loadHelpers(canPlayTypeResult = "probably") {
+function loadHelpers(canPlayTypeResult = "probably", mseSupports = false) {
   const sandbox = {
-    window: {},
+    window: mseSupports ? { MediaSource: { isTypeSupported: () => true } } : {},
     document: {
       createElement: () => ({
         canPlayType: () => canPlayTypeResult,
@@ -138,6 +138,8 @@ describe("ED ALL Piped player", () => {
     expect(helpers.browserSupports({
       canPlayType: type => type.includes("codecs=") ? "" : "probably",
     }, "video/mp4", "avc1.640028")).toBe(false);
+    const mseHelpers = loadHelpers("no", true);
+    expect(mseHelpers.browserSupports({ canPlayType: () => "" }, "video/mp4", "avc1.640028")).toBe(true);
   });
 
   it("normalizes Piped video-only and audio streams into selectable qualities", () => {
