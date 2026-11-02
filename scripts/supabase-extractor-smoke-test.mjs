@@ -2,13 +2,13 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const html = readFileSync(resolve(process.cwd(), "public/ed_master.html"), "utf8");
-const urlMatch = html.match(/const SUPABASE_URL\\s*=\\s*['"]([^'"]+)['"]/);
-const keyMatch = html.match(/const SUPABASE_ANON_KEY\\s*=\\s*['"]([^'"]+)['"]/);
+const urlMatch = html.match(/const SUPABASE_URL\s*=\s*['"]([^'"]+)['"]/);
+const keyMatch = html.match(/const SUPABASE_ANON_KEY\s*=\s*['"]([^'"]+)['"]/);
 if (!urlMatch || !keyMatch) {
   throw new Error("Could not find the public Supabase project URL/anon key in the platform HTML.");
 }
 
-const projectUrl = urlMatch[1].replace(/\\/$/, "");
+const projectUrl = urlMatch[1].replace(/\/$/, "");
 const anonKey = keyMatch[1];
 const origin = "https://edall.lovable.app";
 const endpoint = projectUrl + "/functions/v1/extract-youtube-stream";
@@ -80,7 +80,7 @@ if (manifestUrl) {
     });
     const manifestBody = manifestResponse.ok ? await manifestResponse.text() : "";
     const cors = manifestResponse.headers.get("access-control-allow-origin") || "(not returned)";
-    const format = /<MPD\\b/i.test(manifestBody)
+    const format = /<MPD\b/i.test(manifestBody)
       ? "dash"
       : /#EXTM3U/i.test(manifestBody)
         ? "hls"
@@ -109,7 +109,7 @@ if (manifestUrl) {
 
 let mediaSummary = null;
 const sampleStream = videoStreams.find((stream) =>
-  stream && typeof stream.url === "string" && /^https:\\/\\//i.test(stream.url)
+  stream && typeof stream.url === "string" && /^https:\/\//i.test(stream.url)
 );
 if (sampleStream) {
   try {
@@ -131,9 +131,8 @@ if (sampleStream) {
   console.log(JSON.stringify(mediaSummary, null, 2));
 }
 
-// Some Invidious instances intentionally deny direct GoogleVideo URLs while
-// exposing a valid, CORS-enabled DASH/HLS manifest. Either verified path is
-// sufficient; a failed direct URL must not invalidate a working manifest.
+// Some Invidious instances deny direct GoogleVideo URLs while exposing a
+// valid, CORS-enabled DASH/HLS manifest. Either verified path is sufficient.
 if (!(manifestSummary && manifestSummary.ok) && !(mediaSummary && mediaSummary.ok)) {
   throw new Error("The deployed extractor returned no verified playback path. Direct media and DASH/HLS manifest checks both failed.");
 }
