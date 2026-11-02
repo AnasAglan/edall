@@ -52,13 +52,14 @@ async function loadOfficialInstances(): Promise<Array<{ url: string; score: numb
     if (registryResponse.ok) {
       const registry = await registryResponse.json();
       const entries = Array.isArray(registry?.sources?.invidious) ? registry.sources.invidious : [];
-      const cleaned = entries.map((item: any) => ({
+      const cleaned = entries.map((item) => ({
         url: cleanBase(item?.url),
         score: Number(item?.score) || 0,
         status: String(item?.status || "unknown"),
         official: item?.official === true,
       })).filter((item: any) => item.url && item.official);
-      if (cleaned.length) return cleaned;
+      const usable = cleaned.filter((item: any) => item.status !== "unhealthy");
+      if (usable.length) return usable;
     }
   } catch (error) {
     console.warn("[extract-youtube-stream] Registry unavailable; using Invidious official directory.", error);
