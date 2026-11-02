@@ -10537,23 +10537,17 @@ exam.questions.forEach((question, index) => {
                 if (e.target && e.target.closest && e.target.closest('.edv-wrap,.ed-protected-video,video,iframe')) e.preventDefault();
             }, true);
             document.addEventListener('keydown', function(e){
+                var tgt = e.target;
+                var editable = tgt && tgt.closest && tgt.closest('input, textarea, select, [contenteditable]');
                 var k = (e.key || '').toUpperCase();
                 var ctrl = e.ctrlKey || e.metaKey;
-                if (e.keyCode === 123 || (ctrl && e.shiftKey && ['I','J','C','K'].indexOf(k) > -1)
-                    || (ctrl && e.altKey && ['I','J','C','U'].indexOf(k) > -1) || (ctrl && (k === 'U' || k === 'S'))) {
+                var devtools = e.keyCode === 123 || (ctrl && e.shiftKey && ['I','J','C','K'].indexOf(k) > -1)
+                    || (ctrl && e.altKey && ['I','J','C','U'].indexOf(k) > -1);
+                var saveOrSource = ctrl && (k === 'U' || k === 'S');
+                if (devtools || (saveOrSource && !editable)) {
                     e.preventDefault(); e.stopPropagation(); return false;
                 }
             }, true);
-            function pauseVideos(){
-                document.querySelectorAll('.edv-wrap video, .ed-protected-video video').forEach(function(v){ try{ v.pause(); }catch(_){} });
-            }
-            setInterval(function(){
-                var t0 = performance.now();
-                (function(){ debugger; })();
-                var open = (performance.now() - t0 > 100);
-                document.body.classList.toggle('ed-devtools-open', open);
-                if (open) pauseVideos();
-            }, 1500);
         })();
 
     </script>

@@ -195,6 +195,19 @@ ipcMain.handle('edall:video-fullscreen', (event, enabled) => {
   callback(false);
 });
 
+  // Copy/paste context menu inside editable fields (essay answers etc.)
+  windowRef.webContents.on('context-menu', (_event, params) => {
+    if (!windowRef || windowRef.isDestroyed()) return;
+    const menu = Menu.buildFromTemplate(params.isEditable ? [
+      { role: 'undo' }, { role: 'redo' }, { type: 'separator' },
+      { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { type: 'separator' }, { role: 'selectAll' }
+    ] : [
+      { role: 'copy' },
+      ...(params.mediaType === 'image' ? [{ role: 'copyImage' }] : [])
+    ]);
+    menu.popup({ window: windowRef });
+  });
+
   const showOffline = () => windowRef.loadFile(path.join(__dirname, 'offline.html'));
   windowRef.webContents.on('did-fail-load', (_e, code, _d, url, isMain) => { if (isMain && code !== -3 && !String(url).startsWith('file:')) showOffline(); });
   let online = net.isOnline();
