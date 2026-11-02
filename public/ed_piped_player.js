@@ -598,9 +598,49 @@
       switching = true;
       try {
         if (mode === 'shaka' && engine) {
+          const activeEngine = engine;
           const track = chooseVariant(variantTracks, requested);
           if (!track) throw new Error('The selected quality is not present in the loaded DASH manifest.');
-          engine.selectVariantTrack(track, true);
+
+          // Shaka schedules a manual variant change; wait for its confirmation event
+          // instead of assuming that calling selectVariantTrack means it was applied.
+          await new Promise((resolve, reject) => {
+            let finished = false;
+            const timeout = setTimeout(() => finish(new Error('Shaka did not confirm the requested quality within 15 seconds.')), 15000);
+            const cleanupEvent = () => {
+              if (activeEngine && typeof activeEngine.removeEventListener === 'function') {
+                activeEngine.removeEventListener('variantchanged', onVariantChanged);
+              }
+            };
+            const finish = error => {
+              if (finished) return;
+              finished = true;
+              clearTimeout(timeout);
+              cleanupEvent();
+              if (error) reject(error); else resolve();
+            };
+            const onVariantChanged = event => {
+              const newTrack = event && event.newTrack
+                ? event.newTrack
+                : (event && event.detail && event.detail.newTrack ? event.detail.newTrack : null);
+              if (newTrack && Number(newTrack.height) === requested) finish();
+            };
+            if (!activeEngine || typeof activeEngine.addEventListener !== 'function') {
+              finish(new Error('Shaka cannot report actual quality changes.'));
+              return;
+            }
+            activeEngine.addEventListener('variantchanged', onVariantChanged);
+            try {
+              activeEngine.selectVariantTrack(track, true, 0);
+            } catch (error) {
+              finish(error);
+            }
+          });
+          if (disposed || engine !== activeEngine) throw new Error('The Piped player changed while applying quality.');
+          const activeTrack = activeEngine.getVariantTracks().find(item => item.active);
+          if (!activeTrack || Number(activeTrack.height) !== requested) {
+            throw new Error('Shaka did not activate the requested video height.');
+          }
           selectedHeight = requested;
         } else if (mode === 'direct') {
           const target = chooseMuxed(muxedVideos, requested);
