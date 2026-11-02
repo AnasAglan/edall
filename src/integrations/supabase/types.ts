@@ -121,6 +121,33 @@ export type Database = {
           },
         ]
       }
+      exam_drafts: {
+        Row: {
+          attempt_id: string
+          created_at: string
+          draft: Json
+          id: string
+          saved_at: string
+          user_id: string
+        }
+        Insert: {
+          attempt_id: string
+          created_at?: string
+          draft?: Json
+          id?: string
+          saved_at?: string
+          user_id: string
+        }
+        Update: {
+          attempt_id?: string
+          created_at?: string
+          draft?: Json
+          id?: string
+          saved_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       exam_questions: {
         Row: {
           correct_option: number | null
