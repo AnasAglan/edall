@@ -327,6 +327,13 @@
           bestScore = score;
         }
       }
+
+      // Stop after a strong instance is found; otherwise continue searching
+      // the next batch so a single low-resolution server does not hide better streams.
+      const bestHeights = best
+        ? Array.from(new Set(best.videos.map(item => Number(item.height)))).filter(height => height > 0)
+        : [];
+      if (bestHeights.length >= 3 && Math.max(...bestHeights) >= 720) break;
     }
     if (!best) throw new Error('All public Piped API instances failed or returned no compatible streams.');
     try { localStorage.setItem(LAST_KEY, best.instance); } catch (_) {}
