@@ -1,0 +1,6 @@
+name = "edall-invidious-extractor"
+main = "workers/extract-youtube-stream/index.ts"
+compatibility_date = "2026-11-02"
+
+[observability]
+enabled = true
