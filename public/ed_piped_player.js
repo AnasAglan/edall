@@ -678,6 +678,19 @@
       listen(document, 'keydown', escape, true);
     };
 
+    let watchedEngine = null;
+    const watchEngineErrors = () => {
+      if (!engine || watchedEngine === engine || typeof engine.addEventListener !== 'function') return;
+      watchedEngine = engine;
+      listen(engine, 'error', event => {
+        const detail = event && event.detail;
+        const critical = window.shaka && window.shaka.util && window.shaka.util.Error &&
+          window.shaka.util.Error.Severity && detail &&
+          detail.severity === window.shaka.util.Error.Severity.CRITICAL;
+        if (critical && !switching && !recovering) void recover(detail);
+      });
+    };
+
     const recover = async cause => {
       if (disposed || recovering || !bundle || recoveryCount >= 4) return;
       recovering = true;
@@ -692,6 +705,7 @@
           try {
             const heights = await loadBundle(next, state, preferred);
             if (disposed) return;
+            watchEngineErrors();
             try { localStorage.setItem(LAST_KEY, next.instance); } catch (_) {}
             if (heights.join(',') !== qualityHeights.join(',')) installPlyr();
             else if (player && mode === 'shaka') {
@@ -755,15 +769,7 @@
         }
       });
       listen(video, 'playing', () => { clearTimeout(stallTimer); });
-      if (engine && typeof engine.addEventListener === 'function') {
-        listen(engine, 'error', event => {
-          const detail = event && event.detail;
-          const critical = window.shaka && window.shaka.util && window.shaka.util.Error &&
-            window.shaka.util.Error.Severity && detail &&
-            detail.severity === window.shaka.util.Error.Severity.CRITICAL;
-          if (critical && !switching && !recovering) void recover(detail);
-        });
-      }
+      watchEngineErrors();
 
       return { player, video, wrap, mode, qualities: qualityHeights.slice(), cleanup };
     } catch (error) {
