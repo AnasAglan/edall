@@ -1,4 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 
 const PIPED_SOURCE = "https://raw.githubusercontent.com/TeamPiped/documentation/main/content/docs/public-instances/index.md";
 const INVIDIOUS_SOURCE = "https://api.invidious.io/instances.json?sort_by=health";
@@ -50,30 +51,25 @@ async function fetchText(url) {
   return response.text();
 }
 
-function discoverPiped(markdown) {
+export function discoverPiped(markdown) {
   const urls = [];
   for (const line of String(markdown || "").split(/\r?\n/)) {
     if (!line.includes("|")) continue;
-    const cells = line.split("|");
-    const apiCell = cells[2] || "";
-    for (const match of apiCell.matchAll(/https:\/\/[a-z0-9.-]+/gi)) {
+    // The published table is: instance name | API URL | location | CDN | users.
+    // Search the complete row rather than relying on a brittle pipe-cell index.
+    for (const match of line.matchAll(/https:\/\/[a-z0-9.-]+/gi)) {
       const url = cleanBase(match[0]);
-      if (url && /piped|(^|\/\/)pa\./i.test(url)) {
+      if (!url) continue;
+      const hostname = new URL(url).hostname.toLowerCase();
+      if (hostname.includes("piped") || hostname.startsWith("pa.")) {
         urls.push({ url, provider: "piped", official: true });
       }
-    }
-  }
-  // Keep compatibility with formatting changes in the upstream Markdown table.
-  if (!urls.length) {
-    for (const match of String(markdown || "").matchAll(/https:\/\/[a-z0-9.-]+/gi)) {
-      const url = cleanBase(match[0]);
-      if (url && /piped/i.test(url)) urls.push({ url, provider: "piped", official: true });
     }
   }
   return uniqueByUrl(urls);
 }
 
-function discoverInvidious(payload) {
+export function discoverInvidious(payload) {
   if (!Array.isArray(payload)) throw new Error("Invalid Invidious instances API response.");
   const entries = [];
   for (const row of payload) {
@@ -132,6 +128,32 @@ function invidiousHasStreams(data) {
   };
 }
 
+async function probeMediaRange(url) {
+  if (!url) return { ok: false, status: null, cors: null, error: "No media URL was returned." };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 4000);
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { Range: "bytes=0-1", Origin: "https://edall.lovable.app" },
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    const result = {
+      ok: response.status === 206 || response.status === 200,
+      status: response.status,
+      cors: response.headers.get("access-control-allow-origin"),
+      error: null,
+    };
+    if (response.body) await response.body.cancel().catch(() => {});
+    return result;
+  } catch (error) {
+    return { ok: false, status: null, cors: null, error: String(error && error.message || error).slice(0, 180) };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function probeInstance(instance) {
   const started = Date.now();
   const endpoint = instance.provider === "piped"
@@ -143,11 +165,19 @@ async function probeInstance(instance) {
     if (!inspected.valid || !inspected.videoCount && !data.hlsUrl && !data.hls && !data.dashUrl && !data.dash) {
       throw new Error("API answered but returned no usable video streams.");
     }
+    const videoItems = instance.provider === "piped"
+      ? (Array.isArray(data.videoStreams) ? data.videoStreams : [])
+      : [...(Array.isArray(data.formatStreams) ? data.formatStreams : []), ...(Array.isArray(data.adaptiveFormats) ? data.adaptiveFormats : [])]
+          .filter((stream) => String(stream && stream.type || "").startsWith("video/"));
+    const sampleMedia = videoItems.find((stream) => stream && /^https:\/\//i.test(String(stream.url || "")));
+    const mediaProbe = await probeMediaRange(sampleMedia && sampleMedia.url);
     const responseMs = Date.now() - started;
     const score = 1000 +
       Math.min(inspected.heights.length, 10) * 45 +
       Math.min(Math.max(...inspected.heights, 0), 2160) / 4 +
       (inspected.audioCount ? 100 : 0) +
+      (mediaProbe.ok ? 250 : -150) +
+      (mediaProbe.status === 206 ? 50 : 0) +
       (instance.uptime || 0) * 2 -
       Math.min(responseMs, 10000) / 20;
     return {
@@ -155,6 +185,7 @@ async function probeInstance(instance) {
       status: "healthy",
       score: Math.round(score),
       responseMs,
+      mediaProbe,
       videoCount: inspected.videoCount,
       audioCount: inspected.audioCount,
       heights: inspected.heights.sort((a, b) => b - a),
@@ -275,7 +306,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error("[video-instances-sync] " + String(error && error.stack || error));
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error("[video-instances-sync] " + String(error && error.stack || error));
+    process.exitCode = 1;
+  });
+}

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { runInNewContext, Script } from "node:vm";
 import { TextEncoder } from "node:util";
+import { discoverPiped, discoverInvidious } from "../../scripts/sync-video-instances.mjs";
 
 const playerSource = readFileSync(resolve(process.cwd(), "public/ed_piped_player.js"), "utf8");
 const platformHtml = readFileSync(resolve(process.cwd(), "public/ed_master.html"), "utf8");
@@ -76,6 +77,31 @@ const audioTrack = {
   indexStart: 700,
   indexEnd: 999,
 };
+
+
+describe("Daily extractor instance discovery", () => {
+  it("discovers API hosts from the official Piped table and ignores badge URLs", () => {
+    const markdown = [
+      "Instance Name | Instance API URL | Instance Location(s) | CDN | Registered Users",
+      "kavin.rocks (Official) | https://pipedapi.kavin.rocks | 🇺🇸 | Yes | ![](https://pipedapi.kavin.rocks/registered/badge)",
+      "new-instance.example | https://new-piped-api.example | 🇩🇪 | No | ![](https://new-piped-api.example/registered/badge)",
+      "Other site | https://example.com | 🇫🇷 | No | -",
+    ].join("\\n");
+    expect(discoverPiped(markdown).map(item => item.url)).toEqual([
+      "https://pipedapi.kavin.rocks",
+      "https://new-piped-api.example",
+    ]);
+  });
+
+  it("only discovers HTTPS hosts in the official Invidious API response", () => {
+    const instances = discoverInvidious([
+      ["inv.nadeko.net", { type: "https", uri: "https://inv.nadeko.net", monitor: { uptime: 99.5 } }],
+      ["legacy.example", { type: "http", uri: "http://legacy.example" }],
+      ["onion.example", { type: "https", uri: "https://onion.example/path" }],
+    ]);
+    expect(instances.map(item => item.url)).toEqual(["https://inv.nadeko.net"]);
+  });
+});
 
 describe("ED ALL Piped player", () => {
 
