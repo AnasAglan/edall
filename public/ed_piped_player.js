@@ -593,6 +593,8 @@
       if (disposed || switching || recovering || !height) return;
       const requested = Number(height);
       if (!qualityHeights.includes(requested) || requested === selectedHeight) return;
+      const previousHeight = selectedHeight;
+      const savedState = captureState();
       switching = true;
       try {
         if (mode === 'shaka' && engine) {
@@ -601,23 +603,45 @@
           engine.selectVariantTrack(track, true);
           selectedHeight = requested;
         } else if (mode === 'direct') {
-          const state = captureState();
           const target = chooseMuxed(muxedVideos, requested);
           if (!target) throw new Error('The selected progressive quality is unavailable.');
           video.pause();
           await waitForCanPlay(video, target.url, 18000);
-          if (state.time > 0) await seekVideo(video, state.time);
-          video.playbackRate = state.rate;
-          video.volume = state.volume;
-          video.muted = state.muted;
+          if (savedState.time > 0) await seekVideo(video, savedState.time);
+          video.playbackRate = savedState.rate;
+          video.volume = savedState.volume;
+          video.muted = savedState.muted;
           selectedHeight = requested;
-          if (state.playing) await video.play();
+          if (savedState.playing) await video.play();
         }
         try { localStorage.setItem(QUALITY_KEY, String(selectedHeight)); } catch (_) {}
       } catch (error) {
         console.warn('[ED-ALL] Piped quality selection failed:', error);
-        toast(options.language === 'ar' ? 'تعذر تطبيق الجودة المختارة من هذا الخادم.' : 'The selected quality could not be applied by this server.', 'error');
-        if (bundle && bundle.instance) void recover(error);
+        // Restore the previous visible choice as well as the previous stream when using direct files.
+        if (previousHeight && player) {
+          try { player.quality = previousHeight; } catch (_) {}
+        }
+        let restored = mode !== 'direct';
+        if (mode === 'direct' && previousHeight) {
+          const previousStream = chooseMuxed(muxedVideos, previousHeight);
+          if (previousStream) {
+            try {
+              await waitForCanPlay(video, previousStream.url, 18000);
+              if (savedState.time > 0) await seekVideo(video, savedState.time);
+              video.playbackRate = savedState.rate;
+              video.volume = savedState.volume;
+              video.muted = savedState.muted;
+              selectedHeight = previousHeight;
+              if (savedState.playing) await video.play();
+              restored = true;
+            } catch (restoreError) {
+              console.warn('[ED-ALL] Could not restore the previous Piped quality:', restoreError);
+            }
+          }
+        }
+        toast(options.language === 'ar' ? 'تعذر تطبيق الجودة المختارة؛ تمت محاولة استعادة الجودة السابقة.' : 'The selected quality failed; the previous quality was restored when possible.', 'error');
+        if (!restored && bundle && bundle.instance) void recover(error, savedState);
+        else if (restored) selectedHeight = previousHeight;
       } finally { switching = false; }
     };
 
@@ -691,11 +715,11 @@
       });
     };
 
-    const recover = async cause => {
+    const recover = async (cause, restoreOverride) => {
       if (disposed || recovering || !bundle || recoveryCount >= 4) return;
       recovering = true;
       recoveryCount++;
-      const state = captureState();
+      const state = restoreOverride || captureState();
       const preferred = selectedHeight;
       if (bundle.instance) excluded.add(bundle.instance);
       try {
