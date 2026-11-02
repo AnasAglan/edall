@@ -50,6 +50,9 @@ jobs:
       - name: Check sync script syntax
         run: node --check scripts/sync-video-instances.mjs
 
+      - name: Check extractor deployment smoke script syntax
+        run: node --check scripts/supabase-extractor-smoke-test.mjs
+
       - name: Check Deno Edge Function
         uses: denoland/setup-deno@v2
         with:
