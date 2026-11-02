@@ -6,6 +6,7 @@ import { TextEncoder } from "node:util";
 
 const playerSource = readFileSync(resolve(process.cwd(), "public/ed_piped_player.js"), "utf8");
 const platformHtml = readFileSync(resolve(process.cwd(), "public/ed_master.html"), "utf8");
+const electronMain = readFileSync(resolve(process.cwd(), "electron/main.cjs"), "utf8");
 
 function loadHelpers(canPlayTypeResult = "probably") {
   const sandbox = {
@@ -78,10 +79,17 @@ const audioTrack = {
 
 describe("ED ALL Piped player", () => {
 
-  it("loads the same Piped engine for browser, Android WebView and Electron playback", () => {
+  it("keeps Piped playback exclusive to ordinary browsers", () => {
     expect(platformHtml).toContain("_edLoadExternalScript('_edpiped', '/ed_piped_player.js'");
     expect(platformHtml).toContain("window.EDPipedPlayer.open");
-    expect(platformHtml).toContain("same Piped + Shaka engine in browsers, Android WebView and Electron");
+    expect(platformHtml).toContain("_edLoadLib({ nativeOnly: isDesktop || isAndroidApp });");
+    expect(platformHtml).toContain("if (nativeOnly) return;");
+    expect(platformHtml).toContain("if (!isAndroidApp && window.EDPipedPlayer && window.Plyr)");
+    expect(platformHtml).toContain("await _edDesktopOpen(container, vid);");
+    expect(platformHtml).toContain("Native apps use their own extractors: yt-dlp on desktop and NewPipe");
+    expect(platformHtml).not.toContain("same Piped + Shaka engine in browsers, Android WebView and Electron");
+    expect(electronMain).not.toMatch(/piped/i);
+    expect(electronMain).toContain("yt-dlp.exe");
     expect(platformHtml).not.toContain("edall.anasaglan.deno.net");
     expect(platformHtml).toContain("The fallback player will use automatic quality only.");
     expect(platformHtml).toContain("المشغّل الاحتياطي بجودته التلقائية فقط");
