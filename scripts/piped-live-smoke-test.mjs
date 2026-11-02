@@ -63,8 +63,9 @@ async function probeRange(stream, kind, controller) {
   return { status: response.status, cors };
 }
 
-async function inspectInstance(base) {
+async function inspectInstance(base, activeControllers) {
   const controller = new AbortController();
+  activeControllers.push(controller);
   const timer = setTimeout(() => controller.abort(), 14000);
   try {
     const response = await fetch(base + "/streams/" + VIDEO_ID, {
@@ -132,22 +133,28 @@ if (!instances.length) throw new Error("No secure Piped API instances were disco
 console.log("Checking " + instances.length + " Piped API instances for video " + VIDEO_ID + "...");
 
 const failures = [];
+let healthyResult = null;
 for (let offset = 0; offset < instances.length; offset += 4) {
   const batch = instances.slice(offset, offset + 4);
   const controllers = [];
-  const attempts = batch.map(base => inspectInstance(base).then(result => ({ ...result, base })));
+  const attempts = batch.map(base => inspectInstance(base, controllers).then(result => ({ ...result, base })));
   try {
-    const healthy = await Promise.any(attempts);
-    console.log("LIVE PIPED CHECK PASSED");
-    console.log(JSON.stringify(healthy, null, 2));
-    process.exit(0);
+    healthyResult = await Promise.any(attempts);
+    controllers.forEach(controller => controller.abort());
+    break;
   } catch (error) {
+    controllers.forEach(controller => controller.abort());
     const reasons = error && Array.isArray(error.errors) ? error.errors : [error];
     failures.push(...reasons.map(reason => String(reason && reason.message || reason)));
     console.warn("This group had no usable instance; continuing to the next group.");
   }
 }
 
-console.error("No public Piped instance passed API, CORS, stream-shape and byte-range checks.");
-console.error(failures.slice(0, 20).join("\n"));
-process.exit(1);
+if (healthyResult) {
+  console.log("LIVE PIPED CHECK PASSED");
+  console.log(JSON.stringify(healthyResult, null, 2));
+} else {
+  console.error("No public Piped instance passed API, CORS, stream-shape and byte-range checks.");
+  console.error(failures.slice(0, 20).join("\n"));
+  process.exitCode = 1;
+}
