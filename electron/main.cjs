@@ -37,7 +37,7 @@ async function prepareTools() {
     }
   } catch (error) {
     // Desktop playback requires the bundled yt-dlp and Deno tools.
-    // Do not switch to remote Piped servers when local extraction tools are missing.
+    // Do not switch to a remote extractor when local extraction tools are missing.
     console.error('[EdAll] yt-dlp/Deno binaries are unavailable; desktop extraction cannot start.', error);
     return null;
   }
