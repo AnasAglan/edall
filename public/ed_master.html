@@ -3077,7 +3077,11 @@ if (existingWatermark && !layerHost.contains(existingWatermark)) {
             script._edLoadPromise = new Promise((resolve, reject) => {
                 const loaded = () => {
                     if (isReady()) resolve();
-                    else reject(new Error('Script loaded without exposing its expected API: ' + id));
+                    else {
+                        script._edLoadPromise = null;
+                        script.remove();
+                        reject(new Error('Script loaded without exposing its expected API: ' + id));
+                    }
                 };
                 const failed = () => {
                     script._edLoadPromise = null;
@@ -3106,8 +3110,24 @@ if (existingWatermark && !layerHost.contains(existingWatermark)) {
 
             _edLibP = (async () => {
                 await _edLoadExternalScript('_edplyr', 'https://cdn.plyr.io/3.7.8/plyr.polyfilled.js', () => !!window.Plyr);
+                const loadShaka = async () => {
+                    try {
+                        await _edLoadExternalScript(
+                            '_edshakaGoogle',
+                            'https://ajax.googleapis.com/ajax/libs/shaka-player/4.16.55/shaka-player.compiled.js',
+                            () => !!(window.shaka && window.shaka.Player)
+                        );
+                    } catch (googleCdnError) {
+                        console.warn('[ED-ALL] Google Shaka CDN unavailable; trying jsDelivr:', googleCdnError);
+                        await _edLoadExternalScript(
+                            '_edshakaJsdelivr',
+                            'https://cdn.jsdelivr.net/npm/shaka-player@4.16.55/dist/shaka-player.compiled.js',
+                            () => !!(window.shaka && window.shaka.Player)
+                        );
+                    }
+                };
                 const optionalLoads = await Promise.allSettled([
-                    _edLoadExternalScript('_edshaka', 'https://cdn.jsdelivr.net/npm/shaka-player@4.16.55/dist/shaka-player.compiled.js', () => !!(window.shaka && window.shaka.Player)),
+                    loadShaka(),
                     _edLoadExternalScript('_edpiped', '/ed_piped_player.js', () => !!window.EDPipedPlayer)
                 ]);
                 if (window.shaka && window.shaka.polyfill && window.shaka.polyfill.installAll) {
