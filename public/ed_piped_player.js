@@ -668,7 +668,7 @@
           variantTracks = [];
           qualityHeights = [];
           mode = '';
-          if (!next.muxedVideos.length && !next.hls) throw shakaError;
+          if (!next.muxedVideos.length && !next.hls && !(next.videoOnly.length && next.audioStreams.length)) throw shakaError;
         }
       }
 
