@@ -238,6 +238,10 @@ describe("ED ALL Piped player", () => {
     expect(helpers.scoreBundle(bundle)).toBeGreaterThan(0);
   });
 
+  it("allows the slower secondary extractor time to provide higher resolutions", () => {
+    expect(playerSource).toContain("setTimeout(() => resolve(null), 4000)");
+  });
+
   it("prioritizes registry health before last-instance stickiness", () => {
     const source = playerSource;
     expect(source).toContain("const aRegistryRank = rank(ar.status);");
