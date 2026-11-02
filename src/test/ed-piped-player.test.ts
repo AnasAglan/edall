@@ -3,14 +3,15 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { runInNewContext, Script } from "node:vm";
 import { TextEncoder } from "node:util";
+import { discoverPiped, discoverInvidious } from "../../scripts/sync-video-instances.mjs";
 
 const playerSource = readFileSync(resolve(process.cwd(), "public/ed_piped_player.js"), "utf8");
 const platformHtml = readFileSync(resolve(process.cwd(), "public/ed_master.html"), "utf8");
 const electronMain = readFileSync(resolve(process.cwd(), "electron/main.cjs"), "utf8");
 
-function loadHelpers(canPlayTypeResult = "probably") {
+function loadHelpers(canPlayTypeResult = "probably", mseSupports = false) {
   const sandbox = {
-    window: {},
+    window: mseSupports ? { MediaSource: { isTypeSupported: () => true } } : {},
     document: {
       createElement: () => ({
         canPlayType: () => canPlayTypeResult,
@@ -77,7 +78,38 @@ const audioTrack = {
   indexEnd: 999,
 };
 
+
+describe("Daily extractor instance discovery", () => {
+  it("discovers API hosts from the official Piped table and ignores badge URLs", () => {
+    const markdown = [
+      "Instance Name | Instance API URL | Instance Location(s) | CDN | Registered Users",
+      "kavin.rocks (Official) | https://pipedapi.kavin.rocks | 🇺🇸 | Yes | ![](https://pipedapi.kavin.rocks/registered/badge)",
+      "new-instance.example | https://new-piped-api.example | 🇩🇪 | No | ![](https://new-piped-api.example/registered/badge)",
+      "Other site | https://example.com | 🇫🇷 | No | -",
+    ].join("\\n");
+    expect(discoverPiped(markdown).map(item => item.url)).toEqual([
+      "https://pipedapi.kavin.rocks",
+      "https://new-piped-api.example",
+    ]);
+  });
+
+  it("only discovers HTTPS hosts in the official Invidious API response", () => {
+    const instances = discoverInvidious([
+      ["inv.nadeko.net", { type: "https", uri: "https://inv.nadeko.net", monitor: { uptime: 99.5 } }],
+      ["legacy.example", { type: "http", uri: "http://legacy.example" }],
+      ["onion.example", { type: "https", uri: "https://onion.example/path" }],
+      ["inv-ygg.nadeko.net", { type: "https", uri: "https://inv-ygg.nadeko.net" }],
+    ]);
+    expect(instances.map(item => item.url)).toEqual(["https://inv.nadeko.net"]);
+  });
+});
+
 describe("ED ALL Piped player", () => {
+
+  it("uses the official instance registry when available and only falls back when discovery fails", () => {
+    expect(playerSource).toContain("const list = mergeInstances(discovered.length ? discovered : FALLBACKS);");
+    expect(playerSource).toContain("const CACHE_TTL = 6 * 60 * 60 * 1000;");
+  });
 
   it("keeps Piped playback exclusive to ordinary browsers", () => {
     expect(platformHtml).toContain("_edLoadExternalScript('_edpiped', '/ed_piped_player.js'");
@@ -92,8 +124,10 @@ describe("ED ALL Piped player", () => {
     expect(electronMain).toContain("yt-dlp.exe");
     expect(electronMain).toContain("The desktop yt-dlp extractor is not installed.");
     expect(platformHtml).not.toContain("edall.anasaglan.deno.net");
-    expect(platformHtml).toContain("The fallback player will use automatic quality only.");
-    expect(platformHtml).toContain("المشغّل الاحتياطي بجودته التلقائية فقط");
+    expect(platformHtml).toContain("The YouTube fallback will use automatic quality.");
+    expect(platformHtml).toContain("www.youtube-nocookie.com/embed/");
+    expect(platformHtml).toContain("Plyr dependency failed to load:");
+    expect(platformHtml).toContain("سيتم استخدام مشغل YouTube الاحتياطي بجودته التلقائية.");
   });
 
   it("parses the player script without syntax errors", () => {
@@ -109,6 +143,8 @@ describe("ED ALL Piped player", () => {
     expect(helpers.browserSupports({
       canPlayType: type => type.includes("codecs=") ? "" : "probably",
     }, "video/mp4", "avc1.640028")).toBe(false);
+    const mseHelpers = loadHelpers("no", true);
+    expect(mseHelpers.browserSupports({ canPlayType: () => "" }, "video/mp4", "avc1.640028")).toBe(true);
   });
 
   it("normalizes Piped video-only and audio streams into selectable qualities", () => {
@@ -134,6 +170,7 @@ describe("ED ALL Piped player", () => {
 
     expect(bundle).not.toBeNull();
     expect(bundle.videoOnly.map(stream => stream.height)).toEqual([1080, 720]);
+    expect(bundle.videos.map(stream => stream.height)).toEqual([1080, 720]);
     expect(bundle.audioStreams).toHaveLength(1);
     expect(bundle.videoOnly[0].url).toContain("https://");
     expect(bundle.title).toBe("ED ALL quality test");
@@ -164,6 +201,75 @@ describe("ED ALL Piped player", () => {
     expect(manifest).toContain('contentType="audio"');
     expect(manifest).toContain("itag=137");
     expect(manifest).toContain("itag=140");
+  });
+
+
+  it("normalizes Invidious formatStreams and adaptiveFormats into the unified stream model", () => {
+    const helpers = loadHelpers();
+    const bundle = helpers.normalize({
+      title: "Invidious quality test",
+      lengthSeconds: 180,
+      formatStreams: [{
+        url: "https://media.example/video-360.mp4",
+        type: 'video/mp4; codecs="avc1.42001E, mp4a.40.2"',
+        qualityLabel: "360p",
+        resolution: "640x360",
+        bitrate: "500000",
+      }],
+      adaptiveFormats: [
+        {
+          url: "https://media.example/video-1080.mp4",
+          type: 'video/mp4; codecs="avc1.640028"',
+          qualityLabel: "1080p",
+          resolution: "1920x1080",
+          bitrate: "4000000",
+        },
+        {
+          url: "https://media.example/audio.m4a",
+          type: 'audio/mp4; codecs="mp4a.40.2"',
+          bitrate: "128000",
+          audioQuality: "AUDIO_QUALITY_MEDIUM",
+        },
+      ],
+    });
+
+    expect(bundle).not.toBeNull();
+    expect(bundle.provider).toBe("invidious");
+    expect(bundle.videos.map(stream => stream.height).sort((a, b) => b - a)).toEqual([1080, 360]);
+    expect(bundle.videoOnly.map(stream => stream.height)).toEqual([1080]);
+    expect(bundle.muxedVideos.map(stream => stream.height)).toEqual([360]);
+    expect(bundle.audioStreams).toHaveLength(1);
+    expect(bundle.duration).toBe(180);
+    expect(helpers.scoreBundle(bundle)).toBeGreaterThan(0);
+  });
+
+  it("allows the slower secondary extractor time to provide higher resolutions", () => {
+    expect(playerSource).toContain("setTimeout(() => resolve(null), 7000)");
+  });
+
+  it("prioritizes registry health before last-instance stickiness", () => {
+    const source = playerSource;
+    expect(source).toContain("const aRegistryRank = rank(ar.status);");
+    expect(source).toContain("if (aRegistryRank !== bRegistryRank) return bRegistryRank - aRegistryRank;");
+    expect(source).toContain("The last successful server is only the final tie-breaker.");
+  });
+
+  it("scores normalized Piped bundles using their actual videoStreams field", () => {
+    const helpers = loadHelpers();
+    const bundle = helpers.normalize({
+      videoStreams: [{
+        url: "https://media.example/360.mp4",
+        mimeType: "video/mp4",
+        format: "MPEG_4",
+        quality: "360p",
+        height: 360,
+        videoOnly: false,
+      }],
+      audioStreams: [],
+    });
+    expect(bundle).not.toBeNull();
+    expect(bundle.videos).toHaveLength(1);
+    expect(helpers.scoreBundle(bundle)).toBeGreaterThan(0);
   });
 
   it("keeps video-only and audio streams available when DASH ranges are absent", () => {

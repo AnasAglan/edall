@@ -1,0 +1,44 @@
+name: Daily video instance discovery
+
+on:
+  schedule:
+    - cron: "23 2 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/sync-video-instances.mjs"
+      - ".github/workflows/video-instances-sync.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: video-instance-registry
+  cancel-in-progress: false
+
+jobs:
+  discover-and-rank:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Discover and probe official instances
+        run: node scripts/sync-video-instances.mjs
+
+      - name: Commit changed registry
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore(video): refresh public extractor instances"
+          file_pattern: public/video-instances.json
+          branch: main
