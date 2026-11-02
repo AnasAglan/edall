@@ -3216,43 +3216,107 @@ const originalBodyOverflow = document.body.style.overflow;
                 if (Math.abs(audio.currentTime - video.currentTime) > .25) audio.currentTime = video.currentTime;
                 audio.play().catch(() => { if (!disposed && !video.paused) { video.pause(); fail(); } });
             };
+            const waitForMetadata = (element, label) => new Promise((resolve, reject) => {
+                if (element.readyState >= 1) { resolve(); return; }
+                let done = false;
+                const finish = error => {
+                    if (done) return;
+                    done = true;
+                    clearTimeout(timer);
+                    element.removeEventListener('loadedmetadata', onReady);
+                    element.removeEventListener('error', onError);
+                    if (error) reject(error); else resolve();
+                };
+                const onReady = () => finish();
+                const onError = () => finish(new Error(label + ' metadata could not be loaded.'));
+                const timer = setTimeout(() => finish(new Error(label + ' metadata timed out.')), 20000);
+                element.addEventListener('loadedmetadata', onReady, { once: true });
+                element.addEventListener('error', onError, { once: true });
+            });
+            const setMediaSourceAndWait = async (element, url, label) => {
+                if (element.src !== url || element.readyState < 1) {
+                    const ready = waitForMetadata(element, label);
+                    element.src = url;
+                    element.load();
+                    await ready;
+                }
+            };
+            const seekMediaElement = element => new Promise(resolve => {
+                const target = Math.max(0, Number(video.currentTime) || 0);
+                if (Math.abs((Number(element.currentTime) || 0) - target) < .15) { resolve(); return; }
+                let done = false;
+                const finish = () => {
+                    if (done) return;
+                    done = true;
+                    clearTimeout(timer);
+                    element.removeEventListener('seeked', finish);
+                    resolve();
+                };
+                const timer = setTimeout(finish, 5000);
+                element.addEventListener('seeked', finish, { once: true });
+                try { element.currentTime = target; } catch (_) { finish(); }
+            });
             const switchQuality = async height => {
                 if (disposed || !bundle) return;
-                const item = bundle.videos.find(f => f.h === Number(height)) || bundle.videos[0];
-                if (!item) throw new Error('No playable format');
-                selected = item.h;
-                const pos = video.currentTime || 0, wasPlaying = !video.paused;
+                const item = bundle.videos.find(f => f.h === Number(height));
+                if (!item) throw new Error('The requested desktop quality is unavailable.');
+                const nextSeparate = !item.hasAudio;
+                if (nextSeparate && (!bundle.audio || !bundle.audio.url)) {
+                    throw new Error('The selected desktop video has no compatible audio stream.');
+                }
+                const previousSelected = selected;
+                const pos = Number(video.currentTime) || 0;
+                const wasPlaying = !video.paused;
                 const rate = video.playbackRate, volume = video.volume, muted = video.muted;
                 const token = ++sequence;
-                switching = true; audio.pause(); video.pause();
-                separate = !item.hasAudio;
-                if (separate && !bundle.audio) throw new Error('No audio format');
-                const ready = new Promise((resolve, reject) => {
-                    const timer = setTimeout(() => finish(new Error('Media timeout')), 25000);
-                    const loaded = () => finish();
-                    const error = () => finish(new Error('Media error'));
-                    const finish = err => {
-                        clearTimeout(timer); video.removeEventListener('loadedmetadata', loaded); video.removeEventListener('error', error);
-                        if (err) reject(err); else resolve();
-                    };
-                    video.addEventListener('loadedmetadata', loaded, { once: true });
-                    video.addEventListener('error', error, { once: true });
-                    cleanups.push(() => finish(new Error('Closed')));
-                });
-                if (separate && audio.src !== bundle.audio.url) { audio.src = bundle.audio.url; audio.load(); }
-                if (!separate) { audio.removeAttribute('src'); audio.load(); }
-                video.src = item.url; video.load();
+                switching = true;
+                audio.pause();
+                video.pause();
+                separate = nextSeparate;
                 try {
-                    await ready;
+                    const tasks = [setMediaSourceAndWait(video, item.url, 'Video')];
+                    if (separate) {
+                        tasks.push(setMediaSourceAndWait(audio, bundle.audio.url, 'Audio'));
+                    } else {
+                        audio.removeAttribute('src');
+                        audio.load();
+                    }
+                    await Promise.all(tasks);
                     if (disposed || sequence !== token) return;
-                    video.currentTime = Math.min(pos, Number.isFinite(video.duration) ? Math.max(0, video.duration - .1) : pos);
-                    video.playbackRate = rate; video.volume = volume; video.muted = muted;
-                    audio.volume = volume; audio.muted = muted; audio.playbackRate = rate;
-                    if (separate) audio.currentTime = video.currentTime;
+
+                    const boundedTime = Number.isFinite(video.duration)
+                        ? Math.min(pos, Math.max(0, video.duration - .1))
+                        : pos;
+                    try { video.currentTime = boundedTime; } catch (_) {}
+                    if (separate) {
+                        try { audio.currentTime = boundedTime; } catch (_) {}
+                        await Promise.all([seekMediaElement(video), seekMediaElement(audio)]);
+                    } else {
+                        await seekMediaElement(video);
+                    }
+
+                    video.playbackRate = rate;
+                    video.volume = volume;
+                    video.muted = muted;
+                    audio.volume = volume;
+                    audio.muted = muted;
+                    audio.playbackRate = rate;
                     switching = false;
+                    selected = item.h;
                     try { localStorage.setItem('ed_desktop_quality', String(selected)); } catch (_) {}
-                    if (wasPlaying) await video.play();
-                } finally { if (sequence === token) switching = false; }
+                    if (wasPlaying) {
+                        if (separate) await Promise.all([video.play(), audio.play().catch(() => {})]);
+                        else await video.play();
+                    }
+                } catch (error) {
+                    selected = previousSelected;
+                    separate = previousSelected
+                        ? !(bundle.videos.find(f => f.h === previousSelected) || {}).hasAudio
+                        : false;
+                    throw error;
+                } finally {
+                    if (sequence === token) switching = false;
+                }
             };
             const schedule = () => {
                 clearTimeout(refreshTimer);
