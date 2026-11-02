@@ -2997,6 +2997,10 @@ if (existingWatermark && !layerHost.contains(existingWatermark)) {
                 .edv-wrap { overflow:hidden; }
                 .edv-wrap .plyr__video-embed, .edv-wrap .plyr__video-wrapper { overflow:hidden !important; }
                 .edv-wrap .plyr__video-embed iframe { pointer-events:none !important; top:-50% !important; height:200% !important; }
+                /* The YouTube fallback must remain clickable so its own quality menu can be used. */
+                .edv-wrap.ed-native-youtube-quality .plyr__video-embed iframe { pointer-events:auto !important; top:0 !important; height:100% !important; }
+                .edv-wrap.ed-native-youtube-quality .plyr__controls { justify-content:flex-start !important; background:transparent !important; pointer-events:none !important; }
+                .edv-wrap.ed-native-youtube-quality .plyr__controls button { pointer-events:auto !important; }
                 .edv-wrap .ed-yt-cover { position:absolute;inset:0;background:#000 center/cover no-repeat;pointer-events:none;opacity:0;transition:opacity .2s;z-index:1; }
                 .edv-wrap .ed-yt-cover.show { opacity:1; }
                 .edv-wrap .plyr__poster { z-index:1; }
@@ -3079,132 +3083,6 @@ if (existingWatermark && !layerHost.contains(existingWatermark)) {
             container._p = null;
             container.innerHTML = '';
             container.style.display = 'none';
-        }
-        // Put YouTube quality inside Plyr's own settings menu.
-        // YouTube ignores setPlaybackQuality alone, so a choice reloads the same video at the
-        // same second while requesting the quality (range lock + suggestedQuality), then re-asserts it.
-        const _edQKey = 'ed_yt_quality';
-        function _edPrefQuality() { try { return localStorage.getItem(_edQKey) || 'auto'; } catch (e) { return 'auto'; } }
-        function _edAddQualityMenu(player, wrap, videoId) {
-            if (!player || !player.on) return;
-            const ar = currentLanguage === 'ar';
-            const labels = { highres:'4K', hd2160:'2160p', hd1440:'1440p', hd1080:'1080p', hd720:'720p', large:'480p', medium:'360p', small:'240p', tiny:'144p', auto:(ar ? 'تلقائي' : 'Auto') };
-            const order = ['highres','hd2160','hd1440','hd1080','hd720','large','medium','small','tiny'];
-            let selected = _edPrefQuality();
-            let pending = selected !== 'auto' ? selected : null;
-            let qualityHome = null, choices = null, built = false;
-            const yt = () => player.embed;
-            const actual = () => { try { const q = yt() && yt().getPlaybackQuality && yt().getPlaybackQuality(); return q && q !== 'unknown' ? q : ''; } catch (e) { return ''; } };
-            const lock = (level) => {
-                const e = yt(); if (!e) return;
-                try {
-                    if (level === 'auto') { e.setPlaybackQualityRange && e.setPlaybackQualityRange('auto', 'auto'); e.setPlaybackQuality && e.setPlaybackQuality('default'); }
-                    else { e.setPlaybackQualityRange && e.setPlaybackQualityRange(level, level); e.setPlaybackQuality && e.setPlaybackQuality(level); }
-                } catch (err) {}
-            };
-            const updateLabel = () => {
-                if (!qualityHome) return;
-                const a = actual();
-                const v = qualityHome.querySelector('.plyr__menu__value');
-                if (!v) return;
-                v.innerHTML = labels[selected] || selected;
-                if (a && labels[a] && (selected === 'auto' || a !== selected)) v.innerHTML += '<small>(' + labels[a] + ')</small>';
-                wrap.dataset.edQuality = a || '';
-                wrap.dataset.edSelected = selected;
-            };
-            const applyQuality = (level) => {
-                const e = yt(); if (!e) return;
-                selected = level;
-                try { localStorage.setItem(_edQKey, level); } catch (err) {}
-                let t = 0, st = -1;
-                try { t = e.getCurrentTime ? e.getCurrentTime() : 0; st = e.getPlayerState ? e.getPlayerState() : -1; } catch (err) {}
-                const wasPlaying = st === 1 || st === 3;
-                const q = level === 'auto' ? 'default' : level;
-                pending = level === 'auto' ? null : level;
-                lock(level);
-                try {
-                    if (wasPlaying) e.loadVideoById({ videoId, startSeconds: t, suggestedQuality: q });
-                    else if (st === 2 || t > 0) { e.loadVideoById({ videoId, startSeconds: t, suggestedQuality: q }); setTimeout(() => { try { e.pauseVideo(); } catch (x) {} }, 700); }
-                    else e.cueVideoById({ videoId, startSeconds: t, suggestedQuality: q });
-                } catch (err) {}
-                lock(level);
-                let n = 0;
-                const iv = setInterval(() => { n++; if (pending) lock(pending); updateLabel(); if (n > 8 || !document.body.contains(wrap)) clearInterval(iv); }, 600);
-            };
-            const fillMenu = () => {
-                if (!choices) return;
-                let levels = [];
-                try { levels = (yt().getAvailableQualityLevels() || []).filter(v => v && labels[v] && v !== 'auto'); } catch (e) {}
-                if (!levels.length) levels = ['hd1080','hd720','large','medium','small','tiny'];
-                levels = [...new Set(levels)].sort((a, b) => order.indexOf(a) - order.indexOf(b));
-                choices.innerHTML = '';
-                ['auto'].concat(levels).forEach(level => {
-                    const item = document.createElement('button');
-                    item.type = 'button';
-                    item.className = 'plyr__control';
-                    item.setAttribute('role', 'menuitemradio');
-                    item.setAttribute('aria-checked', String(level === selected));
-                    item.value = level;
-                    item.dataset.edQ = level;
-                    item.innerHTML = '<span>' + (labels[level] || level) + '</span>';
-                    item.onclick = (ev) => {
-                        ev.preventDefault(); ev.stopPropagation();
-                        choices.querySelectorAll('[role="menuitemradio"]').forEach(el => el.setAttribute('aria-checked', String(el === item)));
-                        applyQuality(level);
-                        updateLabel();
-                        if (wrap._edShowHome) wrap._edShowHome();
-                    };
-                    choices.appendChild(item);
-                });
-            };
-            player.on('ready', () => {
-                try {
-                    const menuRoot = wrap.querySelector('.plyr__menu__container > div');
-                    const home = menuRoot && menuRoot.querySelector('[id$="-home"]');
-                    const homeMenu = home && home.querySelector('[role="menu"]');
-                    if (!menuRoot || !home || !homeMenu || built) return;
-                    built = true;
-                    qualityHome = document.createElement('button');
-                    qualityHome.type = 'button';
-                    qualityHome.className = 'plyr__control plyr__control--forward';
-                    qualityHome.setAttribute('role', 'menuitem');
-                    qualityHome.setAttribute('aria-haspopup', 'true');
-                    qualityHome.setAttribute('data-ed-quality', '');
-                    qualityHome.innerHTML = '<span>' + (ar ? 'الجودة' : 'Quality') + '<span class="plyr__menu__value">' + labels[selected] + '</span></span>';
-                    homeMenu.insertBefore(qualityHome, homeMenu.firstChild);
-
-                    const panel = document.createElement('div');
-                    panel.hidden = true;
-                    panel.setAttribute('data-ed-quality-panel', '');
-                    const back = document.createElement('button');
-                    back.type = 'button';
-                    back.className = 'plyr__control plyr__control--back';
-                    back.innerHTML = '<span aria-hidden="true">' + (ar ? 'الجودة' : 'Quality') + '</span><span class="plyr__sr-only">' + (ar ? 'رجوع' : 'Go back') + '</span>';
-                    choices = document.createElement('div');
-                    choices.setAttribute('role', 'menu');
-                    panel.appendChild(back);
-                    panel.appendChild(choices);
-                    menuRoot.appendChild(panel);
-
-                    const box = wrap.querySelector('.plyr__menu__container');
-                    const resizeMenu = () => requestAnimationFrame(() => {
-                        const shown = panel.hidden ? home : panel;
-                        if (box) { box.style.width = Math.max(170, shown.scrollWidth) + 'px'; box.style.height = shown.scrollHeight + 'px'; }
-                    });
-                    const showHome = () => { panel.hidden = true; home.hidden = false; resizeMenu(); };
-                    wrap._edShowHome = showHome;
-                    qualityHome.onclick = (e) => { e.preventDefault(); e.stopPropagation(); fillMenu(); home.hidden = true; panel.hidden = false; resizeMenu(); };
-                    back.onclick = (e) => { e.preventDefault(); e.stopPropagation(); showHome(); };
-                    // When Plyr opens the settings menu, always start from the home page.
-                    const settingsBtn = wrap.querySelector('[data-plyr="settings"]');
-                    if (settingsBtn) settingsBtn.addEventListener('click', () => { panel.hidden = true; }, true);
-                    fillMenu();
-                    if (selected !== 'auto') lock(selected);
-                    updateLabel();
-                } catch (e) { console.error(e); }
-            });
-            player.on('playing', () => { if (pending) lock(pending); fillMenu(); updateLabel(); });
-            player.on('qualitychange', () => { if (pending && actual() && actual() !== pending) lock(pending); updateLabel(); });
         }
         const EDALL_DOWNLOAD_URL = 'https://github.com/AnasAglan/ED-ALL/releases/download/Education/EdAll-Setup.exe';
         // Desktop-only HTML5 playback. Normal browsers are asked to install the desktop app.
@@ -3476,40 +3354,108 @@ cleanups.push(() => {
 
                     if (streamRes.ok) {
                         const streamData = await streamRes.json();
-                        if (streamData && streamData.success && Array.isArray(streamData.qualities) && streamData.qualities.length > 0) {
-                            // إنشاء مشغل الفيديو HTML5 مع دعم الجودات والعلامة المائية
+                        const playableQualities = (Array.isArray(streamData?.qualities) ? streamData.qualities : [])
+                            .filter(q => q && Number.isFinite(Number(q.height)) && Number(q.height) > 0 && typeof q.url === 'string')
+                            .map(q => ({ ...q, height: Number(q.height) }))
+                            .filter(q => {
+                                try { return new URL(q.url).protocol === 'https:'; }
+                                catch (_) { return false; }
+                            })
+                            .sort((a, b) => b.height - a.height)
+                            .filter((q, index, all) => all.findIndex(item => item.height === q.height) === index);
+
+                        if (streamData && streamData.success && playableQualities.length > 0) {
+                            // إنشاء مشغل HTML5، وعدم إظهار الجودات إلا بعد التأكد من تحميل المصدر الأول.
                             const wrap = document.createElement('div');
                             wrap.className = 'edv-wrap ed-desktop-player';
                             const video = document.createElement('video');
                             video.playsInline = true;
-                            video.preload = 'metadata';
+                            video.preload = 'auto';
                             video.controls = true;
                             wrap.appendChild(video);
                             container.replaceChildren(wrap);
                             container.style.display = 'block';
 
-                            const defaultQuality = streamData.qualities[0];
-                            video.src = defaultQuality.url;
+                            const setVideoSource = (url) => new Promise((resolve, reject) => {
+                                let settled = false;
+                                const finish = (error) => {
+                                    if (settled) return;
+                                    settled = true;
+                                    clearTimeout(timer);
+                                    video.removeEventListener('loadedmetadata', onLoaded);
+                                    video.removeEventListener('error', onError);
+                                    if (error) reject(error);
+                                    else resolve();
+                                };
+                                const onLoaded = () => finish();
+                                const onError = () => finish(new Error('The selected video stream could not be loaded.'));
+                                const timer = setTimeout(() => finish(new Error('Timed out while loading the selected video stream.')), 12000);
+                                video.addEventListener('loadedmetadata', onLoaded, { once: true });
+                                video.addEventListener('error', onError, { once: true });
+                                video.src = url;
+                                video.load();
+                            });
 
-                            // تهيئة مشغل Plyr مع قائمة الجودات
-                            const pPlayer = new Plyr(video, {
+                            const defaultQuality = playableQualities[0];
+                            await setVideoSource(defaultQuality.url);
+                            let activeQuality = defaultQuality;
+                            let switchingQuality = false;
+
+                            const switchVideoQuality = async (height) => {
+                                const target = playableQualities.find(q => q.height === Number(height));
+                                if (!target || target.height === activeQuality.height || switchingQuality) return;
+
+                                switchingQuality = true;
+                                const previousQuality = activeQuality;
+                                const currentTime = Math.max(0, Number(video.currentTime) || 0);
+                                const wasPlaying = !video.paused;
+                                const playbackRate = video.playbackRate;
+                                const volume = video.volume;
+                                const muted = video.muted;
+
+                                video.pause();
+                                try {
+                                    await setVideoSource(target.url);
+                                    const safeTime = Number.isFinite(video.duration)
+                                        ? Math.min(currentTime, Math.max(0, video.duration - 0.1))
+                                        : currentTime;
+                                    video.currentTime = safeTime;
+                                    video.playbackRate = playbackRate;
+                                    video.volume = volume;
+                                    video.muted = muted;
+                                    activeQuality = target;
+                                    if (wasPlaying) await video.play();
+                                } catch (qualityError) {
+                                    console.warn('[ED-ALL] Quality switch failed:', qualityError);
+                                    try {
+                                        await setVideoSource(previousQuality.url);
+                                        if (Number.isFinite(video.duration)) {
+                                            video.currentTime = Math.min(currentTime, Math.max(0, video.duration - 0.1));
+                                        } else {
+                                            video.currentTime = currentTime;
+                                        }
+                                        video.playbackRate = playbackRate;
+                                        video.volume = volume;
+                                        video.muted = muted;
+                                        if (wasPlaying) await video.play();
+                                    } catch (restoreError) {
+                                        console.error('[ED-ALL] Could not restore the previous video quality:', restoreError);
+                                    }
+                                    showToast(currentLanguage === 'ar' ? 'تعذر تغيير الجودة؛ تمت محاولة استعادة الجودة السابقة.' : 'Could not change quality; the previous quality was restored when possible.', 'error');
+                                } finally {
+                                    switchingQuality = false;
+                                }
+                            };
+
+                            container._p = new Plyr(video, {
                                 title: streamData.title || '',
                                 controls: ['play-large', 'rewind', 'play', 'fast-forward', 'progress', 'current-time', 'mute', 'volume', 'settings', 'fullscreen'],
                                 settings: ['quality', 'speed'],
                                 quality: {
                                     default: defaultQuality.height,
-                                    options: streamData.qualities.map(q => q.height),
+                                    options: playableQualities.map(q => q.height),
                                     forced: true,
-                                    onChange: (newH) => {
-                                        const target = streamData.qualities.find(q => q.height === Number(newH));
-                                        if (target && target.url) {
-                                            const curTime = video.currentTime;
-                                            const wasPlaying = !video.paused;
-                                            video.src = target.url;
-                                            video.currentTime = curTime;
-                                            if (wasPlaying) video.play().catch(() => {});
-                                        }
-                                    }
+                                    onChange: (newH) => { void switchVideoQuality(newH); }
                                 },
                                 speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] }
                             });
@@ -3534,7 +3480,8 @@ cleanups.push(() => {
 
             const cls = 'edv-' + Math.random().toString(36).slice(2, 9);
             const wrap = document.createElement('div');
-            wrap.className = 'edv-wrap ' + cls;
+            // Use YouTube's own player controls in the browser fallback so students can select quality from its settings menu.
+            wrap.className = 'edv-wrap ' + cls + ' ed-native-youtube-quality';
             wrap.style.cssText = 'position:relative;border-radius:var(--radius);overflow:hidden;background:#000;';
             const host = document.createElement('div');
             host.className = 'plyr__video-embed';
@@ -3544,39 +3491,19 @@ cleanups.push(() => {
             container.innerHTML = '';
             container.appendChild(wrap);
             container.style.display = 'block';
-            const pref = _edPrefQuality();
-            const ytVars = { noCookie: true, rel: 0, showinfo: 0, iv_load_policy: 3, modestbranding: 1, controls: 0, disablekb: 1, playsinline: 1, fs: 0 };
-            if (pref !== 'auto') ytVars.vq = pref;
+            const ytVars = { noCookie: true, rel: 0, iv_load_policy: 3, controls: 1, disablekb: 0, playsinline: 1, fs: 0 };
             try {
                 container._p = new Plyr(host, {
-                    controls: ['play-large','rewind','play','fast-forward','progress','current-time','mute','volume','captions','settings','pip','fullscreen'],
-                    settings: ['captions','speed'],
-                    speed: { selected: 1, options: [0.5,0.75,1,1.25,1.5,1.75,2] },
-                    seekTime: 10,
-                    invertTime: false,
+                    // Keep Plyr's wrapper and fullscreen handling, but let YouTube expose its real controls and quality menu.
+                    controls: ['fullscreen'],
+                    settings: [],
                     clickToPlay: true,
                     hideControls: true,
                     keyboard: { focused: true, global: false },
-                    tooltips: { controls: true, seek: true },
                     fullscreen: { enabled: true, fallback: true, iosNative: false, container: '.' + cls },
                     youtube: ytVars
                 });
                 const p = container._p;
-                _edAddQualityMenu(p, wrap, vid);
-                // Cover YouTube's pause/end suggestions with the video thumbnail.
-                p.on('ready', () => {
-                    const vw = wrap.querySelector('.plyr__video-wrapper') || wrap.querySelector('.plyr__video-embed');
-                    if (!vw || vw.querySelector('.ed-yt-cover')) return;
-                    const cover = document.createElement('div');
-                    cover.className = 'ed-yt-cover';
-                    cover.style.backgroundImage = 'url("https://i.ytimg.com/vi/' + vid + '/hqdefault.jpg")';
-                    vw.appendChild(cover);
-                    const show = (on) => cover.classList.toggle('show', on);
-                    p.on('pause', () => show(true));
-                    p.on('ended', () => show(true));
-                    p.on('playing', () => show(false));
-                    p.on('play', () => setTimeout(() => { if (p.playing) show(false); }, 250));
-                });
                 // Phones: rotate to landscape in fullscreen when the browser allows it.
                 p.on('enterfullscreen', () => {
                     try { screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape').catch(() => {}); } catch (e) {}
