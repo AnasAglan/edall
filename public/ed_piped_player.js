@@ -697,6 +697,7 @@
       const requested = Number(height);
       if (!qualityHeights.includes(requested) || requested === selectedHeight) return;
       const previousHeight = selectedHeight;
+      const previousAudioStream = separateAudioStream;
       const savedState = captureState();
       switching = true;
       try {
@@ -771,15 +772,16 @@
               console.warn('[ED-ALL] Could not restore the previous Piped quality:', restoreError);
             }
           }
-        } else if (mode === 'separate' && previousHeight && separateAudioStream) {
+        } else if (mode === 'separate' && previousHeight && previousAudioStream) {
           const previousStream = chooseMuxed(bundle.videoOnly, previousHeight);
           if (previousStream) {
             try {
               await waitForCanPlay(video, previousStream.url, 18000);
-              await waitForCanPlay(audio, separateAudioStream.url, 18000);
+              await waitForCanPlay(audio, previousAudioStream.url, 18000);
               if (savedState.time > 0) {
                 await Promise.all([seekVideo(video, savedState.time), seekVideo(audio, savedState.time)]);
               }
+              separateAudioStream = previousAudioStream;
               video.playbackRate = audio.playbackRate = savedState.rate;
               video.volume = audio.volume = savedState.volume;
               video.muted = audio.muted = savedState.muted;
@@ -996,7 +998,7 @@
       });
       listen(video, 'ended', () => { if (mode === 'separate') audio.pause(); });
       listen(audio, 'error', () => {
-        if (!disposed && mode === 'separate' && !switching && !recovering) {
+        if (!disposed && mode === 'separate' && !switching && !recovering && !video.paused) {
           const state = captureState();
           void recover(new Error('The separate Piped audio stream failed.'), state);
         }
