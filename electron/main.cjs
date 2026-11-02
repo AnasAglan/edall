@@ -29,9 +29,18 @@ const frameAllowed = raw => {
 async function prepareTools() {
   const dir = path.join(app.getPath('userData'), 'tools');
   await fs.mkdir(dir, { recursive: true });
-  for (const name of ['yt-dlp.exe', 'deno.exe']) {
-    const dest = path.join(dir, name);
-    try { await fs.access(dest); } catch { await fs.copyFile(path.join(__dirname, 'bin', name), dest); }
+  try {
+    for (const name of ['yt-dlp.exe', 'deno.exe']) {
+      const dest = path.join(dir, name);
+      try { await fs.access(dest); }
+      catch { await fs.copyFile(path.join(__dirname, 'bin', name), dest); }
+    }
+  } catch (error) {
+    // The desktop package may be distributed without optional extractor binaries.
+    // Resolve the tool promise safely so the renderer can fall back to Piped instead of
+    // causing an unhandled rejection that can terminate the Electron process.
+    console.warn('[EdAll] Optional yt-dlp/Deno binaries are unavailable; using Piped fallback.', error);
+    return null;
   }
   // yt-dlp's own updater verifies release hashes. Failed checks retain the installed binary.
   await run(path.join(dir, 'yt-dlp.exe'), ['--update', '--socket-timeout', '10'], 30000).catch(() => {});
@@ -55,6 +64,7 @@ async function extract(id, force) {
   if (jobs.has(id)) return jobs.get(id);
   const task = (async () => {
     const dir = await toolReady;
+    if (!dir) throw new Error('The optional desktop extractor is not installed; Piped playback should be used instead.');
     const raw = await run(path.join(dir, 'yt-dlp.exe'), [
       '--dump-single-json', '--no-playlist', '--skip-download', '--no-warnings', '--socket-timeout', '15',
       '--js-runtimes', 'deno:' + path.join(dir, 'deno.exe'), 'https://www.youtube.com/watch?v=' + id
