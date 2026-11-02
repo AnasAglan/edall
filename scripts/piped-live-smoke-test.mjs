@@ -66,7 +66,7 @@ async function probeRange(stream, kind, controller) {
 async function inspectInstance(base, activeControllers) {
   const controller = new AbortController();
   activeControllers.push(controller);
-  const timer = setTimeout(() => controller.abort(), 18000);
+  const timer = setTimeout(() => controller.abort(), 22000);
   try {
     let data = null;
     let selectedVideoId = "";
@@ -147,13 +147,20 @@ async function inspectInstance(base, activeControllers) {
       /^audio\/(mp4|webm|ogg|mpeg)$/i.test(stream.mimeType)
     );
 
-    const adaptiveVideo = videos.find(stream => stream.videoOnly === true || stream.videoOnly === "true");
+    videos.sort((a, b) =>
+      Number(b.height) - Number(a.height) ||
+      Number(b.mimeType === "video/mp4") - Number(a.mimeType === "video/mp4")
+    );
+    const adaptiveVideos = videos.filter(stream => stream.videoOnly === true || stream.videoOnly === "true");
     const muxedVideo = videos.find(stream => stream.videoOnly !== true && stream.videoOnly !== "true");
-    if (adaptiveVideo && !audios.length && !muxedVideo) {
+    if (adaptiveVideos.length && !audios.length && !muxedVideo) {
       throw new Error("Video-only qualities were returned without any separate audio stream");
     }
-    const video = adaptiveVideo || muxedVideo || videos[0];
-    const audio = adaptiveVideo && audios.length ? audios[0] : null;
+    const video = videos[0];
+    const matchingAudio = adaptiveVideos.length && video.audioTrackId
+      ? audios.find(stream => stream.audioTrackId && stream.audioTrackId === video.audioTrackId)
+      : null;
+    const audio = adaptiveVideos.length && audios.length ? (matchingAudio || audios[0]) : null;
     const [videoProbe, audioProbe] = await Promise.all([
       probeRange(video, "Video", controller),
       audio ? probeRange(audio, "Audio", controller) : Promise.resolve(null),
@@ -185,28 +192,37 @@ if (!instances.length) throw new Error("No secure Piped API instances were disco
 console.log("Checking " + instances.length + " Piped API instances against " + VIDEO_IDS.length + " public video samples...");
 
 const failures = [];
-let healthyResult = null;
+const healthyResults = [];
 for (let offset = 0; offset < instances.length; offset += 4) {
   const batch = instances.slice(offset, offset + 4);
   const controllers = [];
   const attempts = batch.map(base => inspectInstance(base, controllers).then(result => ({ ...result, base })));
-  try {
-    healthyResult = await Promise.any(attempts);
-    controllers.forEach(controller => controller.abort());
-    break;
-  } catch (error) {
-    controllers.forEach(controller => controller.abort());
-    const reasons = error && Array.isArray(error.errors) ? error.errors : [error];
-    failures.push(...reasons.map(reason => String(reason && reason.message || reason)));
-    console.warn("This group had no usable instance; continuing to the next group.");
+  const results = await Promise.allSettled(attempts);
+  controllers.forEach(controller => controller.abort());
+  for (const result of results) {
+    if (result.status === "fulfilled") {
+      healthyResults.push(result.value);
+    } else {
+      failures.push(String(result.reason && result.reason.message || result.reason));
+    }
   }
 }
 
-if (healthyResult) {
-  console.log("LIVE PIPED CHECK PASSED");
-  console.log(JSON.stringify(healthyResult, null, 2));
+healthyResults.sort((a, b) =>
+  b.heights.length - a.heights.length ||
+  Math.max(...b.heights) - Math.max(...a.heights) ||
+  Number(b.usedSeparateAudio) - Number(a.usedSeparateAudio)
+);
+
+if (healthyResults.length) {
+  console.log("LIVE PIPED CHECK PASSED: " + healthyResults.length + " instance(s) returned playable streams.");
+  console.log(JSON.stringify({
+    bestInstance: healthyResults[0],
+    otherHealthyInstances: healthyResults.slice(1),
+    failedInstances: failures.slice(0, 20),
+  }, null, 2));
 } else {
   console.error("No public Piped instance passed API, CORS, stream-shape and byte-range checks.");
-  console.error(failures.slice(0, 20).join("\n"));
+  console.error(failures.slice(0, 20).join("\\n"));
   process.exitCode = 1;
 }
