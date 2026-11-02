@@ -182,7 +182,9 @@ async function probeInstance(instance) {
       Math.min(responseMs, 10000) / 20;
     return {
       ...instance,
-      status: "healthy",
+      // An API-only response is not enough to call an endpoint healthy:
+      // the sample media URL must also answer a byte-range request.
+      status: mediaProbe.ok ? "healthy" : "degraded",
       score: Math.round(score),
       responseMs,
       mediaProbe,
