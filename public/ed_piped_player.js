@@ -384,7 +384,7 @@
     const container = options.container;
     const videoId = String(options.videoId || '');
     if (!container || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) throw new Error('Invalid YouTube video ID.');
-    if (!window.Plyr || !window.shaka || !window.shaka.Player) throw new Error('The video playback libraries did not load.');
+    if (!window.Plyr) throw new Error('The Plyr video controls did not load.');
 
     const wrap = document.createElement('div');
     wrap.className = 'edv-wrap ed-desktop-player';
@@ -510,7 +510,8 @@
       await resetEngine();
       bundle = next;
       const manifest = createManifest(next);
-      const supported = !!(window.MediaSource || window.ManagedMediaSource) &&
+      const hasShaka = !!(window.shaka && window.shaka.Player);
+      const supported = hasShaka && !!(window.MediaSource || window.ManagedMediaSource) &&
         (!window.shaka.Player.isBrowserSupported || window.shaka.Player.isBrowserSupported());
 
       if (manifest && supported) {
@@ -713,8 +714,8 @@
 
     try {
       const shaka = window.shaka;
-      if (shaka.polyfill && shaka.polyfill.installAll) shaka.polyfill.installAll();
-      if (shaka.Player.isBrowserSupported && !shaka.Player.isBrowserSupported()) {
+      if (shaka && shaka.polyfill && shaka.polyfill.installAll) shaka.polyfill.installAll();
+      if (shaka && shaka.Player && shaka.Player.isBrowserSupported && !shaka.Player.isBrowserSupported()) {
         console.warn('[ED-ALL] Shaka MSE playback is not supported; progressive Piped streams will be used when available.');
       }
 
