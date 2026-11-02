@@ -58,6 +58,9 @@ jobs:
       - name: Type-check Invidious Edge Function
         run: deno check supabase/functions/extract-youtube-stream/index.ts
 
+      - name: Discover and probe official Piped and Invidious instances
+        run: node scripts/sync-video-instances.mjs
+
       - name: Validate daily instance registry
         run: |
           node -e "const r=require('./public/video-instances.json'); if(r.schemaVersion!==1 || !Array.isArray(r.sources?.piped) || !Array.isArray(r.sources?.invidious) || !r.sources.piped.length || !r.sources.invidious.length) process.exit(1); console.log('Piped:',r.sources.piped.length,'Invidious:',r.sources.invidious.length);"
