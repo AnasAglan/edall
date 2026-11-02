@@ -3536,8 +3536,7 @@ cleanups.push(() => {
                             language: currentLanguage,
                             desktopBridge: null,
                             extractorConfig: {
-                                supabaseUrl: SUPABASE_URL,
-                                anonKey: SUPABASE_ANON_KEY,
+                                workerUrl: 'https://edall-invidious-extractor.anasaglan2011.workers.dev',
                                 origin: window.location.origin
                             },
                             toast: (message, type) => showToast(message, type || 'info')
