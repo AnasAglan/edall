@@ -1,0 +1,6 @@
+name = "edall-assistant"
+main = "workers/edall-assistant/index.ts"
+compatibility_date = "2026-11-06"
+
+[ai]
+binding = "AI"
