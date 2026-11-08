@@ -289,7 +289,12 @@ async function tool(name, args, env, token, user, roles, images = []) {
 
   if (name === "list_courses") {
     const limit = Math.min(50, Math.max(1, Number(args.limit) || 20));
-    return db(env, "/rest/v1/courses?select=id,title,description,price,image_url,created_by,created_at&order=created_at.desc&limit=" + limit, token);
+    const rows = await db(env,
+      "/rest/v1/courses?select=id,title,description,price,image_url,created_by,created_at&order=created_at.desc&limit=" + limit,
+      token);
+    if (!Array.isArray(rows)) throw new Error("تعذر قراءة قائمة الدورات.");
+    // Teachers only see their own manageable courses; admins can see all courses.
+    return isAdmin ? rows : rows.filter(course => course.created_by === user.id);
   }
 
   if (name === "get_course_lessons") {
