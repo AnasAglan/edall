@@ -508,8 +508,10 @@ export default {
 
     const images = Array.isArray(body.images) ? body.images : [];
     const lastUserText = messages.at(-1).content;
-    const writeIntent = /(?:أنشئ|انشئ|إنشاء|انشاء|أضف|اضف|إضافة|اضافة|سجّل|سجل|اعمل|حضّر|حضر|جهّز|جهز|create|add)\s*.*(?:محاضرة|درس|دورة|اختبار|سؤال|إشعار|اشعار|lesson|course|exam|question|notification)|(?:محاضرة|درس|دورة|اختبار|سؤال|إشعار|اشعار|lesson|course|exam|question|notification).*\s*(?:أنشئ|انشئ|إنشاء|انشاء|أضف|اضف|إضافة|اضافة|سجّل|سجل|اعمل|حضّر|حضر|جهّز|جهز|create|add)/i.test(lastUserText);
-    if (images.length && writeIntent) {
+    const writeIntent = /(?:أنشئ|انشئ|إنشاء|انشاء|أضف|اضف|إضافة|اضافة|سجّل|سجل|اعمل|حضّر|حضر|جهّز|جهز|عايزك?|اريدك?|أريدك?|create|add)\s*.*(?:محاضرة|درس|دورة|اختبار|سؤال|إشعار|اشعار|lesson|course|exam|question|notification)|(?:محاضرة|درس|دورة|اختبار|سؤال|إشعار|اشعار|lesson|course|exam|question|notification).*\s*(?:أنشئ|انشئ|إنشاء|انشاء|أضف|اضف|إضافة|اضافة|سجّل|سجل|اعمل|حضّر|حضر|جهّز|جهز|عايزك?|اريدك?|أريدك?|create|add)/i.test(lastUserText);
+    const instructionalQuestion = /(?:كيف|كيفية|طريقة|خطوات|ما الذي أحتاج|ماذا أحتاج|how do i|how to|steps to)/i.test(lastUserText);
+    const explicitWriteIntent = writeIntent && !instructionalQuestion;
+    if (images.length && explicitWriteIntent) {
       return sseTextResponse("لم يتم إنشاء أو تعديل أي بيانات في هذا الطلب. أستطيع تحليل الصور، لكن عملية الحفظ تحتاج إلى رسالة نصية منفصلة توضّح الدورة والعنوان والتفاصيل.", origin);
     }
   if (!images.length && /(?:إحصائيات|احصائيات|إحصاء|احصاء|عدد المستخدمين|عدد الطلاب|عدد المعلمين|عدد الدورات|عدد المحاضرات)/i.test(lastUserText)) {
@@ -576,6 +578,9 @@ export default {
               let args = {};
               try { args = JSON.parse(call.function.arguments || "{}"); } catch {}
               const actionName = call.function.name;
+              if (WRITE_TOOLS.has(actionName) && !explicitWriteIntent) {
+                return json({ error: "لم أنفذ أي تغيير؛ لأن رسالتك لا تتضمن أمرًا صريحًا بالإنشاء أو التعديل. اكتب ما تريد تنفيذه بوضوح." }, 400, origin);
+              }
               let resultData;
               try {
                 resultData = await tool(actionName, args, env, authorization, user, roles);
@@ -612,7 +617,7 @@ export default {
       }
 
       const falseSuccessClaim = /(?:تم(?:ت)?\s*(?:إنشاء|انشاء|إضافة|اضافة|حفظ|إرسال|تجهيز)|أنشأت|انشأت|أضفت|اضفت|جهزت|أنجزت|تم بنجاح|created successfully|successfully created|has been created|has been added)/i.test(finalAssistantText);
-      if (writeIntent && falseSuccessClaim && completedWrites.length === 0) {
+      if (explicitWriteIntent && falseSuccessClaim && completedWrites.length === 0) {
         console.warn("ED-ALL assistant blocked an unverified write-success claim.");
         return sseTextResponse("لم يتم إنشاء أو حفظ أي بيانات. لم تُنفذ أداة الحفظ بنجاح في هذا الطلب، لذلك لن أؤكد نجاح العملية. أرسل اسم الدورة وعنوان المحاضرة والتفاصيل المطلوبة لأتمكن من تنفيذها والتحقق منها.", origin);
       }
