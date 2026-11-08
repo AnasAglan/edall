@@ -11084,6 +11084,7 @@ exam.questions.forEach((question, index) => {
   btn.addEventListener('click',function(){toggle(!panel.classList.contains('open'));});
   document.getElementById('edAsstClose').addEventListener('click',function(){toggle(false);});
   function add(k,t){var d=document.createElement('div');d.className='edAsstMsg '+k;d.textContent=t;log.appendChild(d);log.scrollTop=log.scrollHeight;return d;}
+  var conversationHistory=[];
   async function token(){
     var c=(typeof sb!=='undefined'?sb:window.sb);if(!c||!c.auth)return null;
     var r=await c.auth.getSession(),s=r&&r.data&&r.data.session;
@@ -11096,10 +11097,12 @@ exam.questions.forEach((question, index) => {
     add('u',msg);input.value='';send.disabled=true;var w=add('a','...');
     try{
       var t=await token();if(!t){w.remove();add('e','انتهت جلستك. يرجى تسجيل الدخول مرة أخرى.');return;}
-      var res=await fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+t},body:JSON.stringify({message:msg})});
+      conversationHistory.push({role:'user',content:msg});
+      conversationHistory=conversationHistory.slice(-12);
+      var res=await fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+t},body:JSON.stringify({messages:conversationHistory.slice(-12)})});
       var data=null;try{data=await res.json();}catch(_){}
       w.remove();
-      if(res.ok&&data&&typeof data.answer==='string')add('a',data.answer);
+      if(res.ok&&data&&typeof data.answer==='string'){conversationHistory.push({role:'assistant',content:data.answer});conversationHistory=conversationHistory.slice(-12);add('a',data.answer);}
       else if(res.status===401)add('e',(data&&data.error)||'انتهت جلستك. يرجى تسجيل الدخول مرة أخرى.');
       else if(res.status===403)add('e',(data&&data.error)||'ليس لديك صلاحية لاستخدام المساعد.');
       else add('e',(data&&data.error)||'تعذر الحصول على رد من المساعد. حاول مرة أخرى.');
