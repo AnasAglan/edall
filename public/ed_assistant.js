@@ -103,8 +103,15 @@ form.addEventListener("submit",async e=>{
   const res=await fetch(ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+token},body:JSON.stringify({messages:history.slice(-12),images})});
   if(!res.ok){let d={};try{d=await res.json()}catch(_){}throw new Error(d.error||"تعذر إكمال الطلب ("+res.status+")")}
   const answer=await readResponse(res,bubble);
-  try{await saveMessage("assistant",answer,false);history.push({role:"assistant",content:answer});history=history.slice(-300);await loadChats();drawChats()}
-  catch(err){const note=document.createElement("div");note.className="edAsstNote";note.textContent="وصل الرد، لكن تعذر حفظه في سجل المحادثة: "+(err.message||"خطأ قاعدة البيانات");bubble.parentElement.appendChild(note)}
+  history.push({role:"assistant",content:answer});history=history.slice(-300);
+  try{await saveMessage("assistant",answer,false);await loadChats();drawChats()}
+  catch(err){
+    const note=document.createElement("div");note.className="edAsstNote";
+    note.textContent="وصل الرد، لكن تعذر حفظه في سجل المحادثة. سيظل ظاهرًا في هذه الجلسة: "+(err.message||"خطأ قاعدة البيانات")+" ";
+    const retry=document.createElement("button");retry.type="button";retry.className="edAsstAction";retry.textContent="↻ إعادة حفظ الرد";
+    retry.addEventListener("click",async()=>{retry.disabled=true;try{await saveMessage("assistant",answer,false);await loadChats();note.textContent="✓ تم حفظ الرد في السجل."}catch(e){note.textContent="تعذرت إعادة الحفظ: "+(e.message||"خطأ غير معروف")+" ";retry.disabled=false}});
+    note.appendChild(retry);bubble.parentElement.appendChild(note)
+  }
   attachments=[];previews.replaceChildren();
  }catch(err){bubble.textContent=err&&err.message?err.message:"حدث خطأ غير متوقع.";bubble.parentElement.parentElement.classList.add("error")}
  finally{busyState(false);input.focus();drawChats()}
