@@ -501,10 +501,10 @@ export default {
       }
 
       const output = await env.AI.run(images.length ? VISION_MODEL : MODEL, {
-        messages: images ? aiMessages : finalMessages,
+        messages: images.length ? aiMessages : finalMessages,
         stream: true,
         max_tokens: 2400,
-        ...(images ? {} : {
+        ...(images.length ? {} : {
           reasoning_effort: "low",
           chat_template_kwargs: { enable_thinking: false, clear_thinking: true }
         })
