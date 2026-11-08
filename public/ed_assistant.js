@@ -104,6 +104,12 @@ form.addEventListener("submit",async e=>{
   if(!res.ok){let d={};try{d=await res.json()}catch(_){}throw new Error(d.error||"تعذر إكمال الطلب ("+res.status+")")}
   const answer=await readResponse(res,bubble);
   history.push({role:"assistant",content:answer});history=history.slice(-300);
+  if(/(?:تم إنشاء الدورة والتحقق من حفظها|تم إنشاء المحاضرة وحفظها بنجاح|تم إنشاء الاختبار والتحقق من حفظه|تمت إضافة السؤال والتحقق من حفظه|تم حفظ الإشعار بنجاح)/.test(answer)){
+   if(typeof window.refreshPlatformData==="function"){
+    const refreshed=await window.refreshPlatformData();
+    if(!refreshed) append("a","تم تأكيد الحفظ في قاعدة البيانات، لكن تعذر تحديث عرض المنصة تلقائيًا. أعد فتح الصفحة أو حدّثها.",[],{error:true});
+   }
+  }
   try{await saveMessage("assistant",answer,false);await loadChats();drawChats()}
   catch(err){
     const note=document.createElement("div");note.className="edAsstNote";
