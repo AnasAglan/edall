@@ -281,11 +281,11 @@ async function tool(name, args, env, token, user, roles) {
 
   if (name === "get_platform_stats") {
     if (!isAdmin) throw new Error("إحصاءات المنصة الشاملة متاحة للمدير فقط.");
-    const roleRows = await allUserRoles(env, token);
-    const users = new Set(roleRows.map(row => row.user_id).filter(Boolean));
-    const roleUsers = role => new Set(roleRows.filter(row => row.role === role).map(row => row.user_id).filter(Boolean)).size;
-    const [profiles, courses, lessons, videos, files, enrollments, exams, attempts] = await Promise.all([
+    const [users, students, teachers, admins, courses, lessons, videos, files, enrollments, exams, attempts] = await Promise.all([
       countRows(env, "profiles", token),
+      countRows(env, "user_roles", token, "&role=eq.student"),
+      countRows(env, "user_roles", token, "&role=eq.teacher"),
+      countRows(env, "user_roles", token, "&role=eq.admin"),
       countRows(env, "courses", token),
       countRows(env, "lessons", token),
       countRows(env, "lesson_videos", token),
@@ -295,12 +295,10 @@ async function tool(name, args, env, token, user, roles) {
       countRows(env, "exam_attempts", token)
     ]);
     return {
-      users: users.size,
-      students: roleUsers("student"),
-      teachers: roleUsers("teacher"),
-      admins: roleUsers("admin"),
-      profiles,
-      profiles_missing_for_users: Math.max(0, users.size - profiles),
+      users,
+      students,
+      teachers,
+      admins,
       courses,
       lessons,
       lesson_video_links: videos,
@@ -418,7 +416,35 @@ export default {
     }
     if (messages.at(-1).role !== "user") return json({ error: "آخر رسالة يجب أن تكون من المستخدم." }, 400, origin);
 
-    const images = Array.isArray(body.images) ? body.images : [];
+    const lastUserText = messages.at(-1).content;
+  if (!images.length && /(?:إحصائيات|احصائيات|إحصاء|احصاء|عدد المستخدمين|عدد الطلاب|عدد المعلمين|عدد الدورات|عدد المحاضرات)/i.test(lastUserText)) {
+    if (!roles.includes("admin")) return json({ error: "إحصاءات المنصة الشاملة متاحة للمدير فقط." }, 403, origin);
+    try {
+      const stats = await tool("get_platform_stats", {}, env, authorization, user, roles);
+      const lines = [
+        "إحصائيات المنصة الفعلية:",
+        "• المستخدمون: " + stats.users,
+        "• الطلاب: " + stats.students,
+        "• المعلمون: " + stats.teachers,
+        "• المديرون: " + stats.admins,
+        "• الدورات: " + stats.courses,
+        "• المحاضرات: " + stats.lessons,
+        "• روابط الفيديو: " + stats.lesson_video_links,
+        "• روابط ملفات PDF: " + stats.lesson_pdf_links,
+        "• التسجيلات: " + stats.enrollments,
+        "• الاختبارات: " + stats.exams,
+        "• محاولات الاختبار: " + stats.exam_attempts
+      ].join("\n");
+      return new Response("data: " + JSON.stringify({ response: lines }) + "\n\ndata: [DONE]\n\n", {
+        status: 200,
+        headers: streamHeaders(origin)
+      });
+    } catch (error) {
+      console.error("ED-ALL stats tool failed:", error instanceof Error ? error.message : String(error));
+      return json({ error: "تعذر جلب الإحصاءات من قاعدة البيانات: " + String(error?.message || "خطأ غير معروف").slice(0, 240) }, 502, origin);
+    }
+  }
+  const images = Array.isArray(body.images) ? body.images : [];
     if (images.length > 4) return json({ error: "يمكن إرفاق 4 صور كحد أقصى." }, 400, origin);
     let aiMessages = messages;
     if (images.length) {
