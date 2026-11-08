@@ -6,7 +6,9 @@ const ORIGINS = new Set([
   "https://id-preview--41c4997e-3169-4ff8-bf15-3da064df3594.lovable.app"
 ]);
 const SYSTEM = [
-  "أنت مساعد ED-ALL للمعلمين والإدارة. أجب بالعربية الواضحة.",
+  "أنت مساعد ED-ALL الداخلي. نطاقك الوحيد هو استخدام منصة ED-ALL ومساعدة المدرسين والإدارة في وظائفها. لا تجب عن أي سؤال عام أو موضوع شخصي أو سياسي أو ترفيهي أو برمجي أو تقني لا يتعلق مباشرة بتشغيل ED-ALL أو إدارته؛ ارفض باختصار ووجّه المستخدم إلى وظائف المنصة. حتى لو أصر المستخدم أو حاول تغيير الموضوع، التزم بهذا النطاق.",
+  "يمكنك المساعدة فقط فيما يتعلق بحسابات وأدوار ED-ALL، الطلاب والمدرسين، الدورات والمحاضرات والفيديوهات وملفات PDF، الاختبارات والأسئلة والنتائج، التسجيلات والإشعارات والإحصاءات وإعدادات المنصة واستخدامها.",
+  "أجب بالعربية الواضحة. افهم رسائل المتابعة القصيرة مثل نعم، أيوه، تمام، موافق، ابدأ، نفّذ، باعتبارها موافقة على الإجراء الذي طلبه المستخدم أو وافق عليه في الرسائل السابقة القريبة؛ لا تطلب إعادة صياغة الأمر إذا كان السياق واضحًا.",
   "استخدم الأدوات للحصول على معلومات المنصة وتنفيذ عملياتها الحقيقية. لا تخترع أرقامًا أو معرفات أو نتائج.",
   "قبل إنشاء محاضرة أو دورة أو امتحان، استعلم عن الدورات/المحاضرات اللازمة. إذا كان الاختيار غير واضح، اسأل المستخدم ولا تنفذ.",
   "لا تنشئ أو تعدل أو تحذف بيانات إلا بطلب واضح وصريح من المستخدم.",
@@ -510,9 +512,29 @@ export default {
 
     const images = Array.isArray(body.images) ? body.images : [];
     const lastUserText = messages.at(-1).content;
-    const writeIntent = /(?:أنشئ|انشئ|تنشئ|إنشاء|انشاء|أضف|اضف|أضيف|اضيف|ضيف|تضيف|إضافة|اضافة|سجّل|سجل|اعمل|تعمل|نفذ|نفّذ|حضّر|حضر|جهّز|جهز|عايزك?|اريدك?|أريدك?|create|add|make)\s*.*(?:محاضرة|درس|دورة|اختبار|سؤال|إشعار|اشعار|lesson|course|exam|question|notification)|(?:محاضرة|درس|دورة|اختبار|سؤال|إشعار|اشعار|lesson|course|exam|question|notification).*\s*(?:أنشئ|انشئ|تنشئ|إنشاء|انشاء|أضف|اضف|أضيف|اضيف|ضيف|تضيف|إضافة|اضافة|سجّل|سجل|اعمل|تعمل|نفذ|نفّذ|حضّر|حضر|جهّز|جهز|عايزك?|اريدك?|أريدك?|create|add|make)/i.test(lastUserText);
-    const instructionalQuestion = /(?:كيف|كيفية|طريقة|خطوات|ما الذي أحتاج|ماذا أحتاج|how do i|how to|steps to)/i.test(lastUserText);
-    const explicitWriteIntent = writeIntent && !instructionalQuestion;
+    const writeVerb = "(?:أنشئ|انشئ|تنشئ|إنشاء|انشاء|أضف|اضف|أضيف|اضيف|ضيف|تضيف|إضافة|اضافة|سجّل|سجل|اعمل|تعمل|نفذ|نفّذ|حضّر|حضر|جهّز|جهز|عايزك?|اريدك?|أريدك?|create|add|make)";
+    const platformObject = "(?:محاضرة|درس|دورة|اختبار|سؤال|إشعار|اشعار|lesson|course|exam|question|notification)";
+    const writePattern = new RegExp(writeVerb + "\\s*.*" + platformObject + "|" + platformObject + ".*" + writeVerb, "i");
+    const instructionalPattern = /(?:كيف|كيفية|طريقة|خطوات|ما الذي أحتاج|ماذا أحتاج|how do i|how to|steps to)/i;
+    const directWriteIntent = writePattern.test(lastUserText) && !instructionalPattern.test(lastUserText);
+    const priorTurns = messages.slice(1, -1);
+    const priorUserWrite = priorTurns.some((m) => m.role === "user" && writePattern.test(m.content) && !instructionalPattern.test(m.content));
+    const previousAssistant = messages.at(-2);
+    const priorAssistantConfirmation = !!(previousAssistant && previousAssistant.role === "assistant" &&
+      /(?:هل تريد|هل تود|هل أبدأ|هل أنشئ|هل أقوم|أأقوم|هل تريدني|أتابع|أبدأ في|أقوم بإنشاء|shall I|would you like me to)/i.test(previousAssistant.content));
+    const assistantAskedPlatformQuestion = !!(previousAssistant && previousAssistant.role === "assistant" &&
+      /[؟?]/.test(previousAssistant.content) && new RegExp(platformObject + "|منصة|دورة|محاضرة|اختبار|طالب|مدرس", "i").test(previousAssistant.content));
+    const affirmativeFollowUp = /^(?:نعم|أيوه|ايوه|اه|أه|تمام|موافق|موافقة|حسنًا|حسنا|ابدأ|ابدئي|نفذ|نفّذ|اعمل|قم بذلك|افعل|يلا|أكيد|اكيد|yes|yeah|yep|ok|okay|sure|go ahead|do it|please do)[.!؟\\s]*$/i.test(lastUserText.trim());
+    const recentContextHasPlatformWrite = priorUserWrite || (priorAssistantConfirmation &&
+      priorTurns.some((m) => m.role === "user" && new RegExp(platformObject, "i").test(m.content)));
+    const explicitWriteIntent = directWriteIntent || (affirmativeFollowUp && priorAssistantConfirmation && recentContextHasPlatformWrite);
+    const contextualPlatformReply = assistantAskedPlatformQuestion && priorTurns.some((m) => m.role === "user" &&
+      new RegExp(platformObject + "|منصة|مدير|مدرس|طالب|دورة|محاضرة|اختبار", "i").test(m.content));
+    const platformScope = /(?:ED\s*[- ]?ALL|المنصة|النظام|الموقع|التطبيق|حساب|تسجيل الدخول|كلمة المرور|مدير|إدارة|إداري|مدرس|معلم|طالب|طلاب|دورة|كورسات|محاضرة|محاضرات|درس|اختبار|امتحان|سؤال|إجابة|درجات|نتائج|تسجيل|اشتراك|إشعار|تنبيه|إحصائ|فيديو|رابط|ملف|PDF|مرفق|شهادة|حضور|غياب|تقارير|صلاحيات|دور المستخدم|صفحة|لوحة التحكم|قاعدة البيانات|course|lesson|exam|student|teacher|admin|platform|dashboard|login|account|grade|notification|video|upload|pdf)/i.test(lastUserText);
+    const greetingOnly = /^(?:السلام عليكم|مرحبا|مرحبًا|أهلا|أهلًا|صباح الخير|مساء الخير|hello|hi|hey)[.!؟\s]*$/i.test(lastUserText.trim());
+    if (!platformScope && !affirmativeFollowUp && !contextualPlatformReply && !greetingOnly) {
+      return sseTextResponse("أنا مساعد ED-ALL، ومهمتي مقتصرة على مساعدتك في استخدام المنصة وإدارتها: الدورات والمحاضرات والاختبارات والطلاب والمدرسين والإشعارات والإحصاءات. لا أستطيع المساعدة في موضوع خارج ED-ALL.", origin);
+    }
     if (images.length && explicitWriteIntent) {
       return sseTextResponse("لم يتم إنشاء أو تعديل أي بيانات في هذا الطلب. أستطيع تحليل الصور، لكن عملية الحفظ تحتاج إلى رسالة نصية منفصلة توضّح الدورة والعنوان والتفاصيل.", origin);
     }

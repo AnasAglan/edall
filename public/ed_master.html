@@ -4233,6 +4233,27 @@ window.triggerModalClose = function() {
             }
         }
 
+        // Refresh the same in-memory data source used by the platform after assistant writes.
+        window.refreshPlatformData = async function (courseId) {
+            try {
+                _dataLoaded = false;
+                _dataLoading = false;
+                if (_courseLoadPromises && typeof _courseLoadPromises.clear === 'function') _courseLoadPromises.clear();
+                courses.forEach(course => { course.lessons = null; });
+                await loadData();
+                renderCoursesGrid();
+                if (typeof renderManageCoursesPage === 'function' &&
+                    document.getElementById('manageCoursesPage')?.classList.contains('active')) renderManageCoursesPage();
+                if (typeof renderAdminPage === 'function' &&
+                    document.getElementById('adminPage')?.classList.contains('active')) renderAdminPage();
+                if (courseId && typeof showCourseDetails === 'function') await showCourseDetails(courseId);
+                return true;
+            } catch (error) {
+                console.error('[ED-ALL assistant refresh] Failed:', error);
+                return false;
+            }
+        };
+
         // Lazy load course details (lessons, videos, exams, files)
         async function loadCourseDetails(courseId) {
             const course = courses.find(c => c.id === courseId);
