@@ -23,6 +23,15 @@ const SYSTEM = [
 ].join(" ");
 
 
+function isExplicitCourseImageUploadIntent(lastUserText, conversationText, imageCount) {
+  if (!imageCount) return false;
+  const action = /(?:ارفع|ارفعي|رفع|أرفق|ارفق|أضيف|اضف|ضيف|حط|ضع|بدّل|بدل|غيّر|غير|استبدل|اجعل|upload|attach|change|set)/i;
+  const image = /(?:صورة|الصورة|صوره|الصوره|الغلاف|image|picture|cover)/i;
+  const course = /(?:دورة|دورات|كورس|كورسات|course|courses|صورة الغلاف|غلاف الدورة|قائمة الدورات)/i;
+  return action.test(lastUserText) && image.test(lastUserText) &&
+    (course.test(conversationText) || /(?:دورة|كورس|course)/i.test(lastUserText));
+}
+
 async function classifyRequestScope(env, conversation, hasImages) {
   const recent = conversation.slice(-20).map(message => ({
     role: message.role,
@@ -751,12 +760,8 @@ export default {
     const affirmativeFollowUp = /^(?:نعم|أيوه|ايوه|اه|أه|تمام|موافق|موافقة|حسنًا|حسنا|ابدأ|ابدئي|نفذ|نفّذ|اعمل|قم بذلك|افعل|يلا|أكيد|اكيد|yes|yeah|yep|ok|okay|sure|go ahead|do it|please do)[.!؟\\s]*$/i.test(lastUserText.trim());
     const recentContextHasPlatformWrite = priorUserWrite || (priorAssistantConfirmation &&
       priorTurns.some((m) => m.role === "user" && new RegExp(platformObject, "i").test(m.content)));
-    const recentContextText = messages.slice(-12).map(message => message.content).join("\n");
-    const imageActionRequested = /(?:ارفع|ارفعي|رفع|أرفق|ارفق|أضيف|اضف|ضيف|حط|ضع|بدّل|بدل|غيّر|غير|استبدل|اجعل|upload|attach|change|set)/i.test(lastUserText) &&
-      /(?:صورة|الصورة|صوره|الصوره|الغلاف|image|picture|cover)/i.test(lastUserText);
-    const courseContextPresent = /(?:دورة|دورات|كورس|كورسات|course|courses|صورة الغلاف|غلاف الدورة|قائمة الدورات)/i.test(recentContextText);
-    const explicitImageUploadIntent = images.length > 0 && imageActionRequested &&
-      (courseContextPresent || /(?:دورة|كورس|course)/i.test(lastUserText));
+    const recentContextText = messages.slice(-24).map(message => message.content).join("\n");
+    const explicitImageUploadIntent = isExplicitCourseImageUploadIntent(lastUserText, recentContextText, images.length);
     const explicitWriteIntent = directWriteIntent ||
       (affirmativeFollowUp && priorAssistantConfirmation && recentContextHasPlatformWrite) ||
       explicitImageUploadIntent;
@@ -800,10 +805,11 @@ export default {
     if (scope === "OUT_OF_SCOPE") {
       return sseTextResponse("هذا الطلب لا يبدو متعلقًا بمهام ED-ALL. أستطيع مساعدتك في إدارة الدورات والمحاضرات والاختبارات والطلاب والمدرسين والإشعارات والإحصاءات. ما المهمة التي تريد تنفيذها داخل المنصة؟", origin);
     }
-    let routeMessages = messages;
+    const semanticRoutingInstruction = "تم تقييم الرسالة الحالية مع سياق المحادثة، وهي ضمن نطاق ED-ALL أو متابعة محتملة لمهمة فيها. لا ترد برفض عام أو بعبارة أنك لا تساعد خارج المنصة. حدّد المهمة المطلوبة من السياق، استخدم الأدوات عند الحاجة، وإذا كانت معلومة واحدة فقط ناقصة فاسأل عنها مباشرة.";
+    let routeMessages = [messages[0], { role: "system", content: semanticRoutingInstruction }, ...messages.slice(1)];
     if (explicitImageUploadIntent) {
       const uploadInstruction = "طلب المستخدم الحالي هو رفع الصورة المرفقة وربطها كصورة للدورة التي أشار إليها في سياق المحادثة. هذا طلب تعديل صريح. استخرج الدورة من السياق أو استدعِ list_courses إذا احتجت معرفها، ثم استدعِ upload_course_image مع image_index=0 (أو رقم الصورة المقصودة بدءًا من صفر). لا تكتفِ بتحليل الصورة ولا ترفض الرفع.";
-      routeMessages = [messages[0], { role: "system", content: uploadInstruction }, ...messages.slice(1)];
+      routeMessages = [messages[0], { role: "system", content: semanticRoutingInstruction }, { role: "system", content: uploadInstruction }, ...messages.slice(1)];
     }
 
     try {
