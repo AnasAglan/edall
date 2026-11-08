@@ -26,13 +26,15 @@ function json(data: unknown, status = 200, origin = ""): Response {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const origin = request.headers.get("Origin") ?? "";
+    // The Supabase project URL is public configuration; keep a safe project-specific fallback.
+    const supabaseUrl = env.SUPABASE_URL || "https://iuaddjoofgrirzslzqfy.supabase.co";
     // Lightweight deployment check; it does not invoke the model or consume AI quota.
     if (request.method === "GET" && new URL(request.url).pathname === "/health") {
       return json({
         status: "ok",
         service: "edall-assistant",
-        configured: Boolean(env.SUPABASE_URL && env.SUPABASE_PUBLISHABLE_KEY),
-        hasSupabaseUrl: Boolean(env.SUPABASE_URL),
+        configured: Boolean(supabaseUrl && env.SUPABASE_PUBLISHABLE_KEY),
+        hasSupabaseUrl: Boolean(supabaseUrl),
         hasPublishableKey: Boolean(env.SUPABASE_PUBLISHABLE_KEY),
         aiBinding: Boolean(env.AI),
         model: MODEL,
@@ -53,7 +55,7 @@ export default {
     }
     if (request.method !== "POST") return json({ error: "Method not allowed" }, 405, origin);
     if (!ALLOWED_ORIGINS.has(origin)) return json({ error: "Origin not allowed" }, 403, origin);
-    if (!env.SUPABASE_URL || !env.SUPABASE_PUBLISHABLE_KEY) {
+    if (!supabaseUrl || !env.SUPABASE_PUBLISHABLE_KEY) {
       return json({ error: "Assistant service is not configured yet." }, 503, origin);
     }
 
@@ -65,7 +67,7 @@ export default {
     // Validate the user's Supabase session. Never trust a user ID or role supplied by the browser.
     let authResponse: Response;
     try {
-      authResponse = await fetch(new URL("/auth/v1/user", env.SUPABASE_URL), {
+      authResponse = await fetch(new URL("/auth/v1/user", supabaseUrl), {
         headers: {
           "apikey": env.SUPABASE_PUBLISHABLE_KEY,
           "Authorization": authorization,
