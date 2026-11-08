@@ -11081,7 +11081,7 @@ exam.questions.forEach((question, index) => {
   document.getElementById('edAsstClose').addEventListener('click',function(){toggle(false);});
   function add(k,t){var d=document.createElement('div');d.className='edAsstMsg '+k;d.textContent=t;log.appendChild(d);log.scrollTop=log.scrollHeight;return d;}
   async function token(){
-    var c=window.sb;if(!c||!c.auth)return null;
+    var c=(typeof sb!=='undefined'?sb:window.sb);if(!c||!c.auth)return null;
     var r=await c.auth.getSession(),s=r&&r.data&&r.data.session;
     if(s&&s.expires_at&&s.expires_at*1000-Date.now()<60000){var f=await c.auth.refreshSession();s=f&&f.data&&f.data.session;}
     return s?s.access_token:null;
