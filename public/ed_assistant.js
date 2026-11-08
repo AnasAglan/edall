@@ -100,11 +100,11 @@ form.addEventListener("submit",async e=>{
   const token=await sessionToken();if(!token)throw new Error("انتهت جلسة الدخول. سجّل الدخول مجددًا.");
   await ensureChat(prompt);await saveMessage("user",prompt,filesNow.length>0);history.push({role:"user",content:prompt});history=history.slice(-300);
   const images=await Promise.all(filesNow.map(async a=>({mimeType:a.file.type,name:a.file.name,data:await toBase64(a.file)})));
-  const res=await fetch(ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+token},body:JSON.stringify({messages:history.slice(-12),images})});
+  const res=await fetch(ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+token},body:JSON.stringify({conversationId,messages:history.slice(-12),images})});
   if(!res.ok){let d={};try{d=await res.json()}catch(_){}throw new Error(d.error||"تعذر إكمال الطلب ("+res.status+")")}
   const answer=await readResponse(res,bubble);
   history.push({role:"assistant",content:answer});history=history.slice(-300);
-  if(/(?:تم إنشاء الدورة والتحقق من حفظها|تم إنشاء المحاضرة وحفظها بنجاح|تم إنشاء الاختبار والتحقق من حفظه|تمت إضافة السؤال والتحقق من حفظه|تم حفظ الإشعار بنجاح)/.test(answer)){
+  if(/(?:تم إنشاء الدورة والتحقق من حفظها|تم إنشاء المحاضرة وحفظها بنجاح|تم إنشاء الاختبار والتحقق من حفظه|تمت إضافة السؤال والتحقق من حفظه|تم حفظ الإشعار بنجاح|تم رفع صورة الدورة وربطها بنجاح)/.test(answer)){
    if(typeof window.refreshPlatformData==="function"){
     const refreshed=await window.refreshPlatformData();
     if(!refreshed) append("a","تم تأكيد الحفظ في قاعدة البيانات، لكن تعذر تحديث عرض المنصة تلقائيًا. أعد فتح الصفحة أو حدّثها.",[],{error:true});
