@@ -36,6 +36,13 @@
       "when": 1793591236353,
       "tag": "0004_add_exam_drafts_cloud_sync",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794175565146,
+      "tag": "0005_assistant_chat_history",
+      "breakpoints": true
     }
   ]
 }
