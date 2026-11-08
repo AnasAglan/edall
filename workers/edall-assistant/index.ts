@@ -2,7 +2,7 @@ interface Env {
   AI: {
     run(model: string, input: { messages: Array<{ role: "system" | "user" | "assistant"; content: string }> }): Promise<{ response?: string }>;
   };
-  SUPABASE_URL: string;
+  SUPABASE_URL?: string;
   SUPABASE_PUBLISHABLE_KEY: string;
 }
 
@@ -77,6 +77,34 @@ export default {
       return json({ error: "Could not verify your session." }, 503, origin);
     }
     if (!authResponse.ok) return json({ error: "Your session is invalid or expired. Please sign in again." }, 401, origin);
+
+    // Enforce teacher/admin access on the server. Never trust roles sent by the browser.
+    let authUser: { id?: string };
+    try {
+      authUser = await authResponse.json() as typeof authUser;
+    } catch {
+      return json({ error: "Could not read the authenticated user." }, 401, origin);
+    }
+    if (!authUser.id) return json({ error: "Could not identify the authenticated user." }, 401, origin);
+
+    let roleResponse: Response;
+    try {
+      const rolesUrl = new URL("/rest/v1/user_roles", supabaseUrl);
+      rolesUrl.searchParams.set("select", "role");
+      rolesUrl.searchParams.set("user_id", `eq.${authUser.id}`);
+      roleResponse = await fetch(rolesUrl, {
+        headers: {
+          "apikey": env.SUPABASE_PUBLISHABLE_KEY,
+          "Authorization": authorization,
+        },
+      });
+    } catch {
+      return json({ error: "Could not verify your platform role." }, 503, origin);
+    }
+    if (!roleResponse.ok) return json({ error: "Could not verify your platform role. Please contact the administrator." }, 403, origin);
+    const roleRows = await roleResponse.json() as Array<{ role?: string }>;
+    const allowed = Array.isArray(roleRows) && roleRows.some(row => row.role === "admin" || row.role === "teacher");
+    if (!allowed) return json({ error: "ED-ALL Assistant is available to teachers and administrators only." }, 403, origin);
 
     let body: { messages?: Array<{ role?: string; content?: string }> };
     try {
