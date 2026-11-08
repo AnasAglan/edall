@@ -1,0 +1,10 @@
+name = "edall-assistant"
+main = "workers/edall-assistant/index.js"
+compatibility_date = "2026-11-08"
+workers_dev = true
+
+[ai]
+binding = "AI"
+
+[observability]
+enabled = true
