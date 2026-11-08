@@ -1725,6 +1725,23 @@ word-spacing: normal !important;
         }
 
     </style>
+
+<style id="edall-assistant-styles">
+#edallAssistantLauncher{position:fixed;bottom:22px;left:22px;z-index:99990;border:0;border-radius:999px;padding:12px 18px;background:var(--primary,#fc8019);color:#fff;font-weight:700;box-shadow:0 8px 28px #0005;cursor:pointer;display:none}
+#edallAssistantPanel{position:fixed;left:22px;bottom:82px;width:min(390px,calc(100vw - 28px));height:min(560px,calc(100vh - 115px));z-index:99991;background:var(--card,#222b3a);color:var(--text,#fff);border:1px solid #ffffff22;border-radius:16px;box-shadow:0 16px 48px #0008;display:none;overflow:hidden;direction:rtl;flex-direction:column}
+#edallAssistantPanel.open{display:flex}
+#edallAssistantPanel .edaa-head{display:flex;align-items:center;justify-content:space-between;padding:13px 15px;background:var(--bg-light,#1f2839);border-bottom:1px solid #ffffff18}
+#edallAssistantPanel .edaa-head button{background:transparent;color:inherit;border:0;font-size:20px;cursor:pointer}
+#edallAssistantMessages{padding:14px;overflow:auto;display:flex;flex:1;flex-direction:column;gap:10px}
+#edallAssistantMessages .edaa-msg{padding:10px 12px;border-radius:12px;max-width:90%;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.65;font-size:14px}
+#edallAssistantMessages .user{align-self:flex-start;background:var(--primary,#fc8019);color:white}
+#edallAssistantMessages .assistant{align-self:flex-end;background:var(--bg-light,#1f2839);color:var(--text,#fff)}
+#edallAssistantForm{display:flex;gap:8px;padding:12px;border-top:1px solid #ffffff18}
+#edallAssistantInput{min-width:0;flex:1;resize:none;max-height:110px;border:1px solid #ffffff25;border-radius:10px;background:var(--input-bg,#1c2433);color:var(--text,#fff);padding:10px;font:inherit}
+#edallAssistantSend{border:0;border-radius:10px;padding:0 15px;background:var(--primary,#fc8019);color:#fff;font-weight:700;cursor:pointer}
+#edallAssistantSend:disabled{opacity:.55;cursor:wait}
+@media(max-width:520px){#edallAssistantLauncher{left:14px;bottom:14px}#edallAssistantPanel{left:8px;bottom:70px;width:calc(100vw - 16px);height:min(70vh,560px)}}
+</style>
 </head>
 <body class="dark">
     <nav class="topbar" id="topbar">
@@ -3905,7 +3922,7 @@ window.triggerModalClose = function() {
         };
 
         let currentUser = null;
-        function _syncUser(){ try { window.currentUser = currentUser; } catch(e){} }
+        function _syncUser(){ try { window.currentUser = currentUser; if (window.edallAssistantSyncAccess) window.edallAssistantSyncAccess(currentUser); } catch(e){} }
         _syncUser();
         let users = [];
         let courses = [];
@@ -11043,5 +11060,89 @@ exam.questions.forEach((question, index) => {
 })();
 </script>
 
+
+<button id="edallAssistantLauncher" type="button" aria-label="فتح المساعد">✦ المساعد التعليمي</button>
+<section id="edallAssistantPanel" aria-label="ED-ALL Assistant">
+  <div class="edaa-head"><strong>ED-ALL Assistant</strong><button id="edallAssistantClose" type="button" aria-label="إغلاق">×</button></div>
+  <div id="edallAssistantMessages" aria-live="polite"><div class="edaa-msg assistant">مرحبًا! أنا مساعد ED-ALL. يمكنني مساعدتك في الشرح وإعداد الخطط والاختبارات والأنشطة التعليمية.</div></div>
+  <form id="edallAssistantForm"><textarea id="edallAssistantInput" rows="1" maxlength="6000" placeholder="اكتب سؤالك هنا..." required></textarea><button id="edallAssistantSend" type="submit">إرسال</button></form>
+</section>
+
+<script id="edall-assistant-client">
+(function(){
+  const endpoint = 'https://edall-assistant.anasaglan2011.workers.dev';
+  const launcher = document.getElementById('edallAssistantLauncher');
+  const panel = document.getElementById('edallAssistantPanel');
+  const close = document.getElementById('edallAssistantClose');
+  const form = document.getElementById('edallAssistantForm');
+  const input = document.getElementById('edallAssistantInput');
+  const send = document.getElementById('edallAssistantSend');
+  const messagesEl = document.getElementById('edallAssistantMessages');
+  if (!launcher || !panel || !form) return;
+  let history = [];
+  function addMessage(role, text){
+    const node = document.createElement('div');
+    node.className = 'edaa-msg ' + role;
+    node.textContent = text;
+    messagesEl.appendChild(node);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+  window.edallAssistantSyncAccess = function(user){
+    const roles = user && Array.isArray(user.roles) ? user.roles : [];
+    const allowed = !!user && !user.banned && (roles.includes('admin') || roles.includes('teacher'));
+    launcher.style.display = allowed ? 'block' : 'none';
+    if (!allowed) panel.classList.remove('open');
+  };
+  launcher.addEventListener('click', function(){ panel.classList.toggle('open'); if(panel.classList.contains('open')) input.focus(); });
+  close.addEventListener('click', function(){ panel.classList.remove('open'); });
+  form.addEventListener('submit', async function(event){
+    event.preventDefault();
+    const prompt = input.value.trim();
+    if (!prompt || send.disabled) return;
+    if (!window.currentUser || !Array.isArray(window.currentUser.roles) || !(window.currentUser.roles.includes('admin') || window.currentUser.roles.includes('teacher'))) {
+      addMessage('assistant','هذه الخدمة متاحة للمعلمين والإدارة فقط.');
+      return;
+    }
+    let session;
+    try {
+      session = await ensureFreshSession();
+    } catch(e) {}
+    if (!session || !session.access_token) {
+      addMessage('assistant','انتهت جلسة الدخول. سجّل الدخول مجددًا ثم حاول.');
+      return;
+    }
+    addMessage('user', prompt);
+    history.push({role:'user',content:prompt});
+    input.value = '';
+    send.disabled = true;
+    send.textContent = '...';
+    try {
+      const response = await fetch(endpoint, {
+        method:'POST',
+        headers:{
+          'Content-Type':'application/json',
+          'Authorization':'Bearer ' + session.access_token,
+          'apikey':SUPABASE_ANON_KEY
+        },
+        body:JSON.stringify({messages:history})
+      });
+      const data = await response.json().catch(()=>({}));
+      if (!response.ok) throw new Error(data.error || 'تعذر الاتصال بالمساعد.');
+      const answer = typeof data.answer === 'string' ? data.answer : 'لم يصل رد مفهوم من المساعد.';
+      history.push({role:'assistant',content:answer});
+      if (history.length > 12) history = history.slice(-12);
+      addMessage('assistant',answer);
+    } catch(error) {
+      history.pop();
+      addMessage('assistant',error.message || 'حدث خطأ. حاول مرة أخرى.');
+    } finally {
+      send.disabled = false;
+      send.textContent = 'إرسال';
+      input.focus();
+    }
+  });
+  window.edallAssistantSyncAccess(window.currentUser || null);
+})();
+</script>
 </body>
 </html>
