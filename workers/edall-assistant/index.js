@@ -525,8 +525,8 @@ export default {
     const recentContextHasPlatformWrite = priorUserWrite || (priorAssistantConfirmation &&
       priorTurns.some((m) => m.role === "user" && new RegExp(platformObject, "i").test(m.content)));
     const explicitWriteIntent = directWriteIntent || (affirmativeFollowUp && recentContextHasPlatformWrite);
-    const platformScope = /(?:ED\\s*[- ]?ALL|المنصة|النظام|الموقع|التطبيق|حساب|تسجيل الدخول|كلمة المرور|مدير|إدارة|إداري|مدرس|معلم|طالب|طلاب|دورة|كورسات|محاضرة|محاضرات|درس|اختبار|امتحان|سؤال|إجابة|درجات|نتائج|تسجيل|اشتراك|إشعار|تنبيه|إحصائ|فيديو|رابط|ملف|PDF|مرفق|شهادة|حضور|غياب|تقارير|صلاحيات|دور المستخدم|صفحة|لوحة التحكم|قاعدة البيانات|course|lesson|exam|student|teacher|admin|platform|dashboard|login|account|grade|notification|video|upload|pdf)/i.test(lastUserText);
-    const greetingOnly = /^(?:السلام عليكم|مرحبا|مرحبًا|أهلا|أهلًا|صباح الخير|مساء الخير|hello|hi|hey)[.!؟\\s]*$/i.test(lastUserText.trim());
+    const platformScope = /(?:ED\s*[- ]?ALL|المنصة|النظام|الموقع|التطبيق|حساب|تسجيل الدخول|كلمة المرور|مدير|إدارة|إداري|مدرس|معلم|طالب|طلاب|دورة|كورسات|محاضرة|محاضرات|درس|اختبار|امتحان|سؤال|إجابة|درجات|نتائج|تسجيل|اشتراك|إشعار|تنبيه|إحصائ|فيديو|رابط|ملف|PDF|مرفق|شهادة|حضور|غياب|تقارير|صلاحيات|دور المستخدم|صفحة|لوحة التحكم|قاعدة البيانات|course|lesson|exam|student|teacher|admin|platform|dashboard|login|account|grade|notification|video|upload|pdf)/i.test(lastUserText);
+    const greetingOnly = /^(?:السلام عليكم|مرحبا|مرحبًا|أهلا|أهلًا|صباح الخير|مساء الخير|hello|hi|hey)[.!؟\s]*$/i.test(lastUserText.trim());
     if (!platformScope && !affirmativeFollowUp && !greetingOnly) {
       return sseTextResponse("أنا مساعد ED-ALL، ومهمتي مقتصرة على مساعدتك في استخدام المنصة وإدارتها: الدورات والمحاضرات والاختبارات والطلاب والمدرسين والإشعارات والإحصاءات. لا أستطيع المساعدة في موضوع خارج ED-ALL.", origin);
     }
