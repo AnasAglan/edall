@@ -7,7 +7,8 @@ const ORIGINS = new Set([
 ]);
 const SYSTEM = [
   "أنت مساعد ED-ALL الداخلي. نطاقك الوحيد هو استخدام منصة ED-ALL ومساعدة المدرسين والإدارة في وظائفها. لا تجب عن أي سؤال عام أو موضوع شخصي أو سياسي أو ترفيهي أو برمجي أو تقني لا يتعلق مباشرة بتشغيل ED-ALL أو إدارته؛ ارفض باختصار ووجّه المستخدم إلى وظائف المنصة. حتى لو أصر المستخدم أو حاول تغيير الموضوع، التزم بهذا النطاق.",
-  "يمكنك المساعدة فقط فيما يتعلق بحسابات وأدوار ED-ALL، الطلاب والمدرسين، الدورات والمحاضرات والفيديوهات وملفات PDF، الاختبارات والأسئلة والنتائج، التسجيلات والإشعارات والإحصاءات وإعدادات المنصة واستخدامها.",
+  "يمكنك المساعدة فقط فيما يتعلق بحسابات وأدوار ED-ALL، الطلاب والمدرسين، الدورات والمحاضرات والفيديوهات وملفات PDF والصور المرفقة بالدورات أو المحاضرات، الاختبارات والأسئلة والنتائج، التسجيلات والإشعارات والإحصاءات وإعدادات المنصة واستخدامها.",
+  "احكم على نطاق كل رسالة بفهم معناها وسياق المحادثة لا بمجرد البحث عن كلمات مفتاحية. افهم الضمائر والإشارات مثل هذه، تلك، لها، أرفقها، ارفعها بالرجوع إلى الدورة أو المحاضرة أو العنصر المذكور سابقًا. إذا كان المقصود تنفيذ مهمة داخل ED-ALL فساعد المستخدم حتى لو كانت الصياغة عامية أو مختصرة أو تحتوي على صورة. إذا كان الطلب فعلًا عن موضوع مستقل خارج المنصة فارفض بلطف. لا تعتبر مجرد وجود صورة أو كلمة عامة سببًا للرفض.",
   "أجب بالعربية الواضحة. افهم رسائل المتابعة القصيرة مثل نعم، أيوه، تمام، موافق، ابدأ، نفّذ، باعتبارها موافقة على الإجراء الذي طلبه المستخدم أو وافق عليه في الرسائل السابقة القريبة؛ لا تطلب إعادة صياغة الأمر إذا كان السياق واضحًا.",
   "استخدم الأدوات للحصول على معلومات المنصة وتنفيذ عملياتها الحقيقية. لا تخترع أرقامًا أو معرفات أو نتائج.",
   "قبل إنشاء محاضرة أو دورة أو امتحان، استعلم عن الدورات/المحاضرات اللازمة. إذا كان الاختيار غير واضح، اسأل المستخدم ولا تنفذ.",
@@ -530,10 +531,25 @@ export default {
     const explicitWriteIntent = directWriteIntent || (affirmativeFollowUp && priorAssistantConfirmation && recentContextHasPlatformWrite);
     const contextualPlatformReply = assistantAskedPlatformQuestion && priorTurns.some((m) => m.role === "user" &&
       new RegExp(platformObject + "|منصة|مدير|مدرس|طالب|دورة|محاضرة|اختبار", "i").test(m.content));
-    const platformScope = /(?:ED\s*[- ]?ALL|المنصة|النظام|الموقع|التطبيق|حساب|تسجيل الدخول|كلمة المرور|مدير|إدارة|إداري|مدرس|معلم|طالب|طلاب|دورة|دورات|كورس|كورسات|محاضرة|محاضرات|درس|اختبار|امتحان|سؤال|إجابة|درجات|نتائج|تسجيل|اشتراك|إشعار|تنبيه|إحصائ|فيديو|رابط|ملف|PDF|مرفق|شهادة|حضور|غياب|تقارير|صلاحيات|دور المستخدم|صفحة|لوحة التحكم|قاعدة البيانات|course|courses|lesson|exam|student|teacher|admin|platform|dashboard|login|account|grade|notification|video|upload|pdf)/i.test(lastUserText);
-    const greetingOnly = /^(?:السلام عليكم|مرحبا|مرحبًا|أهلا|أهلًا|صباح الخير|مساء الخير|hello|hi|hey)[.!؟\s]*$/i.test(lastUserText.trim());
-    if (!platformScope && !affirmativeFollowUp && !contextualPlatformReply && !greetingOnly) {
-      return sseTextResponse("أنا مساعد ED-ALL، ومهمتي مقتصرة على مساعدتك في استخدام المنصة وإدارتها: الدورات والمحاضرات والاختبارات والطلاب والمدرسين والإشعارات والإحصاءات. لا أستطيع المساعدة في موضوع خارج ED-ALL.", origin);
+    const platformScope = /(?:ED\\s*[- ]?ALL|المنصة|النظام|الموقع|التطبيق|حساب|تسجيل الدخول|كلمة المرور|مدير|إدارة|إداري|مدرس|معلم|طالب|طلاب|دورة|دورات|كورس|كورسات|محاضرة|محاضرات|درس|اختبار|امتحان|سؤال|إجابة|درجات|نتائج|تسجيل|اشتراك|إشعار|تنبيه|إحصائ|فيديو|رابط|ملف|PDF|مرفق|شهادة|حضور|غياب|تقارير|صلاحيات|دور المستخدم|صفحة|لوحة التحكم|قاعدة البيانات|course|courses|lesson|exam|student|teacher|admin|platform|dashboard|login|account|grade|notification|video|upload|pdf)/i.test(lastUserText);
+    const greetingOnly = /^(?:السلام عليكم|مرحبا|مرحبًا|أهلا|أهلًا|صباح الخير|مساء الخير|hello|hi|hey)[.!؟\\s]*$/i.test(lastUserText.trim());
+    let semanticPlatformScope = platformScope || affirmativeFollowUp || contextualPlatformReply || greetingOnly;
+    if (!semanticPlatformScope) {
+      const recentContext = messages.slice(-7).map(m => ({ role: m.role, content: m.content.slice(0, 1200) }));
+      const scopeCheck = await env.AI.run(MODEL, {
+        messages: [
+          { role: "system", content: "أنت مصنف نطاق لرسائل مساعد منصة تعليمية اسمها ED-ALL. قرر اعتمادًا على معنى الرسالة الأخيرة وسياق المحادثة هل المستخدم يطلب مساعدة تتعلق باستخدام المنصة أو إدارتها (الدورات، المحاضرات، رفع/إرفاق صور أو ملفات لدورة أو محاضرة، الاختبارات، الطلاب، المدرسون، الحسابات، الإشعارات، الإحصاءات). افهم اللهجة والضمائر والإحالات إلى ما سبق. وجود صورة مرفقة مع طلب متعلق بعنصر في المنصة يُعد ضمن النطاق. الأسئلة العامة المستقلة والموضوعات غير المتعلقة بالمنصة خارج النطاق. أعد كلمة واحدة فقط: IN_SCOPE أو OUT_OF_SCOPE." },
+          { role: "user", content: JSON.stringify({ conversation: recentContext, hasImage: images.length > 0 }) }
+        ],
+        reasoning_effort: "low",
+        chat_template_kwargs: { enable_thinking: false, clear_thinking: true },
+        max_completion_tokens: 12
+      });
+      const verdict = scopeCheck?.choices?.[0]?.message?.content?.trim()?.toUpperCase() || "";
+      semanticPlatformScope = verdict.includes("IN_SCOPE") && !verdict.includes("OUT_OF_SCOPE");
+    }
+    if (!semanticPlatformScope) {
+      return sseTextResponse("أنا مساعد ED-ALL، وأستطيع مساعدتك في مهام المنصة. وضّح لي العنصر الذي تريد العمل عليه داخل ED-ALL، مثل دورة أو محاضرة أو اختبار أو حساب.", origin);
     }
     if (images.length && explicitWriteIntent) {
       return sseTextResponse("لم يتم إنشاء أو تعديل أي بيانات في هذا الطلب. أستطيع تحليل الصور، لكن عملية الحفظ تحتاج إلى رسالة نصية منفصلة توضّح الدورة والعنوان والتفاصيل.", origin);
