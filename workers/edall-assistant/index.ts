@@ -32,6 +32,8 @@ export default {
         status: "ok",
         service: "edall-assistant",
         configured: Boolean(env.SUPABASE_URL && env.SUPABASE_PUBLISHABLE_KEY),
+        hasSupabaseUrl: Boolean(env.SUPABASE_URL),
+        hasPublishableKey: Boolean(env.SUPABASE_PUBLISHABLE_KEY),
         aiBinding: Boolean(env.AI),
         model: MODEL,
       }, 200, origin);
