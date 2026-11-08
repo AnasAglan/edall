@@ -512,8 +512,8 @@ export default {
 
     const images = Array.isArray(body.images) ? body.images : [];
     const lastUserText = messages.at(-1).content;
-    const writeVerb = "(?:أنشئ|انشئ|تنشئ|إنشاء|انشاء|أضف|اضف|أضيف|اضيف|ضيف|تضيف|إضافة|اضافة|سجّل|سجل|اعمل|تعمل|نفذ|نفّذ|حضّر|حضر|جهّز|جهز|عايزك?|اريدك?|أريدك?|create|add|make)";
-    const platformObject = "(?:محاضرة|درس|دورة|اختبار|سؤال|إشعار|اشعار|lesson|course|exam|question|notification)";
+    const writeVerb = "(?:أنشئ|انشئ|انشء|تنشئ|تنشء|تنشأ|إنشاء|انشاء|إنشئ|أُنشئ|أضف|اضف|أضيف|اضيف|ضيف|تضيف|إضافة|اضافة|سجّل|سجل|اعمل|تعمل|نفذ|نفّذ|حضّر|حضر|جهّز|جهز|عايزك?|اريدك?|أريدك?|create|add|make)";
+    const platformObject = "(?:محاضرة|درس|دورة|دورات|كورس|كورسا|كورسًا|كورسات|اختبار|امتحان|سؤال|إشعار|اشعار|lesson|course|courses|exam|question|notification)";
     const writePattern = new RegExp(writeVerb + "\\s*.*" + platformObject + "|" + platformObject + ".*" + writeVerb, "i");
     const instructionalPattern = /(?:كيف|كيفية|طريقة|خطوات|ما الذي أحتاج|ماذا أحتاج|how do i|how to|steps to)/i;
     const directWriteIntent = writePattern.test(lastUserText) && !instructionalPattern.test(lastUserText);
@@ -530,7 +530,7 @@ export default {
     const explicitWriteIntent = directWriteIntent || (affirmativeFollowUp && priorAssistantConfirmation && recentContextHasPlatformWrite);
     const contextualPlatformReply = assistantAskedPlatformQuestion && priorTurns.some((m) => m.role === "user" &&
       new RegExp(platformObject + "|منصة|مدير|مدرس|طالب|دورة|محاضرة|اختبار", "i").test(m.content));
-    const platformScope = /(?:ED\s*[- ]?ALL|المنصة|النظام|الموقع|التطبيق|حساب|تسجيل الدخول|كلمة المرور|مدير|إدارة|إداري|مدرس|معلم|طالب|طلاب|دورة|كورسات|محاضرة|محاضرات|درس|اختبار|امتحان|سؤال|إجابة|درجات|نتائج|تسجيل|اشتراك|إشعار|تنبيه|إحصائ|فيديو|رابط|ملف|PDF|مرفق|شهادة|حضور|غياب|تقارير|صلاحيات|دور المستخدم|صفحة|لوحة التحكم|قاعدة البيانات|course|lesson|exam|student|teacher|admin|platform|dashboard|login|account|grade|notification|video|upload|pdf)/i.test(lastUserText);
+    const platformScope = /(?:ED\s*[- ]?ALL|المنصة|النظام|الموقع|التطبيق|حساب|تسجيل الدخول|كلمة المرور|مدير|إدارة|إداري|مدرس|معلم|طالب|طلاب|دورة|دورات|كورس|كورسات|محاضرة|محاضرات|درس|اختبار|امتحان|سؤال|إجابة|درجات|نتائج|تسجيل|اشتراك|إشعار|تنبيه|إحصائ|فيديو|رابط|ملف|PDF|مرفق|شهادة|حضور|غياب|تقارير|صلاحيات|دور المستخدم|صفحة|لوحة التحكم|قاعدة البيانات|course|courses|lesson|exam|student|teacher|admin|platform|dashboard|login|account|grade|notification|video|upload|pdf)/i.test(lastUserText);
     const greetingOnly = /^(?:السلام عليكم|مرحبا|مرحبًا|أهلا|أهلًا|صباح الخير|مساء الخير|hello|hi|hey)[.!؟\s]*$/i.test(lastUserText.trim());
     if (!platformScope && !affirmativeFollowUp && !contextualPlatformReply && !greetingOnly) {
       return sseTextResponse("أنا مساعد ED-ALL، ومهمتي مقتصرة على مساعدتك في استخدام المنصة وإدارتها: الدورات والمحاضرات والاختبارات والطلاب والمدرسين والإشعارات والإحصاءات. لا أستطيع المساعدة في موضوع خارج ED-ALL.", origin);
