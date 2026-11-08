@@ -26,6 +26,16 @@ function json(data: unknown, status = 200, origin = ""): Response {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const origin = request.headers.get("Origin") ?? "";
+    // Lightweight deployment check; it does not invoke the model or consume AI quota.
+    if (request.method === "GET" && new URL(request.url).pathname === "/health") {
+      return json({
+        status: "ok",
+        service: "edall-assistant",
+        configured: Boolean(env.SUPABASE_URL && env.SUPABASE_PUBLISHABLE_KEY),
+        aiBinding: Boolean(env.AI),
+        model: MODEL,
+      }, 200, origin);
+    }
     if (request.method === "OPTIONS") {
       if (!ALLOWED_ORIGINS.has(origin)) return new Response(null, { status: 403 });
       return new Response(null, {
