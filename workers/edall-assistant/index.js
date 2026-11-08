@@ -508,7 +508,7 @@ export default {
 
     const images = Array.isArray(body.images) ? body.images : [];
     const lastUserText = messages.at(-1).content;
-    const writeIntent = /(?:أنشئ|انشئ|إنشاء|انشاء|أضف|اضف|إضافة|اضافة|سجّل|سجل|اعمل|حضّر|حضر|جهّز|جهز|عايزك?|اريدك?|أريدك?|create|add)\s*.*(?:محاضرة|درس|دورة|اختبار|سؤال|إشعار|اشعار|lesson|course|exam|question|notification)|(?:محاضرة|درس|دورة|اختبار|سؤال|إشعار|اشعار|lesson|course|exam|question|notification).*\s*(?:أنشئ|انشئ|إنشاء|انشاء|أضف|اضف|إضافة|اضافة|سجّل|سجل|اعمل|حضّر|حضر|جهّز|جهز|عايزك?|اريدك?|أريدك?|create|add)/i.test(lastUserText);
+    const writeIntent = /(?:أنشئ|انشئ|تنشئ|إنشاء|انشاء|أضف|اضف|أضيف|اضيف|ضيف|تضيف|إضافة|اضافة|سجّل|سجل|اعمل|تعمل|نفذ|نفّذ|حضّر|حضر|جهّز|جهز|عايزك?|اريدك?|أريدك?|create|add|make)\s*.*(?:محاضرة|درس|دورة|اختبار|سؤال|إشعار|اشعار|lesson|course|exam|question|notification)|(?:محاضرة|درس|دورة|اختبار|سؤال|إشعار|اشعار|lesson|course|exam|question|notification).*\s*(?:أنشئ|انشئ|تنشئ|إنشاء|انشاء|أضف|اضف|أضيف|اضيف|ضيف|تضيف|إضافة|اضافة|سجّل|سجل|اعمل|تعمل|نفذ|نفّذ|حضّر|حضر|جهّز|جهز|عايزك?|اريدك?|أريدك?|create|add|make)/i.test(lastUserText);
     const instructionalQuestion = /(?:كيف|كيفية|طريقة|خطوات|ما الذي أحتاج|ماذا أحتاج|how do i|how to|steps to)/i.test(lastUserText);
     const explicitWriteIntent = writeIntent && !instructionalQuestion;
     if (images.length && explicitWriteIntent) {
@@ -616,7 +616,7 @@ export default {
         }
       }
 
-      const falseSuccessClaim = /(?:تم(?:ت)?\s*(?:إنشاء|انشاء|إضافة|اضافة|حفظ|إرسال|تجهيز)|أنشأت|انشأت|أضفت|اضفت|جهزت|أنجزت|تم بنجاح|created successfully|successfully created|has been created|has been added)/i.test(finalAssistantText);
+      const falseSuccessClaim = /(?:تم(?:ت)?\s*(?:إنشاء|انشاء|إضافة|اضافة|حفظ|إرسال|تجهيز|إعداد)|أنشأت|انشأت|أضفت|اضفت|جهزت|أعددت|أنجزت|أكملت|اكتمل(?:ت)?|أصبحت.{0,20}(?:جاهز|مضاف|محفوظ)|جاهز(?:ة)?\s*(?:للاستخدام|الآن)?|تم بنجاح|created|added|successfully created|has been created|has been added|i have created|i created)/i.test(finalAssistantText);
       if (explicitWriteIntent && falseSuccessClaim && completedWrites.length === 0) {
         console.warn("ED-ALL assistant blocked an unverified write-success claim.");
         return sseTextResponse("لم يتم إنشاء أو حفظ أي بيانات. لم تُنفذ أداة الحفظ بنجاح في هذا الطلب، لذلك لن أؤكد نجاح العملية. أرسل اسم الدورة وعنوان المحاضرة والتفاصيل المطلوبة لأتمكن من تنفيذها والتحقق منها.", origin);
