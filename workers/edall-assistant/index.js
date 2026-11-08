@@ -416,6 +416,7 @@ export default {
     }
     if (messages.at(-1).role !== "user") return json({ error: "آخر رسالة يجب أن تكون من المستخدم." }, 400, origin);
 
+    const images = Array.isArray(body.images) ? body.images : [];
     const lastUserText = messages.at(-1).content;
   if (!images.length && /(?:إحصائيات|احصائيات|إحصاء|احصاء|عدد المستخدمين|عدد الطلاب|عدد المعلمين|عدد الدورات|عدد المحاضرات)/i.test(lastUserText)) {
     if (!roles.includes("admin")) return json({ error: "إحصاءات المنصة الشاملة متاحة للمدير فقط." }, 403, origin);
@@ -494,8 +495,8 @@ export default {
         }
       }
 
-      const output = await env.AI.run(images ? VISION_MODEL : MODEL, {
-        messages: images ? aiMessages : finalMessages,
+      const output = await env.AI.run(images.length ? VISION_MODEL : MODEL, {
+        messages: images.length ? aiMessages : finalMessages,
         stream: true,
         max_tokens: 2400,
         ...(images ? {} : {
