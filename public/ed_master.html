@@ -11073,7 +11073,11 @@ exam.questions.forEach((question, index) => {
   var ENDPOINT='https://edall-assistant.anasaglan2011.workers.dev';
   var btn=document.getElementById('edAsstBtn'),panel=document.getElementById('edAsstPanel'),log=document.getElementById('edAsstLog'),
       form=document.getElementById('edAsstForm'),input=document.getElementById('edAsstInput'),send=document.getElementById('edAsstSend');
-  function allowed(){var u=window.currentUser;return !!(u&&u.id&&Array.isArray(u.roles)&&(u.roles.indexOf('admin')>-1||u.roles.indexOf('teacher')>-1));}
+  function allowed(){
+    var u=null;
+    try{u=window.currentUser||(typeof currentUser!=='undefined'?currentUser:null);}catch(e){u=null;}
+    return !!(u&&u.id&&Array.isArray(u.roles)&&(u.roles.indexOf('admin')>-1||u.roles.indexOf('teacher')>-1));
+  }
   function sync(){var ok=allowed();btn.style.display=ok?'block':'none';if(!ok&&panel.classList.contains('open'))toggle(false);}
   setInterval(sync,1500);sync();
   function toggle(o){panel.classList.toggle('open',o);btn.setAttribute('aria-expanded',String(o));if(o){input.focus();if(!log.children.length)add('a','مرحباً! كيف يمكنني مساعدتك اليوم؟');}else btn.focus();}
