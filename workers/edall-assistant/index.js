@@ -508,7 +508,7 @@ export default {
 
     const images = Array.isArray(body.images) ? body.images : [];
     const lastUserText = messages.at(-1).content;
-    const writeIntent = /(?:أنشئ|انشئ|إنشاء|انشاء|أضف|اضف|إضافة|اضافة|سجّل|سجل|اعمل|حضّر|حضر|جهّز|جهز|create|add)\\s*.*(?:محاضرة|درس|دورة|اختبار|سؤال|إشعار|اشعار|lesson|course|exam|question|notification)|(?:محاضرة|درس|دورة|اختبار|سؤال|إشعار|اشعار|lesson|course|exam|question|notification).*\\s*(?:أنشئ|انشئ|إنشاء|انشاء|أضف|اضف|إضافة|اضافة|سجّل|سجل|اعمل|حضّر|حضر|جهّز|جهز|create|add)/i.test(lastUserText);
+    const writeIntent = /(?:أنشئ|انشئ|إنشاء|انشاء|أضف|اضف|إضافة|اضافة|سجّل|سجل|اعمل|حضّر|حضر|جهّز|جهز|create|add)\s*.*(?:محاضرة|درس|دورة|اختبار|سؤال|إشعار|اشعار|lesson|course|exam|question|notification)|(?:محاضرة|درس|دورة|اختبار|سؤال|إشعار|اشعار|lesson|course|exam|question|notification).*\s*(?:أنشئ|انشئ|إنشاء|انشاء|أضف|اضف|إضافة|اضافة|سجّل|سجل|اعمل|حضّر|حضر|جهّز|جهز|create|add)/i.test(lastUserText);
     if (images.length && writeIntent) {
       return sseTextResponse("لم يتم إنشاء أو تعديل أي بيانات في هذا الطلب. أستطيع تحليل الصور، لكن عملية الحفظ تحتاج إلى رسالة نصية منفصلة توضّح الدورة والعنوان والتفاصيل.", origin);
     }
@@ -611,7 +611,7 @@ export default {
         }
       }
 
-      const falseSuccessClaim = /(?:تم(?:ت)?\\s*(?:إنشاء|انشاء|إضافة|اضافة|حفظ|إرسال|تجهيز)|أنشأت|انشأت|أضفت|اضفت|جهزت|أنجزت|تم بنجاح|created successfully|successfully created|has been created|has been added)/i.test(finalAssistantText);
+      const falseSuccessClaim = /(?:تم(?:ت)?\s*(?:إنشاء|انشاء|إضافة|اضافة|حفظ|إرسال|تجهيز)|أنشأت|انشأت|أضفت|اضفت|جهزت|أنجزت|تم بنجاح|created successfully|successfully created|has been created|has been added)/i.test(finalAssistantText);
       if (writeIntent && falseSuccessClaim && completedWrites.length === 0) {
         console.warn("ED-ALL assistant blocked an unverified write-success claim.");
         return sseTextResponse("لم يتم إنشاء أو حفظ أي بيانات. لم تُنفذ أداة الحفظ بنجاح في هذا الطلب، لذلك لن أؤكد نجاح العملية. أرسل اسم الدورة وعنوان المحاضرة والتفاصيل المطلوبة لأتمكن من تنفيذها والتحقق منها.", origin);
