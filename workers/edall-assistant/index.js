@@ -435,7 +435,7 @@ export default {
         "• الاختبارات: " + stats.exams,
         "• محاولات الاختبار: " + stats.exam_attempts
       ].join("\n");
-      return new Response("data: " + JSON.stringify({ response: lines }) + "\\n\\ndata: [DONE]\\n\\n", {
+      return new Response("data: " + JSON.stringify({ response: lines }) + "\n\ndata: [DONE]\n\n", {
         status: 200,
         headers: streamHeaders(origin)
       });
