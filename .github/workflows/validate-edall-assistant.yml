@@ -8,7 +8,7 @@ on:
       - "public/ed_assistant.js"
       - ".github/workflows/validate-edall-assistant.yml"
   push:
-    branches: [feat/full-platform-assistant-management]
+    branches: [feat/assistant-account-onboarding]
     paths:
       - "workers/edall-assistant/**"
       - "public/ed_assistant.js"
