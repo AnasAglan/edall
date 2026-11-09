@@ -6,14 +6,16 @@ on:
     paths:
       - "workers/edall-assistant/**"
       - "wrangler.assistant.toml"
+      - "scripts/deploy-edall-assistant.mjs"
       - "public/ed_assistant.js"
       - "supabase/functions/admin-delete-user/**"
       - ".github/workflows/validate-edall-assistant.yml"
   push:
-    branches: [feat/assistant-student-engagement-and-notifications]
+    branches: [main, feat/assistant-student-engagement-and-notifications]
     paths:
       - "workers/edall-assistant/**"
       - "wrangler.assistant.toml"
+      - "scripts/deploy-edall-assistant.mjs"
       - "public/ed_assistant.js"
       - "supabase/functions/admin-delete-user/**"
       - ".github/workflows/validate-edall-assistant.yml"
@@ -32,17 +34,27 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      - name: Check Worker and assistant UI syntax
+      - name: Check Worker, deploy helper, and assistant UI syntax
         run: |
           node --check workers/edall-assistant/index.js
+          node --check scripts/deploy-edall-assistant.mjs
           node --check public/ed_assistant.js
           deno check supabase/functions/admin-delete-user/index.ts
+      - name: Verify deploy helper refuses a missing build secret
+        run: |
+          set +e
+          output="$(env -u GEMINI_API_KEY node scripts/deploy-edall-assistant.mjs 2>&1)"
+          status=$?
+          set -e
+          test "$status" -ne 0
+          echo "$output" | grep -q "Missing required Cloudflare Build secret: GEMINI_API_KEY"
       - name: Verify assistant tool routing and write coverage
         run: |
           node <<'NODE'
           const fs = require('node:fs');
           const source = fs.readFileSync('workers/edall-assistant/index.js', 'utf8');
           const assistantConfig = fs.readFileSync('wrangler.assistant.toml', 'utf8');
+          const deployHelper = fs.readFileSync('scripts/deploy-edall-assistant.mjs', 'utf8');
           const geminiHelper = source.slice(source.indexOf('async function runAssistantModel'), source.indexOf('async function classifyExplicitWriteIntent'));
           if (!geminiHelper.includes('compatibleOptions.stream === true') || !geminiHelper.includes('return response.body')) {
             throw new Error('Gemini streaming responses must return the response body stream.');
@@ -52,6 +64,9 @@ jobs:
           }
           if (!assistantConfig.includes('GEMINI_API_KEY')) {
             throw new Error('GEMINI_API_KEY must be declared as a required Worker secret.');
+          }
+          for (const required of ['process.env.GEMINI_API_KEY', '--secrets-file', 'mode: 0o600', 'rmSync(secretsFile']) {
+            if (!deployHelper.includes(required)) throw new Error('Secure deploy helper requirement missing: ' + required);
           }
           const deletion = fs.readFileSync('supabase/functions/admin-delete-user/index.ts', 'utf8');
           for (const required of ['auth.admin.deleteUser', 'has_role', 'created_by', 'wallet_transactions', 'targetRoles.includes("admin")', 'verified: true']) {
