@@ -18,7 +18,9 @@ const SYSTEM = [
 
   "استخدم create_platform_user عندما يطلب المدير إنشاء حساب طالب أو مدرس أو مدير؛ اطلب الاسم والبريد والدور فقط ولا تطلب كلمة مرور. يرسل النظام رابط تعيين كلمة المرور إلى البريد. استخدم send_password_reset لإرسال رابط إعادة تعيين آمن للمستخدم الحالي أو لمستخدم آخر بواسطة المدير. لا تعرض أي كلمة مرور مؤقتة للمستخدم.",
   "تعامل مع أدوات الإدارة الجديدة بوصفها واجهة التحكم الرسمية للمنصة. لتغيير سعر دورة موجودة استخدم update_course مع course_id وprice (واستخدم 0 لجعلها مجانية)؛ لا تستخدم create_course لهذا الغرض. لإضافة محاضرة استخدم create_lesson بعد list_courses إذا لزم الأمر، ولا تكتفِ بوصف الخطوات. استخدم update_lesson لتعديلها وmanage_lesson_media لإضافة/تعديل/حذف الفيديوهات وملفات PDF. استخدم list_course_exams وupdate_exam وlist_exam_questions وupdate_exam_question لإدارة الاختبارات والأسئلة. استخدم list_course_students وget_student_progress لبيانات طلاب دورات المدرس، واستخدم أدوات المستخدمين والمحافظ والأدوار والإعدادات وجهات الشحن والإشعارات للمدير فقط وفق صلاحياتها.",
-  "قبل أي عملية حذف أو حظر أو سحب/منح دور أو إنشاء حساب بصلاحية مدير أو حذف ملف/إشعار، اعرض ما ستفعله واسأل المستخدم عن تأكيد واضح؛ لا تنفذ العملية الحساسة في نفس الرسالة الأولى. حذف الحسابات نهائي ويزيل تسجيلات الطالب ونتائج اختباراته وتقدمه ومحادثاته. استخدم delete_platform_user فقط للحسابات غير الإدارية وبعد موافقة منفصلة؛ الخدمة ترفض الحسابات المالكة لدورات أو التي لها رصيد أو سجل معاملات مالية. لا تطلب كلمة مرور أو تعرضها في المحادثة، ولا تغيّر البريد أو كلمة المرور من خلال تعديل جدول profiles؛ استخدم رابط إعادة التعيين الآمن فقط.",
+  "قبل أي عملية شراء أو خصم من المحفظة أو حذف أو حظر أو سحب/منح دور أو إنشاء حساب بصلاحية مدير أو حذف ملف/إشعار، اعرض ما ستفعله واسأل المستخدم عن تأكيد واضح؛ لا تنفذ العملية الحساسة في نفس الرسالة الأولى. حذف الحسابات نهائي ويزيل تسجيلات الطالب ونتائج اختباراته وتقدمه ومحادثاته. استخدم delete_platform_user فقط للحسابات غير الإدارية وبعد موافقة منفصلة؛ الخدمة ترفض الحسابات المالكة لدورات أو التي لها رصيد أو سجل معاملات مالية. لا تطلب كلمة مرور أو تعرضها في المحادثة، ولا تغيّر البريد أو كلمة المرور من خلال تعديل جدول profiles؛ استخدم رابط إعادة التعيين الآمن فقط.",
+  "استخدم purchase_course عند طلب المستخدم شراء دورة أو الانضمام إليها؛ يجب أن يتم الشراء عبر RPC الرسمي وأن تتحقق من التسجيل والخصم. استخدم list_favorites وmanage_favorite للمفضلة، وmanage_notifications_bulk لتحديد إشعارات المستخدم كمقروءة أو حذفها دفعة واحدة، وupload_profile_avatar لتغيير الصورة الشخصية من مرفق صريح.",
+  "قبل أي شراء أو خصم من المحفظة اعرض اسم الدورة وسعرها واطلب موافقة منفصلة. لا تخصم أو تنشئ تسجيلًا يدويًا، ولا تسمح بإلغاء اشتراك الطالب ذاتيًا؛ المنصة الحالية لا تتيح هذا الإجراء.",
   "لا تخترع معرفات. استخرج المعرفات من نتائج الأدوات، واطلب تحديد الدورة أو المحاضرة أو المستخدم إذا ظهر أكثر من تطابق. عند تعديل عدة خصائص، مرر الخصائص التي طلبها المستخدم فقط ولا تمسح قيمًا أخرى.",
   "كل عملية كتابة يجب أن تعود بنتيجة verified=true بعد قراءة البيانات المحفوظة. إذا تعذر التحقق، قل بوضوح إن العملية لم تُثبت نجاحها ولا تستخدم صياغة تؤكد أنها تمت.",
   "لا تنشئ أو تعدّل أو تحذف بيانات إلا بطلب واضح من المستخدم. طلب تحليل صورة أو عرض معلومات لا يعني إذنًا برفعها أو تعديل البيانات.",
@@ -303,6 +305,53 @@ async function uploadCourseImage(env, token, course, image, user) {
       catch (cleanupError) {
         console.error("ED-ALL course image cleanup failed:", cleanupError?.message || String(cleanupError));
       }
+    }
+    throw error;
+  }
+}
+
+
+async function uploadProfileAvatar(env, token, image, user) {
+  if (!image?.bytes || !image?.mime || !image?.extension) {
+    throw new Error("لم يتم استلام صورة شخصية صالحة.");
+  }
+  const objectPath = user.id + "/" + Date.now() + "-" + crypto.randomUUID() + "." + image.extension;
+  const encodedPath = objectPath.split("/").map(encodeURIComponent).join("/");
+  const base = env.SUPABASE_URL || SUPABASE_URL;
+  const uploadResponse = await fetch(new URL("/storage/v1/object/avatars/" + encodedPath, base), {
+    method: "POST",
+    headers: {
+      apikey: env.SUPABASE_PUBLISHABLE_KEY,
+      Authorization: token,
+      "Content-Type": image.mime,
+      "Cache-Control": "max-age=3600",
+      "x-upsert": "false"
+    },
+    body: image.bytes
+  });
+  if (!uploadResponse.ok) {
+    throw new Error("فشل رفع الصورة الشخصية إلى مخزن المنصة: " + String(await uploadResponse.text()).slice(0, 240));
+  }
+  const publicUrl = new URL("/storage/v1/object/public/avatars/" + encodedPath, base).href;
+  try {
+    await db(env, "/rest/v1/profiles?id=eq." + encodeURIComponent(user.id), token, "PATCH", {
+      avatar_url: publicUrl
+    });
+    const rows = await db(env, "/rest/v1/profiles?select=id,name,avatar_url&id=eq." +
+      encodeURIComponent(user.id) + "&limit=1", token);
+    const profile = Array.isArray(rows) ? rows[0] : null;
+    if (!profile || profile.avatar_url !== publicUrl) {
+      throw new Error("رُفعت الصورة لكن تعذر التحقق من ربطها بملف المستخدم.");
+    }
+    return { updated: true, verified: true, profile, image_url: publicUrl, image_size_bytes: image.size };
+  } catch (error) {
+    try {
+      await fetch(new URL("/storage/v1/object/avatars/" + encodedPath, base), {
+        method: "DELETE",
+        headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY, Authorization: token }
+      });
+    } catch (cleanupError) {
+      console.error("ED-ALL avatar cleanup failed:", cleanupError?.message || String(cleanupError));
     }
     throw error;
   }
@@ -1083,6 +1132,128 @@ async function tool(name, args, env, token, user, roles, images = []) {
   }
 
 
+
+  if (name === "purchase_course") {
+    if (!validId(args.course_id)) throw new Error("معرف الدورة غير صحيح.");
+    const rows = await db(env, "/rest/v1/courses?select=id,title,price,created_by&id=eq." +
+      encodeURIComponent(args.course_id) + "&limit=1", token);
+    const course = Array.isArray(rows) ? rows[0] : null;
+    if (!course) throw new Error("لم يتم العثور على الدورة أو لا يمكنك الوصول إليها.");
+    const price = Number(course.price || 0);
+    if (!Number.isFinite(price) || price < 0) throw new Error("سعر الدورة غير صالح.");
+    const existing = await db(env, "/rest/v1/enrollments?select=id&user_id=eq." +
+      encodeURIComponent(user.id) + "&course_id=eq." + encodeURIComponent(course.id) + "&limit=1", token);
+    if (Array.isArray(existing) && existing.length) throw new Error("أنت مسجل بالفعل في هذه الدورة.");
+    const walletBeforeRows = await db(env, "/rest/v1/wallets?select=balance&user_id=eq." +
+      encodeURIComponent(user.id) + "&limit=1", token);
+    const balanceBefore = Array.isArray(walletBeforeRows) && walletBeforeRows[0]
+      ? Number(walletBeforeRows[0].balance || 0) : 0;
+    if (price > balanceBefore) {
+      throw new Error("رصيد محفظتك غير كافٍ. سعر الدورة " + price + " ورصيدك الحالي " + balanceBefore + ".");
+    }
+    await db(env, "/rest/v1/rpc/purchase_course", token, "POST", { _course_id: course.id });
+    const [enrollmentCheck, walletAfterRows] = await Promise.all([
+      db(env, "/rest/v1/enrollments?select=id,user_id,course_id,enrolled_at&user_id=eq." +
+        encodeURIComponent(user.id) + "&course_id=eq." + encodeURIComponent(course.id) + "&limit=1", token),
+      db(env, "/rest/v1/wallets?select=balance&user_id=eq." + encodeURIComponent(user.id) + "&limit=1", token)
+    ]);
+    const enrollment = Array.isArray(enrollmentCheck) ? enrollmentCheck[0] : null;
+    const balanceAfter = Array.isArray(walletAfterRows) && walletAfterRows[0]
+      ? Number(walletAfterRows[0].balance || 0) : 0;
+    if (!enrollment || enrollment.user_id !== user.id || enrollment.course_id !== course.id) {
+      throw new Error("لم أجد تسجيل الدورة بعد استدعاء إجراء الشراء؛ لم أعتبر العملية ناجحة.");
+    }
+    if (!Number.isFinite(balanceAfter) || (price > 0 && balanceBefore - balanceAfter + 0.001 < price)) {
+      throw new Error("ظهر تسجيل الدورة، لكن لم أستطع التحقق من خصم المبلغ الصحيح من المحفظة. راجع الرصيد قبل إعادة المحاولة.");
+    }
+    return {
+      created: true,
+      verified: true,
+      enrollment,
+      course: { id: course.id, title: course.title, price },
+      charged: price,
+      previous_balance: balanceBefore,
+      balance: balanceAfter
+    };
+  }
+
+  if (name === "list_favorites") {
+    const targetId = validId(args.user_id) ? args.user_id : user.id;
+    if (!isAdmin && targetId !== user.id) throw new Error("يمكنك عرض مفضلتك فقط.");
+    const rows = await db(env, "/rest/v1/favorites?select=id,course_id,created_at&user_id=eq." +
+      encodeURIComponent(targetId) + "&order=created_at.desc&limit=200", token);
+    if (!Array.isArray(rows)) throw new Error("تعذر قراءة قائمة المفضلة.");
+    if (!rows.length) return { favorites: [] };
+    const courseIds = rows.map(row => row.course_id).filter(validId);
+    const courses = courseIds.length
+      ? await db(env, "/rest/v1/courses?select=id,title,price,image_url&id=in.(" + courseIds.join(",") + ")&limit=200", token)
+      : [];
+    return { favorites: rows.map(row => ({ ...row, course: (courses || []).find(course => course.id === row.course_id) || null })) };
+  }
+
+  if (name === "manage_favorite") {
+    if (!validId(args.course_id) || !["add", "remove"].includes(args.operation)) {
+      throw new Error("حدد الدورة وعملية add أو remove للمفضلة.");
+    }
+    const courseRows = await db(env, "/rest/v1/courses?select=id,title&id=eq." +
+      encodeURIComponent(args.course_id) + "&limit=1", token);
+    const course = Array.isArray(courseRows) ? courseRows[0] : null;
+    if (!course) throw new Error("لم يتم العثور على الدورة.");
+    const existingRows = await db(env, "/rest/v1/favorites?select=id,user_id,course_id&user_id=eq." +
+      encodeURIComponent(user.id) + "&course_id=eq." + encodeURIComponent(course.id) + "&limit=1", token);
+    const existing = Array.isArray(existingRows) ? existingRows[0] : null;
+    if (args.operation === "add") {
+      if (!existing) await db(env, "/rest/v1/favorites", token, "POST", { user_id: user.id, course_id: course.id });
+      const check = await db(env, "/rest/v1/favorites?select=id,user_id,course_id&user_id=eq." +
+        encodeURIComponent(user.id) + "&course_id=eq." + encodeURIComponent(course.id) + "&limit=1", token);
+      const stored = Array.isArray(check) ? check[0] : null;
+      if (!stored) throw new Error("تعذر التحقق من إضافة الدورة إلى المفضلة.");
+      return { updated: true, verified: true, operation: "add", course };
+    }
+    if (existing) await db(env, "/rest/v1/favorites?id=eq." + encodeURIComponent(existing.id), token, "DELETE");
+    const check = await db(env, "/rest/v1/favorites?select=id&user_id=eq." +
+      encodeURIComponent(user.id) + "&course_id=eq." + encodeURIComponent(course.id) + "&limit=1", token);
+    if (Array.isArray(check) && check.length) throw new Error("لم يتم حذف الدورة من المفضلة.");
+    return { updated: true, verified: true, operation: "remove", course };
+  }
+
+  if (name === "manage_notifications_bulk") {
+    const operation = String(args.operation || "").toLowerCase();
+    if (!["mark_all_read", "delete_all"].includes(operation)) {
+      throw new Error("العملية يجب أن تكون mark_all_read أو delete_all.");
+    }
+    const filter = "&or=(user_id.eq." + encodeURIComponent(user.id) + ",user_id.is.null)";
+    const rows = await db(env, "/rest/v1/notifications?select=id,read" + filter +
+      (operation === "mark_all_read" ? "&read=eq.false" : "") + "&limit=1000", token);
+    if (!Array.isArray(rows)) throw new Error("تعذر قراءة الإشعارات التي ستتأثر بالعملية.");
+    const ids = rows.map(row => row.id).filter(validId);
+    if (!ids.length) {
+      return operation === "mark_all_read"
+        ? { updated: true, verified: true, count: 0, operation }
+        : { deleted: true, verified: true, count: 0, operation };
+    }
+    const idFilter = "id=in.(" + ids.join(",") + ")";
+    if (operation === "mark_all_read") {
+      await db(env, "/rest/v1/notifications?" + idFilter, token, "PATCH", { read: true });
+      const unread = await db(env, "/rest/v1/notifications?select=id&" + idFilter + "&read=eq.false&limit=1000", token);
+      if (Array.isArray(unread) && unread.length) throw new Error("لم يتم التحقق من تحويل كل الإشعارات إلى مقروءة.");
+      return { updated: true, verified: true, operation, count: ids.length };
+    }
+    await db(env, "/rest/v1/notifications?" + idFilter, token, "DELETE");
+    const remaining = await db(env, "/rest/v1/notifications?select=id&" + idFilter + "&limit=1000", token);
+    if (Array.isArray(remaining) && remaining.length) throw new Error("بعض الإشعارات ما زالت موجودة ولم يتم حذفها.");
+    return { deleted: true, verified: true, operation, count: ids.length };
+  }
+
+  if (name === "upload_profile_avatar") {
+    const imageIndex = args.image_index == null ? 0 : Number(args.image_index);
+    if (!Number.isInteger(imageIndex) || imageIndex < 0 || imageIndex >= images.length) {
+      throw new Error("أرفق صورة شخصية أولًا لأتمكن من رفعها.");
+    }
+    const image = decodeImageAttachment(images[imageIndex]);
+    return await uploadProfileAvatar(env, token, image, user);
+  }
+
   if (name === "delete_platform_user") {
     if (!isAdmin) throw new Error("حذف حسابات المستخدمين متاح للمدير فقط.");
     if (!validId(args.user_id)) throw new Error("معرف المستخدم غير صحيح.");
@@ -1415,6 +1586,12 @@ async function tool(name, args, env, token, user, roles, images = []) {
 }
 
 const toolSpecs = [
+
+  { name: "purchase_course", description: "شراء دورة أو الانضمام إليها للمستخدم الحالي عبر إجراء الشراء الرسمي purchase_course؛ يتحقق من السعر ورصيد المحفظة والتسجيل بعد التنفيذ. لا تتجاوز عملية الشراء ولا تخصم يدويًا.", parameters: { type: "object", properties: { course_id: { type: "string" } }, required: ["course_id"] } },
+  { name: "list_favorites", description: "عرض قائمة الدورات المفضلة للمستخدم الحالي، أو لمستخدم آخر بواسطة المدير.", parameters: { type: "object", properties: { user_id: { type: "string" } }, required: [] } },
+  { name: "manage_favorite", description: "إضافة دورة إلى المفضلة أو إزالتها للمستخدم الحالي. operation تكون add أو remove.", parameters: { type: "object", properties: { course_id: { type: "string" }, operation: { type: "string", enum: ["add", "remove"] } }, required: ["course_id", "operation"] } },
+  { name: "manage_notifications_bulk", description: "إدارة كل إشعارات المستخدم الحالي دفعة واحدة: mark_all_read لتحديدها كمقروءة، أو delete_all لحذف إشعاراته والإشعارات العامة. الحذف يحتاج تأكيدًا منفصلًا.", parameters: { type: "object", properties: { operation: { type: "string", enum: ["mark_all_read", "delete_all"] } }, required: ["operation"] } },
+  { name: "upload_profile_avatar", description: "رفع صورة مرفقة من رسالة المستخدم إلى مخزن avatars وربطها بالصورة الشخصية لحسابه الحالي ثم التحقق من الحفظ. لا تستخدم إلا إذا طلب تغيير صورته الشخصية صراحة.", parameters: { type: "object", properties: { image_index: { type: "integer" } }, required: ["image_index"] } },
   { name: "list_courses", description: "عرض الدورات ومعرفاتها لاختيار الدورة الصحيحة قبل إضافة محتوى.", parameters: { type: "object", properties: { limit: { type: "integer" } }, required: [] } },
   { name: "get_course_lessons", description: "عرض محاضرات دورة يملكها المدرس الحالي أو المدير، مع روابط الفيديو وملفات PDF المرتبطة.", parameters: { type: "object", properties: { course_id: { type: "string" } }, required: ["course_id"] } },
   { name: "upload_course_image", description: "رفع صورة مرفقة من رسالة المستخدم كصورة غلاف لدورة محددة، ثم ربط رابطها بحقل الصورة للدورة والتحقق من الحفظ. استخدمها فقط إذا طلب المستخدم صراحة رفع/إرفاق/تغيير الصورة في سياق دورة. image_index يبدأ من صفر. يمكن تمرير course_id أو course_title كما ورد في المحادثة.", parameters: { type: "object", properties: { course_id: { type: "string" }, course_title: { type: "string" }, image_index: { type: "integer" } }, required: ["image_index"] } },
@@ -1464,7 +1641,7 @@ const toolSpecs = [
 
 
 const WRITE_TOOLS = new Set([
-  "create_course", "update_course", "delete_course", "create_lesson", "update_lesson", "delete_lesson",
+  "create_course", "update_course", "delete_course", "create_lesson", "update_lesson", "delete_lesson", "purchase_course", "manage_favorite", "manage_notifications_bulk", "upload_profile_avatar",
   "manage_lesson_media", "create_exam", "update_exam", "delete_exam", "add_exam_question",
   "update_exam_question", "delete_exam_question", "remove_course_enrollment", "update_user_profile",
   "set_user_ban", "change_user_role", "create_platform_user", "send_password_reset", "delete_platform_user", "credit_user_wallet", "update_platform_setting",
@@ -1490,6 +1667,10 @@ function writeConfirmation(name, data) {
   if (name === "upload_course_image") return "## تم رفع صورة الدورة وربطها بنجاح\n\n**" + data.course.title + "**\n\nتم حفظ الصورة في مخزن المنصة والتحقق من أن رابطها أصبح مرتبطًا بالدورة.\n\n[عرض صورة الدورة](" + data.image_url + ")";
   if (name === "create_platform_user") return "## تم إنشاء حساب المستخدم والتحقق من بياناته\n\n**" + data.user.name + "**\n\n- البريد: " + data.user.email + "\n- الدور: " + data.user.role + "\n" + (data.reset_email_sent ? "أرسل النظام رابط تعيين كلمة المرور إلى بريد المستخدم." : "تم إنشاء الحساب، لكن لم يتأكد إرسال رابط كلمة المرور. يمكنك طلب إعادة إرساله من المساعد.") + (data.warning ? "\n\n" + data.warning : "");
   if (name === "send_password_reset") return "تم إرسال طلب رابط إعادة تعيين كلمة المرور إلى **" + data.user.email + "**. لم يتم عرض كلمة المرور أو طلبها في المحادثة.";
+  if (name === "purchase_course") return "## تم شراء الدورة والتحقق من التسجيل والخصم\n\n**" + data.course.title + "**\n\nالسعر: " + data.charged + "\nالرصيد السابق: " + data.previous_balance + "\nالرصيد الحالي: " + data.balance;
+  if (name === "manage_favorite") return data.operation === "add" ? "تمت إضافة **" + data.course.title + "** إلى مفضلتك والتحقق من الحفظ." : "تمت إزالة **" + data.course.title + "** من مفضلتك والتحقق من الحذف.";
+  if (name === "manage_notifications_bulk") return data.operation === "mark_all_read" ? "تم تحديد " + data.count + " إشعار كمقروء والتحقق من التحديث." : "تم حذف " + data.count + " إشعار والتحقق من الحذف.";
+  if (name === "upload_profile_avatar") return "تم رفع الصورة الشخصية وربطها بملفك والتحقق من الحفظ.";
   if (name === "delete_platform_user") return "## تم حذف حساب المستخدم والتحقق من ذلك\n\n**" + (data.user.name || data.user.email || data.user.id) + "**\n\nتم التأكد من اختفاء حساب المصادقة وملف المستخدم وصلاحياته. سجلات التسجيلات ونتائج الاختبارات والتقدم ومحادثات هذا الحساب تُحذف تلقائيًا مع الحساب." + (data.warning ? "\n\n" + data.warning : "");
   if (name === "create_course") return "## تم إنشاء الدورة والتحقق من حفظها\n\n**" + data.course.title + "**";
   if (name === "update_course") return "## تم تحديث الدورة والتحقق من حفظها\n\n**" + data.course.title + "**\n\n" + (data.changed_fields.includes("price") ? "السعر الجديد: **" + data.course.price + "**" : "تم تحديث: " + data.changed_fields.join("، "));
@@ -1519,6 +1700,8 @@ function writeConfirmation(name, data) {
 
 function isDestructiveToolCall(name, args) {
   if (name === "create_platform_user" && args.role === "admin") return true;
+  if (name === "purchase_course") return true;
+  if (name === "manage_notifications_bulk" && args.operation === "delete_all") return true;
   if (name === "delete_platform_user") return true;
   if (["delete_course", "delete_lesson", "delete_exam", "delete_exam_question",
        "remove_course_enrollment", "delete_notification"].includes(name)) return true;
@@ -1535,7 +1718,7 @@ function hasConfirmedDestructiveAction(messages) {
   const affirmative = /^(?:نعم|أيوه|ايوه|اه|أه|تمام|موافق|موافقة|حسنًا|حسنا|أكد|أؤكد|نفذ|نفّذ|ابدأ|يلا|yes|yeah|yep|ok|okay|sure|go ahead|do it)[.!؟\s]*$/i.test(last.content.trim());
   const assistantAsked = /(?:هل تريد|هل تؤكد|هل أنت متأكد|هل انت متأكد|اكتب نعم|أكد لي|تأكيد)/i.test(previous.content);
   const earlierRequest = messages.slice(1, -2).some(message => message.role === "user" &&
-    /(?:احذف|حذف|امسح|إزالة|ازالة|أزل|ازل|شيل|شيللي|ألغ|الغِ|سحب الدور|اسحب الصلاحية|امنح|أعط|اعط|خلي|اجعل|حوّل|حول|غيّر دور|غير دور|رقّي|رقي|ترقية|أنشئ|انشئ|اضف|أضف|ضيف|اعمل|سجل|سجّل|عايز|محتاج|اريدك?|أريدك?|create|add|احظر|حظر|delete|remove|revoke|ban|grant|promote)/i.test(message.content));
+    /(?:احذف|حذف|امسح|إزالة|ازالة|أزل|ازل|شيل|شيللي|ألغ|الغِ|سحب الدور|اسحب الصلاحية|امنح|أعط|اعط|خلي|اجعل|حوّل|حول|غيّر دور|غير دور|رقّي|رقي|ترقية|أنشئ|انشئ|اضف|أضف|ضيف|اعمل|سجل|سجّل|عايز|محتاج|اريدك?|أريدك?|اشتري|اشتر|شراء|شراء|purchase|buy|دفع|ادفع|pay|create|add|احظر|حظر|delete|remove|revoke|ban|grant|promote)/i.test(message.content));
   return affirmative && assistantAsked && earlierRequest;
 }
 function destructiveConfirmationText(name) {
@@ -1548,6 +1731,8 @@ function destructiveConfirmationText(name) {
     delete_notification: "حذف الإشعار",
     change_user_role: "تغيير صلاحيات المستخدم",
     create_platform_user: "إنشاء حساب جديد بصلاحية مدير",
+    purchase_course: "شراء الدورة واستخدام الإجراء الرسمي الذي قد يخصم سعرها من المحفظة",
+    manage_notifications_bulk: "حذف كل الإشعارات الشخصية والعامة للمستخدم",
     delete_platform_user: "حذف حساب المستخدم وسجلاته التابعة، بعد التحقق من عدم وجود دور مدير أو دورات أو أرصدة/معاملات مالية",
     set_user_ban: "حظر الحساب",
     manage_lesson_media: "حذف رابط أو ملف من المحاضرة",
@@ -1668,7 +1853,7 @@ export default {
       return json({ error: String(error?.message || "الصورة المرفقة غير صالحة.").slice(0, 300) }, 400, origin);
     }
     const lastUserText = messages.at(-1).content;
-    const writeVerb = "(?:أنشئ|انشئ|انشء|تنشئ|تنشء|تنشأ|إنشاء|انشاء|إنشئ|أُنشئ|أضف|اضف|أضيف|اضيف|ضيف|ضيفلي|تضيف|إضافة|اضافة|أدرج|ادرج|حط|حطلي|اعمل|اعمللي|سجّل|سجل|نفذ|نفّذ|حضّر|حضر|جهّز|جهز|عدّل|عدل|تعديل|حدّث|حدث|غيّر|غير|غيرلي|غيّرلي|خلي|ظبط|احذف|حذف|امسح|ألغ|الغي|ارفع|ارفعلي|اسحب|احظر|شحن|اشحن|زود|زودلي|أرسل|ارسل|ابعت|بعت|استرجع|استعادة|reset|send|عايزك?|عايزني|محتاجك|اريدك?|أريدك?|create|add|make|insert|update|edit|change|set|delete|remove|revoke|ban|credit)";
+    const writeVerb = "(?:أنشئ|انشئ|انشء|تنشئ|تنشء|تنشأ|إنشاء|انشاء|إنشئ|أُنشئ|أضف|اضف|أضيف|اضيف|ضيف|ضيفلي|تضيف|إضافة|اضافة|أدرج|ادرج|حط|حطلي|اعمل|اعمللي|سجّل|سجل|نفذ|نفّذ|حضّر|حضر|جهّز|جهز|عدّل|عدل|تعديل|حدّث|حدث|غيّر|غير|غيرلي|غيّرلي|خلي|ظبط|احذف|حذف|امسح|ألغ|الغي|ارفع|ارفعلي|اسحب|احظر|شحن|اشحن|زود|زودلي|أرسل|ارسل|ابعت|بعت|استرجع|استعادة|اشتري|اشتر|شراء|سجل|التحق|التحاق|فضّل|فضل|مفضلة|reset|send|buy|purchase|عايزك?|عايزني|محتاجك|اريدك?|أريدك?|create|add|make|insert|update|edit|change|set|delete|remove|revoke|ban|credit)";
     const platformObject = "(?:محاضرات|محاضرة|محاضره|دروس|درس|دورة|دورات|كورس|كورسا|كورسًا|كورسات|السعر|سعر|الثمن|الأسعار|اختبارات|اختبار|امتحانات|امتحان|أسئلة|اسئلة|سؤال|إشعارات|اشعارات|إشعار|اشعار|طلاب|طالب|مدرس|مدرسين|مستخدم|مستخدمين|حساب|حسابات|دور|صلاحية|صلاحيات|محفظة|محافظ|رصيد|أرصدة|إعدادات|اعدادات|إعداد|جهة شحن|جهات شحن|تسجيل|تسجيلات|نتيجة|نتائج|تصحيح|فيديو|فيديوهات|ملف|ملفات|كلمة المرور|باسورد|استعادة|reset|password|PDF|lesson|lessons|course|courses|exam|exams|question|questions|notification|notifications|student|students|teacher|teachers|user|users|price|wallet|balance|setting|settings|enrollment|enrollments|result|results)";
     const writePattern = new RegExp(writeVerb + "\\s*.*" + platformObject + "|" + platformObject + ".*" + writeVerb, "i");
     const instructionalPattern = /(?:كيف|كيفية|طريقة|خطوات|ما الذي أحتاج|ماذا أحتاج|how do i|how to|steps to)/i;
