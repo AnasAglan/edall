@@ -63,8 +63,11 @@ jobs:
           if (!source.includes('import { runAssistantModel } from "./provider-router.js"')) {
             throw new Error('The Worker must route all model requests through the shared provider router.');
           }
+          if (source.includes('env.AI.run(')) {
+            throw new Error('Worker model calls must not bypass the shared provider router.');
+          }
           const workersAiIndex = providerRouter.indexOf('env.AI.run(workersAiModel, options)');
-          const geminiIndex = providerRouter.indexOf('generativelanguage.googleapis.com');
+          const geminiIndex = providerRouter.indexOf('return await runGeminiFallback(env, options)');
           if (workersAiIndex < 0 || geminiIndex < 0 || workersAiIndex > geminiIndex) {
             throw new Error('Workers AI must be attempted before Gemini.');
           }
