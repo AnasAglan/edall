@@ -5,7 +5,7 @@ Cloudflare Worker backing the ED-ALL teacher/admin assistant.
 ## AI providers and shared context
 
 - **Primary: Cloudflare Workers AI.** Text requests and tool-calling use `@cf/zai-org/glm-4.7-flash`; image streams use `@cf/meta/llama-3.2-11b-vision-instruct`.
-- **Fallback: Gemini 3.8 Flash.** If the Workers AI binding is missing, exhausted, rate-limited, out of capacity, times out, or returns an invalid response, the Worker retries that same model operation through Gemini using `GEMINI_API_KEY`.
+- **Fallback: Gemini 3.8 Flash.** If the Workers AI binding is missing, exhausted, rate-limited, out of capacity, times out, or returns an empty, reasoning-only, or invalid response, the Worker retries that same model operation through Gemini using `GEMINI_API_KEY`.
 - Both providers receive the same system prompt, conversation messages, tool definitions, and accumulated assistant/tool-call results. Conversation history is stored in the existing owner-scoped Supabase tables and the Worker retrieves the most recent 40 messages for a conversation.
 - Gemini is not called when Workers AI succeeds. The Gemini secret is required for automatic fallback; Workers AI can still be used independently when the secret is absent.
 
