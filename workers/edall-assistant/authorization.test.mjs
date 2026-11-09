@@ -17,6 +17,7 @@ test("teachers can manage teaching workflows but not global administration", () 
   assert.equal(canUseAssistantTool("get_platform_stats", {}, ["teacher"], ownId), false);
   assert.equal(canUseAssistantTool("search_platform_users", {}, ["teacher"], ownId), false);
   assert.equal(canUseAssistantTool("credit_user_wallet", { user_id: otherId }, ["teacher"], ownId), false);
+  assert.equal(canUseAssistantTool("send_notification", {}, ["teacher"], ownId), false);
   assert.equal(canUseAssistantTool("remove_course_enrollment", { user_id: otherId }, ["teacher"], ownId), false);
 });
 
