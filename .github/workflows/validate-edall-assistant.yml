@@ -75,7 +75,7 @@ jobs:
           if (!source.includes('GEMINI_MODEL = "gemini-3.6-flash"')) {
             throw new Error('The Gemini fallback must use the supported stable Gemini Flash model.');
           }
-          if (!source.includes('مقارنات فعلية') || !source.includes('بالخط العريض')) {
+          if (!source.includes('مقارنة فعلية') || !source.includes('بالخط العريض')) {
             throw new Error('The assistant premium Arabic response-style instructions are missing.');
           }
           if (!assistantConfig.includes('GEMINI_API_KEY')) {
