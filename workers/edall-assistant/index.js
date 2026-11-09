@@ -1444,7 +1444,9 @@ async function tool(name, args, env, token, user, roles, images = []) {
     if (!["mark_all_read", "delete_all"].includes(operation)) {
       throw new Error("العملية يجب أن تكون mark_all_read أو delete_all.");
     }
-    const filter = "&user_id=eq." + encodeURIComponent(user.id);
+    const filter = isAdmin
+      ? "&or=(user_id.eq." + encodeURIComponent(user.id) + ",user_id.is.null)"
+      : "&user_id=eq." + encodeURIComponent(user.id);
     const rows = await db(env, "/rest/v1/notifications?select=id,read" + filter +
       (operation === "mark_all_read" ? "&read=eq.false" : "") + "&limit=1000", token);
     if (!Array.isArray(rows)) throw new Error("تعذر قراءة الإشعارات التي ستتأثر بالعملية.");
@@ -2204,6 +2206,20 @@ export default {
           if (!assistant) return json({ error: "لم يرجع النموذج استجابة مفهومة." }, 502, origin);
           if (assistant.tool_calls?.length) {
             if (assistant.tool_calls.length > 5) return json({ error: "طلب النموذج عددًا كبيرًا من الإجراءات." }, 400, origin);
+            // Preflight every proposed action before running any of them. This prevents
+            // an unauthorized second call from following a successful first call.
+            for (const pendingCall of assistant.tool_calls) {
+              const pendingName = pendingCall?.function?.name;
+              let pendingArgs = {};
+              try {
+                pendingArgs = JSON.parse(pendingCall?.function?.arguments || "{}");
+              } catch {
+                return json({ error: "معاملات إحدى الأدوات غير صالحة." }, 400, origin);
+              }
+              if (!canUseAssistantTool(pendingName, pendingArgs, roles, user.id)) {
+                return json({ error: "هذه الأداة غير متاحة وفق صلاحيات حسابك." }, 403, origin);
+              }
+            }
             finalMessages.push({ role: "assistant", content: assistant.content || "", tool_calls: assistant.tool_calls });
             for (const call of assistant.tool_calls) {
               let args = {};
