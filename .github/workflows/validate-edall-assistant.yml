@@ -9,6 +9,7 @@ on:
       - "scripts/deploy-edall-assistant.mjs"
       - "public/ed_assistant.js"
       - "supabase/functions/admin-delete-user/**"
+      - "workers/edall-assistant/provider.test.mjs"
       - ".github/workflows/validate-edall-assistant.yml"
   push:
     branches: [main, feat/assistant-student-engagement-and-notifications]
@@ -38,8 +39,12 @@ jobs:
         run: |
           node --check workers/edall-assistant/index.js
           node --check scripts/deploy-edall-assistant.mjs
+          node --check workers/edall-assistant/provider.test.mjs
           node --check public/ed_assistant.js
           deno check supabase/functions/admin-delete-user/index.ts
+
+      - name: Test Workers AI priority and Gemini fallback
+        run: node --test workers/edall-assistant/provider.test.mjs
       - name: Verify deploy helper refuses a missing build secret
         run: |
           set +e
@@ -55,12 +60,23 @@ jobs:
           const source = fs.readFileSync('workers/edall-assistant/index.js', 'utf8');
           const assistantConfig = fs.readFileSync('wrangler.assistant.toml', 'utf8');
           const deployHelper = fs.readFileSync('scripts/deploy-edall-assistant.mjs', 'utf8');
-          const geminiHelper = source.slice(source.indexOf('async function runAssistantModel'), source.indexOf('async function classifyExplicitWriteIntent'));
-          if (!geminiHelper.includes('compatibleOptions.stream === true') || !geminiHelper.includes('return response.body')) {
-            throw new Error('Gemini streaming responses must return the response body stream.');
+          const providerHelper = source.slice(source.indexOf('async function summarizeProviderError'), source.indexOf('async function classifyExplicitWriteIntent'));
+          const workersAiCall = providerHelper.indexOf('env.AI.run(workersAiModel, options)');
+          const geminiCall = providerHelper.indexOf('fetchImpl(');
+          if (workersAiCall < 0 || geminiCall <= workersAiCall) {
+            throw new Error('Workers AI must be attempted before the Gemini fallback.');
           }
-          if (!geminiHelper.includes('await response.json()') || !geminiHelper.includes('Array.isArray(result.choices)')) {
+          if (!providerHelper.includes('await primeAssistantStream(workersResult)') || !providerHelper.includes('await primeAssistantStream(response.body)')) {
+            throw new Error('Both provider streaming paths must validate and prime their response streams.');
+          }
+          if (!providerHelper.includes('await response.json()') || !providerHelper.includes('Array.isArray(result?.choices)')) {
             throw new Error('Gemini non-streaming responses must be parsed and validated as OpenAI-compatible JSON.');
+          }
+          if (!source.includes('GEMINI_MODEL = "gemini-3.6-flash"')) {
+            throw new Error('The Gemini fallback must use the supported stable Gemini Flash model.');
+          }
+          if (!source.includes('مقارنات فعلية') || !source.includes('بالخط العريض')) {
+            throw new Error('The assistant premium Arabic response-style instructions are missing.');
           }
           if (!assistantConfig.includes('GEMINI_API_KEY')) {
             throw new Error('GEMINI_API_KEY must be declared as a required Worker secret.');
