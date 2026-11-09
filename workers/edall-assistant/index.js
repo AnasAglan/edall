@@ -1872,7 +1872,7 @@ const STUDENT_TOOLS = new Set([
 
 const TEACHER_TOOLS = new Set([
   "list_courses", "get_course_lessons", "create_course", "upload_course_image",
-  "create_lesson", "create_exam", "add_exam_question", "send_notification",
+  "create_lesson", "create_exam", "add_exam_question",
   "update_course", "delete_course", "update_lesson", "delete_lesson",
   "manage_lesson_media", "list_course_exams", "update_exam", "delete_exam",
   "list_exam_questions", "update_exam_question", "delete_exam_question",
