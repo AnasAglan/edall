@@ -3,7 +3,8 @@
 Cloudflare Worker backing the ED-ALL teacher/admin assistant.
 
 ## Existing bindings
-- `AI`: Cloudflare Workers AI.
+- `GEMINI_API_KEY`: required encrypted secret used for primary Gemini 2.5 Flash inference. Never commit or log its value.
+- `AI`: Cloudflare Workers AI fallback for Gemini request failures.
 - `SUPABASE_PUBLISHABLE_KEY`: existing secret binding. Never commit a value.
 - Supabase project URL is the existing ED-ALL project.
 
