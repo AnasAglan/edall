@@ -7,7 +7,7 @@ workers_dev = true
 binding = "AI"
 
 [secrets]
-required = ["SUPABASE_PUBLISHABLE_KEY"]
+required = ["SUPABASE_PUBLISHABLE_KEY", "GEMINI_API_KEY"]
 
 [observability]
 enabled = true
