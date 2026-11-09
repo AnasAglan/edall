@@ -9,7 +9,7 @@ on:
       - "supabase/functions/admin-delete-user/**"
       - ".github/workflows/validate-edall-assistant.yml"
   push:
-    branches: [feat/assistant-safe-account-deletion]
+    branches: [feat/assistant-student-engagement-and-notifications]
     paths:
       - "workers/edall-assistant/**"
       - "public/ed_assistant.js"
@@ -51,7 +51,7 @@ jobs:
             'update_course', 'create_lesson', 'update_lesson', 'manage_lesson_media',
             'update_exam', 'update_exam_question', 'list_course_students',
             'get_student_progress', 'credit_user_wallet', 'update_platform_setting',
-            'change_user_role', 'grade_essay_result', 'create_platform_user', 'send_password_reset', 'delete_platform_user'
+            'change_user_role', 'grade_essay_result', 'create_platform_user', 'send_password_reset', 'delete_platform_user', 'purchase_course', 'list_favorites', 'manage_favorite', 'manage_notifications_bulk', 'upload_profile_avatar'
           ];
           for (const name of required) {
             if (!specs.includes(name)) throw new Error('Missing tool spec: ' + name);
@@ -60,9 +60,18 @@ jobs:
           const writeStart = source.indexOf('const WRITE_TOOLS = new Set(');
           const writeEnd = source.indexOf(');', writeStart);
           const writeSet = source.slice(writeStart, writeEnd);
-          for (const name of ['update_course','update_lesson','manage_lesson_media','credit_user_wallet','update_platform_setting','change_user_role','grade_essay_result','create_platform_user','send_password_reset','delete_platform_user']) {
+          for (const name of ['update_course','update_lesson','manage_lesson_media','credit_user_wallet','update_platform_setting','change_user_role','grade_essay_result','create_platform_user','send_password_reset','delete_platform_user','purchase_course','manage_favorite','manage_notifications_bulk','upload_profile_avatar']) {
             if (!writeSet.includes('"' + name + '"')) throw new Error('Write tool missing verification gate: ' + name);
           }
+          const writeVerb = source.match(/const writeVerb = "([^"]+)";/)?.[1];
+          const platformObject = source.match(/const platformObject = "([^"]+)";/)?.[1];
+          if (!writeVerb || !platformObject) throw new Error('Write-intent dictionaries are missing');
+          const intentPattern = new RegExp(writeVerb + "\\s*.*" + platformObject + "|" + platformObject + ".*" + writeVerb, "i");
+          for (const phrase of ['اشتري الكورس', 'ضيف الكورس للمفضلة', 'ارفع صورتي الشخصية', 'حدد كل الإشعارات كمقروءة']) {
+            if (!intentPattern.test(phrase)) throw new Error('Write intent was not recognized: ' + phrase);
+          }
+          if (!source.includes('purchased|uploaded|updated|deleted')) throw new Error('False-success guard does not cover recent write types');
+          if (!source.includes('شراء|رفع|تحديد|حذف|تعديل|تحديث')) throw new Error('Arabic false-success guard coverage is incomplete');
           if (!source.includes('resultData?.verified === true')) throw new Error('Verified write gate missing');
           if (!source.includes('hasConfirmedDestructiveAction(messages)')) throw new Error('Destructive confirmation gate missing');
           console.log('Validated ' + specs.length + ' unique assistant tools.');
