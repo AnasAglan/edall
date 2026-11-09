@@ -1488,7 +1488,7 @@ function hasConfirmedDestructiveAction(messages) {
   const affirmative = /^(?:نعم|أيوه|ايوه|اه|أه|تمام|موافق|موافقة|حسنًا|حسنا|أكد|أؤكد|نفذ|نفّذ|ابدأ|يلا|yes|yeah|yep|ok|okay|sure|go ahead|do it)[.!؟\s]*$/i.test(last.content.trim());
   const assistantAsked = /(?:هل تريد|هل تؤكد|هل أنت متأكد|هل انت متأكد|اكتب نعم|أكد لي|تأكيد)/i.test(previous.content);
   const earlierRequest = messages.slice(1, -2).some(message => message.role === "user" &&
-    /(?:احذف|حذف|امسح|إزالة|ازالة|أزل|ازل|شيل|شيللي|ألغ|الغِ|سحب الدور|اسحب الصلاحية|امنح|أعط|اعط|خلي|اجعل|حوّل|حول|غيّر دور|غير دور|رقّي|رقي|ترقية|أنشئ|انشئ|اضف|أضف|ضيف|اعمل|سجل|سجّل|create|add|احظر|حظر|delete|remove|revoke|ban|grant|promote)/i.test(message.content));
+    /(?:احذف|حذف|امسح|إزالة|ازالة|أزل|ازل|شيل|شيللي|ألغ|الغِ|سحب الدور|اسحب الصلاحية|امنح|أعط|اعط|خلي|اجعل|حوّل|حول|غيّر دور|غير دور|رقّي|رقي|ترقية|أنشئ|انشئ|اضف|أضف|ضيف|اعمل|سجل|سجّل|عايز|محتاج|اريدك?|أريدك?|create|add|احظر|حظر|delete|remove|revoke|ban|grant|promote)/i.test(message.content));
   return affirmative && assistantAsked && earlierRequest;
 }
 function destructiveConfirmationText(name) {
