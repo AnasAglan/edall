@@ -126,6 +126,65 @@ test("Gemini fallback receives the exact conversation and tool-call transcript",
   assert.equal(result.choices[0].message.content, "Gemini continued the same conversation.");
 });
 
+test("a reasoning-only or truncated Workers AI result falls back to Gemini", async () => {
+  const truncated = {
+    choices: [{
+      index: 0,
+      message: {
+        role: "assistant",
+        content: null,
+        reasoning_content: "internal reasoning without user-visible text",
+        tool_calls: []
+      },
+      finish_reason: "length"
+    }]
+  };
+  const result = await runAssistantModel({
+    AI: { run: async () => truncated },
+    GEMINI_API_KEY: "test-gemini-secret"
+  }, MODEL, {
+    messages: [{ role: "user", content: "Create the course." }],
+    max_completion_tokens: 16,
+    chat_template_kwargs: { enable_thinking: false }
+  }, async (_url, init) => {
+    const body = JSON.parse(init.body);
+    assert.equal(body.model, "gemini-3.6-flash");
+    assert.equal(body.messages[0].content, "Create the course.");
+    return new Response(JSON.stringify(completion("Gemini returned a visible answer.")), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    });
+  });
+
+  assert.equal(result.choices[0].message.content, "Gemini returned a visible answer.");
+});
+
+test("a valid tool call with null text content stays on Workers AI", async () => {
+  const toolReply = {
+    choices: [{
+      index: 0,
+      message: {
+        role: "assistant",
+        content: null,
+        tool_calls: [{
+          id: "call-create-course",
+          type: "function",
+          function: { name: "create_course", arguments: "{\"title\":\"Mathematics\"}" }
+        }]
+      },
+      finish_reason: "tool_calls"
+    }]
+  };
+  const result = await runAssistantModel({
+    AI: { run: async () => toolReply },
+    GEMINI_API_KEY: "test-gemini-secret"
+  }, MODEL, { messages: [{ role: "user", content: "Create a course." }] }, async () => {
+    throw new Error("A valid tool call must not trigger Gemini fallback.");
+  });
+
+  assert.equal(result.choices[0].message.tool_calls[0].function.name, "create_course");
+});
+
 test("Gemini fallback also works when Workers AI streaming fails before its first chunk", async () => {
   const brokenStream = new ReadableStream({
     start(controller) {
