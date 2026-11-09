@@ -9,7 +9,7 @@ Cloudflare Worker backing the ED-ALL teacher/admin assistant.
 - Supabase project URL is the existing ED-ALL project.
 
 ## Deployment notes
-The deployed Worker is `edall-assistant`. When uploading a new version, preserve existing bindings (the AI binding and the publishable-key secret). Do not replace the secret, disable auth, use a service-role key, or bypass Supabase RLS.
+The deployed Worker is `edall-assistant`. When uploading a new version, preserve all existing bindings (`AI`, `GEMINI_API_KEY`, and `SUPABASE_PUBLISHABLE_KEY`). Do not replace secret values, disable auth, use a service-role key, or bypass Supabase RLS.
 
 ## Capabilities
 - List courses and inspect courses owned by the current teacher or any course as admin.
