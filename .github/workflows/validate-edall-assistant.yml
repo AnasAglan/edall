@@ -60,7 +60,7 @@ jobs:
           const source = fs.readFileSync('workers/edall-assistant/index.js', 'utf8');
           const assistantConfig = fs.readFileSync('wrangler.assistant.toml', 'utf8');
           const deployHelper = fs.readFileSync('scripts/deploy-edall-assistant.mjs', 'utf8');
-          const providerHelper = source.slice(source.indexOf('async function summarizeProviderError'), source.indexOf('async function classifyExplicitWriteIntent'));
+          const providerHelper = source.slice(source.indexOf('function summarizeProviderError'), source.indexOf('async function classifyExplicitWriteIntent'));
           const workersAiCall = providerHelper.indexOf('env.AI.run(workersAiModel, options)');
           const geminiCall = providerHelper.indexOf('fetchImpl(');
           if (workersAiCall < 0 || geminiCall <= workersAiCall) {
