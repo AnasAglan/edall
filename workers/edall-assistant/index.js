@@ -1443,6 +1443,8 @@ function writeConfirmation(name, data) {
     ].join("\n");
   }
   if (name === "upload_course_image") return "## تم رفع صورة الدورة وربطها بنجاح\n\n**" + data.course.title + "**\n\nتم حفظ الصورة في مخزن المنصة والتحقق من أن رابطها أصبح مرتبطًا بالدورة.\n\n[عرض صورة الدورة](" + data.image_url + ")";
+  if (name === "create_platform_user") return "## تم إنشاء حساب المستخدم والتحقق من بياناته\n\n**" + data.user.name + "**\n\n- البريد: " + data.user.email + "\n- الدور: " + data.user.role + "\n" + (data.reset_email_sent ? "أرسل النظام رابط تعيين كلمة المرور إلى بريد المستخدم." : "تم إنشاء الحساب، لكن لم يتأكد إرسال رابط كلمة المرور. يمكنك طلب إعادة إرساله من المساعد.") + (data.warning ? "\n\n" + data.warning : "");
+  if (name === "send_password_reset") return "تم إرسال طلب رابط إعادة تعيين كلمة المرور إلى **" + data.user.email + "**. لم يتم عرض كلمة المرور أو طلبها في المحادثة.";
   if (name === "create_course") return "## تم إنشاء الدورة والتحقق من حفظها\n\n**" + data.course.title + "**";
   if (name === "update_course") return "## تم تحديث الدورة والتحقق من حفظها\n\n**" + data.course.title + "**\n\n" + (data.changed_fields.includes("price") ? "السعر الجديد: **" + data.course.price + "**" : "تم تحديث: " + data.changed_fields.join("، "));
   if (name === "delete_course") return "## تم حذف الدورة والتحقق من ذلك\n\n**" + data.course.title + "**";
@@ -1498,6 +1500,7 @@ function destructiveConfirmationText(name) {
     remove_course_enrollment: "إلغاء تسجيل الطالب في الدورة",
     delete_notification: "حذف الإشعار",
     change_user_role: "تغيير صلاحيات المستخدم",
+    create_platform_user: "إنشاء حساب جديد بصلاحية مدير",
     create_platform_user: "إنشاء حساب جديد بصلاحية مدير",
     set_user_ban: "حظر الحساب",
     manage_lesson_media: "حذف رابط أو ملف من المحاضرة",
@@ -1755,7 +1758,7 @@ export default {
       const falseSuccessClaim = /(?:تم(?:ت)?\s*(?:إنشاء|انشاء|إضافة|اضافة|حفظ|إرسال|تجهيز|إعداد)|أنشأت|انشأت|أضفت|اضفت|جهزت|أعددت|أنجزت|أكملت|اكتمل(?:ت)?|أصبحت.{0,20}(?:جاهز|مضاف|محفوظ)|جاهز(?:ة)?\s*(?:للاستخدام|الآن)?|تم بنجاح|created|added|successfully created|has been created|has been added|i have created|i created)/i.test(finalAssistantText);
       if (falseSuccessClaim && completedWrites.length === 0 && (explicitWriteIntent || await classifyExplicitWriteIntent(env, messages))) {
         console.warn("ED-ALL assistant blocked an unverified write-success claim.");
-        return sseTextResponse("لم يتم إنشاء أو حفظ أي بيانات. لم تُنفذ أداة الحفظ بنجاح في هذا الطلب، لذلك لن أؤكد نجاح العملية. أرسل اسم الدورة وعنوان المحاضرة والتفاصيل المطلوبة لأتمكن من تنفيذها والتحقق منها.", origin);
+        return sseTextResponse("لم يتم تأكيد أي تغيير؛ لأن أداة التنفيذ لم تُرجع نتيجة حفظ موثقة. لن أقول إن العملية نجحت. أعد تحديد العنصر والبيانات التي تريد تغييرها داخل المنصة.", origin);
       }
 
       const output = await env.AI.run(images.length ? VISION_MODEL : MODEL, {
