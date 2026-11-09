@@ -53,6 +53,24 @@ function summarizeProviderError(error) {
   return message.replace(/Bearer\s+\S+/gi, "Bearer [redacted]").slice(0, 240);
 }
 
+function hasUsableAssistantMessage(result) {
+  const message = result?.choices?.[0]?.message;
+  if (!message || typeof message !== "object") return false;
+
+  const content = message.content;
+  const hasText = typeof content === "string" && content.trim().length > 0;
+  const hasTextParts = Array.isArray(content) && content.some(part => {
+    if (typeof part === "string") return part.trim().length > 0;
+    return typeof part?.text === "string" && part.text.trim().length > 0;
+  });
+  const hasToolCalls = Array.isArray(message.tool_calls) && message.tool_calls.length > 0;
+  const hasLegacyFunctionCall = Boolean(message.function_call?.name);
+  const hasRefusal = typeof message.refusal === "string" && message.refusal.trim().length > 0;
+
+  // Reasoning-only or token-truncated messages are not usable assistant replies.
+  return hasText || hasTextParts || hasToolCalls || hasLegacyFunctionCall || hasRefusal;
+}
+
 async function primeAssistantStream(value) {
   const stream = value && typeof value.getReader === "function" ? value : value?.body;
   if (!stream || typeof stream.getReader !== "function") {
@@ -117,10 +135,11 @@ export async function runAssistantModel(env, workersAiModel, options = {}, fetch
         return stream;
       }
 
-      const isChatCompletion =
-        Array.isArray(workersResult?.choices) && Boolean(workersResult.choices[0]?.message);
+      const isChatCompletion = hasUsableAssistantMessage(workersResult);
       const isVisionText =
-        workersAiModel === VISION_MODEL && typeof workersResult?.response === "string";
+        workersAiModel === VISION_MODEL &&
+        typeof workersResult?.response === "string" &&
+        workersResult.response.trim().length > 0;
 
       if (!isChatCompletion && !isVisionText) {
         throw new Error("Workers AI returned an unexpected response format.");
@@ -205,8 +224,8 @@ export async function runAssistantModel(env, workersAiModel, options = {}, fetch
   }
 
   const result = await response.json();
-  if (!result || !Array.isArray(result?.choices) || !result.choices[0]?.message) {
-    throw new Error("Gemini fallback returned an invalid OpenAI-compatible response.");
+  if (!hasUsableAssistantMessage(result)) {
+    throw new Error("Gemini fallback returned an empty, reasoning-only, or invalid OpenAI-compatible response.");
   }
 
   console.info("ED-ALL model provider: Gemini fallback", GEMINI_MODEL, "non-streaming");

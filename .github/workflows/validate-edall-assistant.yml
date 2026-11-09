@@ -69,7 +69,10 @@ jobs:
           if (!providerHelper.includes('await primeAssistantStream(workersResult)') || !providerHelper.includes('await primeAssistantStream(response.body)')) {
             throw new Error('Both provider streaming paths must validate and prime their response streams.');
           }
-          if (!providerHelper.includes('await response.json()') || !providerHelper.includes('Array.isArray(result?.choices)')) {
+          if (!providerHelper.includes('hasUsableAssistantMessage(workersResult)') || !providerHelper.includes('hasUsableAssistantMessage(result)')) {
+            throw new Error('Both providers must reject empty or reasoning-only assistant responses.');
+          }
+          if (!providerHelper.includes('await response.json()') || !providerHelper.includes('hasUsableAssistantMessage(result)')) {
             throw new Error('Gemini non-streaming responses must be parsed and validated as OpenAI-compatible JSON.');
           }
           if (!source.includes('GEMINI_MODEL = "gemini-3.8-flash"')) {
