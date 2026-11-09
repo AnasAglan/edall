@@ -18,7 +18,7 @@ const SYSTEM = [
 
   "استخدم create_platform_user عندما يطلب المدير إنشاء حساب طالب أو مدرس أو مدير؛ اطلب الاسم والبريد والدور فقط ولا تطلب كلمة مرور. يرسل النظام رابط تعيين كلمة المرور إلى البريد. استخدم send_password_reset لإرسال رابط إعادة تعيين آمن للمستخدم الحالي أو لمستخدم آخر بواسطة المدير. لا تعرض أي كلمة مرور مؤقتة للمستخدم.",
   "تعامل مع أدوات الإدارة الجديدة بوصفها واجهة التحكم الرسمية للمنصة. لتغيير سعر دورة موجودة استخدم update_course مع course_id وprice (واستخدم 0 لجعلها مجانية)؛ لا تستخدم create_course لهذا الغرض. لإضافة محاضرة استخدم create_lesson بعد list_courses إذا لزم الأمر، ولا تكتفِ بوصف الخطوات. استخدم update_lesson لتعديلها وmanage_lesson_media لإضافة/تعديل/حذف الفيديوهات وملفات PDF. استخدم list_course_exams وupdate_exam وlist_exam_questions وupdate_exam_question لإدارة الاختبارات والأسئلة. استخدم list_course_students وget_student_progress لبيانات طلاب دورات المدرس، واستخدم أدوات المستخدمين والمحافظ والأدوار والإعدادات وجهات الشحن والإشعارات للمدير فقط وفق صلاحياتها.",
-  "قبل أي عملية حذف أو حظر أو سحب/منح دور أو إنشاء حساب بصلاحية مدير أو حذف ملف/إشعار، اعرض ما ستفعله واسأل المستخدم عن تأكيد واضح؛ لا تنفذ العملية الحساسة في نفس الرسالة الأولى. إذا أجاب بنعم بعد سؤال التأكيد، نفّذ العملية. لا تطلب كلمة مرور أو تعرضها في المحادثة، ولا تغيّر البريد أو كلمة المرور من خلال تعديل جدول profiles؛ استخدم رابط إعادة التعيين الآمن فقط.",
+  "قبل أي عملية حذف أو حظر أو سحب/منح دور أو إنشاء حساب بصلاحية مدير أو حذف ملف/إشعار، اعرض ما ستفعله واسأل المستخدم عن تأكيد واضح؛ لا تنفذ العملية الحساسة في نفس الرسالة الأولى. حذف الحسابات نهائي ويزيل تسجيلات الطالب ونتائج اختباراته وتقدمه ومحادثاته. استخدم delete_platform_user فقط للحسابات غير الإدارية وبعد موافقة منفصلة؛ الخدمة ترفض الحسابات المالكة لدورات أو التي لها رصيد أو سجل معاملات مالية. لا تطلب كلمة مرور أو تعرضها في المحادثة، ولا تغيّر البريد أو كلمة المرور من خلال تعديل جدول profiles؛ استخدم رابط إعادة التعيين الآمن فقط.",
   "لا تخترع معرفات. استخرج المعرفات من نتائج الأدوات، واطلب تحديد الدورة أو المحاضرة أو المستخدم إذا ظهر أكثر من تطابق. عند تعديل عدة خصائص، مرر الخصائص التي طلبها المستخدم فقط ولا تمسح قيمًا أخرى.",
   "كل عملية كتابة يجب أن تعود بنتيجة verified=true بعد قراءة البيانات المحفوظة. إذا تعذر التحقق، قل بوضوح إن العملية لم تُثبت نجاحها ولا تستخدم صياغة تؤكد أنها تمت.",
   "لا تنشئ أو تعدّل أو تحذف بيانات إلا بطلب واضح من المستخدم. طلب تحليل صورة أو عرض معلومات لا يعني إذنًا برفعها أو تعديل البيانات.",
@@ -1082,6 +1082,50 @@ async function tool(name, args, env, token, user, roles, images = []) {
     return { sent: true, verified: true, user: { id: profile.id, name: profile.name, email: profile.email } };
   }
 
+
+  if (name === "delete_platform_user") {
+    if (!isAdmin) throw new Error("حذف حسابات المستخدمين متاح للمدير فقط.");
+    if (!validId(args.user_id)) throw new Error("معرف المستخدم غير صحيح.");
+    if (args.user_id === user.id) throw new Error("لا يمكنك حذف الحساب الذي تستخدمه حاليًا.");
+    const profiles = await db(env, "/rest/v1/profiles?select=id,name,email&id=eq." +
+      encodeURIComponent(args.user_id) + "&limit=1", token);
+    const profile = Array.isArray(profiles) ? profiles[0] : null;
+    if (!profile) throw new Error("لم يتم العثور على حساب بهذا المعرف.");
+    const roles = await db(env, "/rest/v1/user_roles?select=role&user_id=eq." +
+      encodeURIComponent(args.user_id), token);
+    if (Array.isArray(roles) && roles.some(row => row.role === "admin")) {
+      throw new Error("لا يمكن حذف حساب مدير من خلال المساعد.");
+    }
+    const response = await fetch(new URL("/functions/v1/admin-delete-user", env.SUPABASE_URL || SUPABASE_URL), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: env.SUPABASE_PUBLISHABLE_KEY,
+        Authorization: token
+      },
+      body: JSON.stringify({ user_id: args.user_id })
+    });
+    let result = {};
+    try { result = await response.json(); } catch {}
+    if (!response.ok || result.deleted !== true || result.verified !== true) {
+      throw new Error(String(result.error || "خدمة حذف الحساب لم تؤكد نجاح الحذف الآمن.").slice(0, 350));
+    }
+    const [remainingProfile, remainingRoles] = await Promise.all([
+      db(env, "/rest/v1/profiles?select=id&id=eq." + encodeURIComponent(args.user_id) + "&limit=1", token),
+      db(env, "/rest/v1/user_roles?select=id&user_id=eq." + encodeURIComponent(args.user_id) + "&limit=1", token)
+    ]);
+    if ((Array.isArray(remainingProfile) && remainingProfile.length) ||
+        (Array.isArray(remainingRoles) && remainingRoles.length)) {
+      throw new Error("أفادت الخدمة بالحذف، لكن قراءة قاعدة البيانات ما زالت تُظهر سجلات للحساب؛ لم أعتبر الحذف مكتملًا.");
+    }
+    return {
+      deleted: true,
+      verified: true,
+      user: { id: profile.id, name: profile.name, email: profile.email },
+      warning: result.warning || null
+    };
+  }
+
   if (name === "update_user_profile") {
     if (!isAdmin && args.user_id !== user.id) throw new Error("يمكنك تعديل ملفك الشخصي فقط؛ تعديل ملفات المستخدمين الآخرين للمدير.");
     const userId = validId(args.user_id) ? args.user_id : user.id;
@@ -1399,6 +1443,7 @@ const toolSpecs = [
   { name: "create_platform_user", description: "إنشاء حساب طالب أو مدرس أو مدير جديد عبر خدمة الإدارة الحالية. لا تطلب كلمة مرور من المستخدم؛ ينشئ النظام كلمة مرور مؤقتة عشوائية ويرسل رابط تعيين كلمة المرور إلى بريد الحساب. المدير فقط؛ إنشاء مدير جديد يحتاج تأكيدًا منفصلًا.", parameters: { type: "object", properties: { name: { type: "string" }, email: { type: "string" }, role: { type: "string", enum: ["student", "teacher", "admin"] } }, required: ["name", "email"] } },
   { name: "send_password_reset", description: "إرسال رابط آمن لإعادة تعيين كلمة المرور إلى البريد المرتبط بالحساب دون قراءة كلمة المرور أو طلبها في المحادثة. يمكن للمدير تحديد user_id، أما المستخدم فيرسل الرابط إلى حسابه فقط.", parameters: { type: "object", properties: { user_id: { type: "string" } }, required: [] } },
 
+  { name: "delete_platform_user", description: "حذف حساب طالب أو مدرس بشكل نهائي بعد تأكيد منفصل. المدير فقط. يمنع حذف حساب مدير أو حساب يملك دورات أو لديه رصيد أو معاملات مالية. يؤثر الحذف في تسجيلات الطالب ونتائج اختباراته وتقدمه ومحادثاته؛ اشرح ذلك قبل طلب التأكيد.", parameters: { type: "object", properties: { user_id: { type: "string" } }, required: ["user_id"] } },
   { name: "update_user_profile", description: "تعديل الاسم أو الهاتف أو النبذة في ملف المستخدم. المدير يستطيع تعديل الآخرين، والمدرس يستطيع تعديل ملفه الشخصي فقط. لا تغيّر البريد أو كلمة المرور.", parameters: { type: "object", properties: { user_id: { type: "string" }, name: { type: "string" }, phone: { type: "string" }, bio: { type: "string" } }, required: [] } },
   { name: "set_user_ban", description: "حظر مستخدم أو إعادة تفعيل حسابه. المدير فقط، ولا يمكن حظر حساب مدير. يتطلب تأكيدًا قبل الحظر.", parameters: { type: "object", properties: { user_id: { type: "string" }, banned: { type: "boolean" } }, required: ["user_id", "banned"] } },
   { name: "change_user_role", description: "منح أو سحب دور student أو teacher أو admin. المدير فقط. لا يمكن سحب دور آخر مدير أو دور المدير من حسابك. يتطلب تأكيدًا.", parameters: { type: "object", properties: { user_id: { type: "string" }, role: { type: "string", enum: ["student", "teacher", "admin"] }, operation: { type: "string", enum: ["grant", "revoke"] } }, required: ["user_id", "role", "operation"] } },
@@ -1422,7 +1467,7 @@ const WRITE_TOOLS = new Set([
   "create_course", "update_course", "delete_course", "create_lesson", "update_lesson", "delete_lesson",
   "manage_lesson_media", "create_exam", "update_exam", "delete_exam", "add_exam_question",
   "update_exam_question", "delete_exam_question", "remove_course_enrollment", "update_user_profile",
-  "set_user_ban", "change_user_role", "create_platform_user", "send_password_reset", "credit_user_wallet", "update_platform_setting",
+  "set_user_ban", "change_user_role", "create_platform_user", "send_password_reset", "delete_platform_user", "credit_user_wallet", "update_platform_setting",
   "mark_notification_read", "delete_notification", "manage_topup_contact", "grade_essay_result",
   "send_notification", "upload_course_image"
 ]);
@@ -1445,6 +1490,7 @@ function writeConfirmation(name, data) {
   if (name === "upload_course_image") return "## تم رفع صورة الدورة وربطها بنجاح\n\n**" + data.course.title + "**\n\nتم حفظ الصورة في مخزن المنصة والتحقق من أن رابطها أصبح مرتبطًا بالدورة.\n\n[عرض صورة الدورة](" + data.image_url + ")";
   if (name === "create_platform_user") return "## تم إنشاء حساب المستخدم والتحقق من بياناته\n\n**" + data.user.name + "**\n\n- البريد: " + data.user.email + "\n- الدور: " + data.user.role + "\n" + (data.reset_email_sent ? "أرسل النظام رابط تعيين كلمة المرور إلى بريد المستخدم." : "تم إنشاء الحساب، لكن لم يتأكد إرسال رابط كلمة المرور. يمكنك طلب إعادة إرساله من المساعد.") + (data.warning ? "\n\n" + data.warning : "");
   if (name === "send_password_reset") return "تم إرسال طلب رابط إعادة تعيين كلمة المرور إلى **" + data.user.email + "**. لم يتم عرض كلمة المرور أو طلبها في المحادثة.";
+  if (name === "delete_platform_user") return "## تم حذف حساب المستخدم والتحقق من ذلك\n\n**" + (data.user.name || data.user.email || data.user.id) + "**\n\nتم التأكد من اختفاء حساب المصادقة وملف المستخدم وصلاحياته. سجلات التسجيلات ونتائج الاختبارات والتقدم ومحادثات هذا الحساب تُحذف تلقائيًا مع الحساب." + (data.warning ? "\n\n" + data.warning : "");
   if (name === "create_course") return "## تم إنشاء الدورة والتحقق من حفظها\n\n**" + data.course.title + "**";
   if (name === "update_course") return "## تم تحديث الدورة والتحقق من حفظها\n\n**" + data.course.title + "**\n\n" + (data.changed_fields.includes("price") ? "السعر الجديد: **" + data.course.price + "**" : "تم تحديث: " + data.changed_fields.join("، "));
   if (name === "delete_course") return "## تم حذف الدورة والتحقق من ذلك\n\n**" + data.course.title + "**";
@@ -1473,6 +1519,7 @@ function writeConfirmation(name, data) {
 
 function isDestructiveToolCall(name, args) {
   if (name === "create_platform_user" && args.role === "admin") return true;
+  if (name === "delete_platform_user") return true;
   if (["delete_course", "delete_lesson", "delete_exam", "delete_exam_question",
        "remove_course_enrollment", "delete_notification"].includes(name)) return true;
   if (name === "manage_lesson_media" && args.operation === "delete") return true;
@@ -1501,7 +1548,7 @@ function destructiveConfirmationText(name) {
     delete_notification: "حذف الإشعار",
     change_user_role: "تغيير صلاحيات المستخدم",
     create_platform_user: "إنشاء حساب جديد بصلاحية مدير",
-    create_platform_user: "إنشاء حساب جديد بصلاحية مدير",
+    delete_platform_user: "حذف حساب المستخدم وسجلاته التابعة، بعد التحقق من عدم وجود دور مدير أو دورات أو أرصدة/معاملات مالية",
     set_user_ban: "حظر الحساب",
     manage_lesson_media: "حذف رابط أو ملف من المحاضرة",
     manage_topup_contact: "حذف جهة شحن المحفظة"
