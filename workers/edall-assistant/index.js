@@ -44,7 +44,7 @@ function isExplicitCourseImageUploadIntent(lastUserText, conversationText, image
 
 
 
-const GEMINI_MODEL = "gemini-3.6-flash";
+const GEMINI_MODEL = "gemini-3.8-flash";
 
 // Workers AI is the primary provider. Gemini is a true fallback that receives
 // the exact same messages, tools, and tool-call transcript when Workers AI fails.
@@ -1993,7 +1993,7 @@ export default {
           const storedRows = await db(env,
             "/rest/v1/assistant_messages?select=role,content,created_at,has_attachments&conversation_id=eq." +
             encodeURIComponent(conversationId) + "&user_id=eq." + encodeURIComponent(user.id) +
-            "&order=created_at.desc,id.desc&limit=24", authorization);
+            "&order=created_at.desc,id.desc&limit=40", authorization);
           if (Array.isArray(storedRows) && storedRows.length) {
             const stored = storedRows.reverse()
               .filter(row => ["user", "assistant"].includes(row.role) && typeof row.content === "string")
@@ -2003,7 +2003,7 @@ export default {
             if (!lastStored || lastStored.role !== "user" || lastStored.content !== current.content) {
               stored.push(current);
             }
-            conversationMessages = stored.slice(-24);
+            conversationMessages = stored.slice(-40);
           }
         }
       } catch (error) {

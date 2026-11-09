@@ -120,7 +120,7 @@ test("Gemini fallback receives the exact conversation and tool-call transcript",
   assert.deepEqual(requestBody.messages, messages);
   assert.deepEqual(requestBody.tools, tools);
   assert.equal(requestBody.tool_choice, "auto");
-  assert.equal(requestBody.model, "gemini-3.6-flash");
+  assert.equal(requestBody.model, "gemini-3.8-flash");
   assert.equal(requestBody.max_tokens, 2400);
   assert.equal("chat_template_kwargs" in requestBody, false);
   assert.equal(result.choices[0].message.content, "Gemini continued the same conversation.");

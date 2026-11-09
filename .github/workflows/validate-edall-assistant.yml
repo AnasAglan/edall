@@ -72,8 +72,12 @@ jobs:
           if (!providerHelper.includes('await response.json()') || !providerHelper.includes('Array.isArray(result?.choices)')) {
             throw new Error('Gemini non-streaming responses must be parsed and validated as OpenAI-compatible JSON.');
           }
-          if (!source.includes('GEMINI_MODEL = "gemini-3.6-flash"')) {
-            throw new Error('The Gemini fallback must use the supported stable Gemini Flash model.');
+          if (!source.includes('GEMINI_MODEL = "gemini-3.8-flash"')) {
+            throw new Error('The Gemini fallback must use the current stable Gemini Flash model.');
+          }
+          if (!source.includes('&order=created_at.desc,id.desc&limit=40') ||
+              !source.includes('conversationMessages = stored.slice(-40)')) {
+            throw new Error('The shared conversation must include the latest 40 persisted messages.');
           }
           if (!source.includes('مقارنة فعلية') || !source.includes('بالخط العريض')) {
             throw new Error('The assistant premium Arabic response-style instructions are missing.');
