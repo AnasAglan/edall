@@ -148,7 +148,7 @@ test("a reasoning-only or truncated Workers AI result falls back to Gemini", asy
     chat_template_kwargs: { enable_thinking: false }
   }, async (_url, init) => {
     const body = JSON.parse(init.body);
-    assert.equal(body.model, "gemini-3.6-flash");
+    assert.equal(body.model, "gemini-3.8-flash");
     assert.equal(body.messages[0].content, "Create the course.");
     return new Response(JSON.stringify(completion("Gemini returned a visible answer.")), {
       status: 200,
