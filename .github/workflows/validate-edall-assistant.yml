@@ -66,6 +66,10 @@ jobs:
           if (source.includes('env.AI.run(')) {
             throw new Error('Worker model calls must not bypass the shared provider router.');
           }
+          if (!source.includes('&order=created_at.desc,id.desc&limit=40') ||
+              !source.includes('conversationMessages = stored.slice(-40)')) {
+            throw new Error('The assistant must forward the latest 40 persisted conversation messages to either provider.');
+          }
           const workersAiIndex = providerRouter.indexOf('env.AI.run(workersAiModel, options)');
           const geminiIndex = providerRouter.indexOf('return await runGeminiFallback(env, options)');
           if (workersAiIndex < 0 || geminiIndex < 0 || workersAiIndex > geminiIndex) {
