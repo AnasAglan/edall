@@ -34,12 +34,16 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      - name: Check Worker, deploy helper, and assistant UI syntax
+      - name: Check Worker, provider router, deploy helper, and assistant UI syntax
         run: |
           node --check workers/edall-assistant/index.js
+          node --check workers/edall-assistant/provider-router.js
           node --check scripts/deploy-edall-assistant.mjs
+          node --check scripts/test-assistant-provider-router.mjs
           node --check public/ed_assistant.js
           deno check supabase/functions/admin-delete-user/index.ts
+      - name: Test Workers AI primary and Gemini fallback routing
+        run: node scripts/test-assistant-provider-router.mjs
       - name: Verify deploy helper refuses a missing build secret
         run: |
           set +e
@@ -55,12 +59,32 @@ jobs:
           const source = fs.readFileSync('workers/edall-assistant/index.js', 'utf8');
           const assistantConfig = fs.readFileSync('wrangler.assistant.toml', 'utf8');
           const deployHelper = fs.readFileSync('scripts/deploy-edall-assistant.mjs', 'utf8');
-          const geminiHelper = source.slice(source.indexOf('async function runAssistantModel'), source.indexOf('async function classifyExplicitWriteIntent'));
-          if (!geminiHelper.includes('compatibleOptions.stream === true') || !geminiHelper.includes('return response.body')) {
-            throw new Error('Gemini streaming responses must return the response body stream.');
+          const providerRouter = fs.readFileSync('workers/edall-assistant/provider-router.js', 'utf8');
+          if (!source.includes('import { runAssistantModel } from "./provider-router.js"')) {
+            throw new Error('The Worker must route all model requests through the shared provider router.');
           }
-          if (!geminiHelper.includes('await response.json()') || !geminiHelper.includes('Array.isArray(result.choices)')) {
-            throw new Error('Gemini non-streaming responses must be parsed and validated as OpenAI-compatible JSON.');
+          const workersAiIndex = providerRouter.indexOf('env.AI.run(workersAiModel, options)');
+          const geminiIndex = providerRouter.indexOf('generativelanguage.googleapis.com');
+          if (workersAiIndex < 0 || geminiIndex < 0 || workersAiIndex > geminiIndex) {
+            throw new Error('Workers AI must be attempted before Gemini.');
+          }
+          for (const required of [
+            'options.stream === true',
+            'return response.body',
+            'await response.json()',
+            'Array.isArray(result.choices)',
+            'Both ED-ALL AI providers failed',
+            'GEMINI_FALLBACK_NOT_CONFIGURED'
+          ]) {
+            if (!providerRouter.includes(required)) throw new Error('Provider router contract missing: ' + required);
+          }
+          for (const required of [
+            'جداول Markdown',
+            'عناوين واضحة',
+            'الخط العريض',
+            'لا تخترع أرقامًا'
+          ]) {
+            if (!source.includes(required)) throw new Error('Premium Arabic response-style guidance missing: ' + required);
           }
           if (!assistantConfig.includes('GEMINI_API_KEY')) {
             throw new Error('GEMINI_API_KEY must be declared as a required Worker secret.');
