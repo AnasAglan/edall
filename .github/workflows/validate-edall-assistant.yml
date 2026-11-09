@@ -1,0 +1,59 @@
+name: Validate ED-ALL assistant
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "workers/edall-assistant/**"
+      - "public/ed_assistant.js"
+      - ".github/workflows/validate-edall-assistant.yml"
+  push:
+    branches: [feat/full-platform-assistant-management]
+    paths:
+      - "workers/edall-assistant/**"
+      - "public/ed_assistant.js"
+      - ".github/workflows/validate-edall-assistant.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  syntax-and-tool-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check Worker and assistant UI syntax
+        run: |
+          node --check workers/edall-assistant/index.js
+          node --check public/ed_assistant.js
+      - name: Verify assistant tool routing and write coverage
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const source = fs.readFileSync('workers/edall-assistant/index.js', 'utf8');
+          const specs = [...source.matchAll(/\{ name: "([^"]+)", description:/g)].map(match => match[1]);
+          const duplicates = specs.filter((name, index) => specs.indexOf(name) !== index);
+          if (duplicates.length) throw new Error('Duplicate tool specs: ' + [...new Set(duplicates)].join(', '));
+          const required = [
+            'update_course', 'create_lesson', 'update_lesson', 'manage_lesson_media',
+            'update_exam', 'update_exam_question', 'list_course_students',
+            'get_student_progress', 'credit_user_wallet', 'update_platform_setting',
+            'change_user_role', 'grade_essay_result'
+          ];
+          for (const name of required) {
+            if (!specs.includes(name)) throw new Error('Missing tool spec: ' + name);
+            if (!source.includes('if (name === "' + name + '")')) throw new Error('Missing handler: ' + name);
+          }
+          const writeStart = source.indexOf('const WRITE_TOOLS = new Set(');
+          const writeEnd = source.indexOf(');', writeStart);
+          const writeSet = source.slice(writeStart, writeEnd);
+          for (const name of ['update_course','update_lesson','manage_lesson_media','credit_user_wallet','update_platform_setting','change_user_role','grade_essay_result']) {
+            if (!writeSet.includes('"' + name + '"')) throw new Error('Write tool missing verification gate: ' + name);
+          }
+          if (!source.includes('resultData?.verified === true')) throw new Error('Verified write gate missing');
+          if (!source.includes('hasConfirmedDestructiveAction(messages)')) throw new Error('Destructive confirmation gate missing');
+          console.log('Validated ' + specs.length + ' unique assistant tools.');
+          NODE
