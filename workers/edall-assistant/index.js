@@ -386,6 +386,20 @@ async function getManagedCourse(env, token, courseId, user, isAdmin) {
   return course;
 }
 
+async function getStudentCourseAccess(env, token, courseId, user) {
+  if (!validId(courseId)) throw new Error("معرف الدورة غير صحيح.");
+  const courseRows = await db(env,
+    "/rest/v1/courses?select=id,title,price&id=eq." + encodeURIComponent(courseId) + "&limit=1",
+    token);
+  const course = Array.isArray(courseRows) ? courseRows[0] : null;
+  if (!course) throw new Error("لم يتم العثور على الدورة.");
+  const enrollmentRows = await db(env,
+    "/rest/v1/enrollments?select=id&user_id=eq." + encodeURIComponent(user.id) +
+    "&course_id=eq." + encodeURIComponent(course.id) + "&limit=1", token);
+  const enrolled = Array.isArray(enrollmentRows) && enrollmentRows.length > 0;
+  return { course, enrolled, fullAccess: enrolled || Number(course.price || 0) <= 0 };
+}
+
 function decodeImageAttachment(image) {
   const mime = String(image?.mimeType || "").toLowerCase();
   const allowed = {
@@ -598,12 +612,21 @@ async function tool(name, args, env, token, user, roles, images = []) {
       "/rest/v1/courses?select=id,title,description,price,image_url,created_by,created_at&order=created_at.desc&limit=" + limit,
       token);
     if (!Array.isArray(rows)) throw new Error("تعذر قراءة قائمة الدورات.");
-    // Teachers only see their own manageable courses; admins can see all courses.
-    return isAdmin ? rows : rows.filter(course => course.created_by === user.id);
+    if (isAdmin) return rows;
+    if (isTeacher) return rows.filter(course => course.created_by === user.id);
+    return rows.map(({ id, title, description, price, image_url, created_at }) => ({
+      id, title, description, price, image_url, created_at
+    }));
   }
 
   if (name === "get_course_lessons") {
-    const course = await getManagedCourse(env, token, args.course_id, user, isAdmin);
+    const studentMode = !isAdmin && !isTeacher;
+    const studentAccess = studentMode
+      ? await getStudentCourseAccess(env, token, args.course_id, user)
+      : null;
+    const course = studentMode
+      ? studentAccess.course
+      : await getManagedCourse(env, token, args.course_id, user, isAdmin);
     const lessons = await db(env,
       "/rest/v1/lessons?select=id,title,content,sort_order,is_free,created_at&course_id=eq." +
       encodeURIComponent(course.id) + "&order=sort_order.asc&limit=100", token);
@@ -619,13 +642,22 @@ async function tool(name, args, env, token, user, roles, images = []) {
           ids.join(",") + ")&order=sort_order.asc&limit=500", token)
       : [];
     return {
-      course: { id: course.id, title: course.title },
-      lessons: lessons.map(lesson => ({
-        ...lesson,
-        content: String(lesson.content || "").slice(0, 3000),
-        videos: (videos || []).filter(video => video.lesson_id === lesson.id),
-        files: (files || []).filter(file => file.lesson_id === lesson.id)
-      }))
+      course: {
+        id: course.id,
+        title: course.title,
+        ...(studentMode ? { price: Number(course.price || 0), enrolled: studentAccess.enrolled } : {})
+      },
+      lessons: lessons.map(lesson => {
+        const locked = studentMode && !studentAccess.fullAccess && lesson.is_free !== true;
+        return {
+          ...lesson,
+          content: locked ? "" : String(lesson.content || "").slice(0, 3000),
+          ...(studentMode ? { locked } : {}),
+          // Supabase RLS enforces can_access_lesson for the related media.
+          videos: (videos || []).filter(video => video.lesson_id === lesson.id),
+          files: (files || []).filter(file => file.lesson_id === lesson.id)
+        };
+      })
     };
   }
 
@@ -1412,7 +1444,9 @@ async function tool(name, args, env, token, user, roles, images = []) {
     if (!["mark_all_read", "delete_all"].includes(operation)) {
       throw new Error("العملية يجب أن تكون mark_all_read أو delete_all.");
     }
-    const filter = "&or=(user_id.eq." + encodeURIComponent(user.id) + ",user_id.is.null)";
+    const filter = isAdmin
+      ? "&or=(user_id.eq." + encodeURIComponent(user.id) + ",user_id.is.null)"
+      : "&user_id=eq." + encodeURIComponent(user.id);
     const rows = await db(env, "/rest/v1/notifications?select=id,read" + filter +
       (operation === "mark_all_read" ? "&read=eq.false" : "") + "&limit=1000", token);
     if (!Array.isArray(rows)) throw new Error("تعذر قراءة الإشعارات التي ستتأثر بالعملية.");
@@ -1488,8 +1522,8 @@ async function tool(name, args, env, token, user, roles, images = []) {
   }
 
   if (name === "update_user_profile") {
-    if (!isAdmin && args.user_id !== user.id) throw new Error("يمكنك تعديل ملفك الشخصي فقط؛ تعديل ملفات المستخدمين الآخرين للمدير.");
     const userId = validId(args.user_id) ? args.user_id : user.id;
+    if (!isAdmin && userId !== user.id) throw new Error("يمكنك تعديل ملفك الشخصي فقط؛ تعديل ملفات المستخدمين الآخرين للمدير.");
     const patch = {};
     if (Object.prototype.hasOwnProperty.call(args, "name")) {
       const value = String(args.name || "").trim().slice(0, 160);
@@ -1830,6 +1864,42 @@ const toolSpecs = [
 ].map(spec => ({ type: "function", function: spec }));
 
 
+const STUDENT_TOOLS = new Set([
+  "list_courses", "get_course_lessons", "purchase_course",
+  "list_favorites", "manage_favorite", "manage_notifications_bulk",
+  "upload_profile_avatar", "update_user_profile", "send_password_reset",
+  "get_wallet_info", "list_notifications", "mark_notification_read",
+  "delete_notification"
+]);
+
+const TEACHER_TOOLS = new Set([
+  "list_courses", "get_course_lessons", "create_course", "upload_course_image",
+  "create_lesson", "create_exam", "add_exam_question",
+  "update_course", "delete_course", "update_lesson", "delete_lesson",
+  "manage_lesson_media", "list_course_exams", "update_exam", "delete_exam",
+  "list_exam_questions", "update_exam_question", "delete_exam_question",
+  "list_course_students", "get_student_progress", "get_exam_grading_list",
+  "grade_essay_result", "send_password_reset", "purchase_course",
+  "list_favorites", "manage_favorite", "manage_notifications_bulk",
+  "upload_profile_avatar", "update_user_profile", "get_wallet_info",
+  "list_notifications", "mark_notification_read", "delete_notification"
+]);
+
+const KNOWN_TOOLS = new Set(toolSpecs.map(item => item.function.name));
+
+export function canUseAssistantTool(name, args = {}, roles = [], userId = "") {
+  const roleSet = new Set(Array.isArray(roles) ? roles : []);
+  if (!KNOWN_TOOLS.has(name)) return false;
+  if (roleSet.has("admin")) return true;
+
+  const selfOnly = ["send_password_reset", "update_user_profile", "get_wallet_info", "list_favorites"];
+  if (selfOnly.includes(name) && args.user_id && args.user_id !== userId) return false;
+
+  if (roleSet.has("teacher")) return TEACHER_TOOLS.has(name);
+  if (roleSet.has("student")) return STUDENT_TOOLS.has(name);
+  return false;
+}
+
 const WRITE_TOOLS = new Set([
   "create_course", "update_course", "delete_course", "create_lesson", "update_lesson", "delete_lesson", "purchase_course", "manage_favorite", "manage_notifications_bulk", "upload_profile_avatar",
   "manage_lesson_media", "create_exam", "update_exam", "delete_exam", "add_exam_question",
@@ -1982,8 +2052,8 @@ export default {
     } catch {
       return json({ error: "تعذر التحقق من الصلاحيات." }, 403, origin);
     }
-    if (!roles.some(role => role === "admin" || role === "teacher")) {
-      return json({ error: "المساعد متاح للمدرسين والمديرين فقط." }, 403, origin);
+    if (!roles.some(role => role === "admin" || role === "teacher" || role === "student")) {
+      return json({ error: "لا يوجد دور صالح لهذا الحساب لاستخدام مساعد ED-ALL." }, 403, origin);
     }
 
     let body;
@@ -2030,7 +2100,15 @@ export default {
         conversationMessages = incomingMessages;
       }
     }
-    const messages = [{ role: "system", content: SYSTEM }, ...conversationMessages];
+    const roleInstructions = roles.includes("admin")
+      ? "الدور الحالي: مدير المنصة. استخدم أدوات الإدارة المتاحة وفق صلاحيات الخادم."
+      : roles.includes("teacher")
+      ? "الدور الحالي: مدرس. أدر دوراتك التي أنشأتها فقط، واطلع على طلاب تلك الدورات. لا تستخدم أدوات الإدارة العامة أو بيانات مستخدمين آخرين."
+      : "الدور الحالي: طالب. استخدم أدوات الطالب الذاتية فقط. اعرض كتالوج الدورات والدروس المجانية، ولا تعرض محتوى درس مدفوع أو وسائطه إلا إذا كان الحساب مسجلًا في الدورة. لا تحاول الوصول إلى حسابات أو بيانات أو نتائج طلاب آخرين.";
+    const messages = [{ role: "system", content: SYSTEM + "\n\n" + roleInstructions }, ...conversationMessages];
+    const availableTools = toolSpecs.filter(spec =>
+      canUseAssistantTool(spec.function.name, {}, roles, user.id)
+    );
     const images = Array.isArray(body.images) ? body.images : [];
     if (images.length > 4) return json({ error: "يمكن إرفاق 4 صور كحد أقصى." }, 400, origin);
     const validatedImages = [];
@@ -2118,7 +2196,7 @@ export default {
       for (let round = 0; round < 5; round++) {
           const result = await runAssistantModel(env, MODEL, {
             messages: finalMessages,
-            tools: toolSpecs,
+            tools: availableTools,
             tool_choice: "auto",
             reasoning_effort: "low",
             chat_template_kwargs: { enable_thinking: false, clear_thinking: true },
@@ -2128,11 +2206,28 @@ export default {
           if (!assistant) return json({ error: "لم يرجع النموذج استجابة مفهومة." }, 502, origin);
           if (assistant.tool_calls?.length) {
             if (assistant.tool_calls.length > 5) return json({ error: "طلب النموذج عددًا كبيرًا من الإجراءات." }, 400, origin);
+            // Preflight every proposed action before running any of them. This prevents
+            // an unauthorized second call from following a successful first call.
+            for (const pendingCall of assistant.tool_calls) {
+              const pendingName = pendingCall?.function?.name;
+              let pendingArgs = {};
+              try {
+                pendingArgs = JSON.parse(pendingCall?.function?.arguments || "{}");
+              } catch {
+                return json({ error: "معاملات إحدى الأدوات غير صالحة." }, 400, origin);
+              }
+              if (!canUseAssistantTool(pendingName, pendingArgs, roles, user.id)) {
+                return json({ error: "هذه الأداة غير متاحة وفق صلاحيات حسابك." }, 403, origin);
+              }
+            }
             finalMessages.push({ role: "assistant", content: assistant.content || "", tool_calls: assistant.tool_calls });
             for (const call of assistant.tool_calls) {
               let args = {};
               try { args = JSON.parse(call.function.arguments || "{}"); } catch {}
               const actionName = call.function.name;
+              if (!canUseAssistantTool(actionName, args, roles, user.id)) {
+                return json({ error: "هذه الأداة غير متاحة وفق صلاحيات حسابك." }, 403, origin);
+              }
               if (WRITE_TOOLS.has(actionName) && !explicitWriteIntent) {
                 return json({ error: "لم أنفذ أي تغيير؛ لأن رسالتك لا تتضمن أمرًا صريحًا بالإنشاء أو التعديل. اكتب ما تريد تنفيذه بوضوح." }, 400, origin);
               }

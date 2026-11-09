@@ -10,6 +10,7 @@ on:
       - "public/ed_assistant.js"
       - "supabase/functions/admin-delete-user/**"
       - "workers/edall-assistant/provider.test.mjs"
+      - "workers/edall-assistant/authorization.test.mjs"
       - ".github/workflows/validate-edall-assistant.yml"
   push:
     branches: [main, feat/assistant-student-engagement-and-notifications]
@@ -40,11 +41,14 @@ jobs:
           node --check workers/edall-assistant/index.js
           node --check scripts/deploy-edall-assistant.mjs
           node --check workers/edall-assistant/provider.test.mjs
+          node --check workers/edall-assistant/authorization.test.mjs
           node --check public/ed_assistant.js
           deno check supabase/functions/admin-delete-user/index.ts
 
       - name: Test Workers AI priority and Gemini fallback
         run: node --test workers/edall-assistant/provider.test.mjs
+      - name: Test role-scoped assistant tool permissions
+        run: node --test workers/edall-assistant/authorization.test.mjs
       - name: Verify deploy helper refuses a missing build secret
         run: |
           set +e
