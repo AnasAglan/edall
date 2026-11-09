@@ -58,13 +58,31 @@ async function runAssistantModel(env, fallbackModel, options) {
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(60000)
       });
-      if (!response.ok) throw new Error("Gemini API returned " + response.status + ": " + (await response.text()).slice(0, 500));
-      return response;
+      if (!response.ok) {
+        const detail = (await response.text()).slice(0, 500);
+        const error = new Error("Gemini API returned " + response.status + ": " + detail);
+        error.status = response.status;
+        throw error;
+      }
+      if (compatibleOptions.stream === true) {
+        if (!response.body) throw new Error("Gemini returned an empty streaming response.");
+        console.info("ED-ALL Gemini request succeeded:", GEMINI_MODEL, "streaming");
+        return response.body;
+      }
+      const result = await response.json();
+      if (!result || !Array.isArray(result.choices)) {
+        throw new Error("Gemini returned an invalid OpenAI-compatible response.");
+      }
+      console.info("ED-ALL Gemini request succeeded:", GEMINI_MODEL, "non-streaming");
+      return result;
     } catch (error) {
       console.error("ED-ALL Gemini provider failed; trying Workers AI fallback:", error instanceof Error ? error.message : String(error));
     }
   }
-  if (!env.AI || typeof env.AI.run !== "function") throw new Error("Gemini is unavailable and Workers AI fallback is not configured.");
+  if (!env.GEMINI_API_KEY) {
+    throw new Error("GEMINI_API_KEY is missing from this Worker environment. Configure the Production secret and deploy it.");
+  }
+  if (!env.AI || typeof env.AI.run !== "function") throw new Error("Gemini failed and Workers AI fallback is not configured.");
   return env.AI.run(fallbackModel, options);
 }
 
