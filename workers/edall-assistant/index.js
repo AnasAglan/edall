@@ -42,13 +42,39 @@ function isExplicitCourseImageUploadIntent(lastUserText, conversationText, image
 }
 
 
+
+const GEMINI_MODEL = "gemini-2.5-flash";
+
+// Gemini is the primary provider. Workers AI remains a compatibility fallback.
+async function runAssistantModel(env, fallbackModel, options) {
+  if (env.GEMINI_API_KEY) {
+    try {
+      const { reasoning_effort, chat_template_kwargs, max_completion_tokens, ...compatibleOptions } = options || {};
+      const payload = { ...compatibleOptions, model: GEMINI_MODEL,
+        ...(max_completion_tokens && !compatibleOptions.max_tokens ? { max_tokens: max_completion_tokens } : {}) };
+      const response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + env.GEMINI_API_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(60000)
+      });
+      if (!response.ok) throw new Error("Gemini API returned " + response.status + ": " + (await response.text()).slice(0, 500));
+      return response;
+    } catch (error) {
+      console.error("ED-ALL Gemini provider failed; trying Workers AI fallback:", error instanceof Error ? error.message : String(error));
+    }
+  }
+  if (!env.AI || typeof env.AI.run !== "function") throw new Error("Gemini is unavailable and Workers AI fallback is not configured.");
+  return env.AI.run(fallbackModel, options);
+}
+
 async function classifyExplicitWriteIntent(env, conversation) {
   const recent = conversation.slice(-16).map(message => ({
     role: message.role,
     content: String(message.content || "").slice(0, 1000)
   }));
   try {
-    const result = await env.AI.run(MODEL, {
+    const result = await runAssistantModel(env, MODEL, {
       messages: [
         {
           role: "system",
@@ -74,7 +100,7 @@ async function classifyRequestScope(env, conversation, hasImages) {
     content: String(message.content || "").slice(0, 1200)
   }));
   try {
-    const result = await env.AI.run(MODEL, {
+    const result = await runAssistantModel(env, MODEL, {
       messages: [
         {
           role: "system",
@@ -1926,7 +1952,7 @@ export default {
       let finalAssistantText = "";
       let completedWrites = [];
       for (let round = 0; round < 5; round++) {
-          const result = await env.AI.run(MODEL, {
+          const result = await runAssistantModel(env, MODEL, {
             messages: finalMessages,
             tools: toolSpecs,
             tool_choice: "auto",
@@ -1993,7 +2019,7 @@ export default {
         return sseTextResponse("لم يتم تأكيد أي تغيير؛ لأن أداة التنفيذ لم تُرجع نتيجة حفظ موثقة. لن أقول إن العملية نجحت. أعد تحديد العنصر والبيانات التي تريد تغييرها داخل المنصة.", origin);
       }
 
-      const output = await env.AI.run(images.length ? VISION_MODEL : MODEL, {
+      const output = await runAssistantModel(env, images.length ? VISION_MODEL : MODEL, {
         messages: images.length ? aiMessages : finalMessages,
         stream: true,
         max_tokens: 2400,
