@@ -41,7 +41,7 @@ jobs:
             'update_course', 'create_lesson', 'update_lesson', 'manage_lesson_media',
             'update_exam', 'update_exam_question', 'list_course_students',
             'get_student_progress', 'credit_user_wallet', 'update_platform_setting',
-            'change_user_role', 'grade_essay_result'
+            'change_user_role', 'grade_essay_result', 'create_platform_user', 'send_password_reset'
           ];
           for (const name of required) {
             if (!specs.includes(name)) throw new Error('Missing tool spec: ' + name);
@@ -50,7 +50,7 @@ jobs:
           const writeStart = source.indexOf('const WRITE_TOOLS = new Set(');
           const writeEnd = source.indexOf(');', writeStart);
           const writeSet = source.slice(writeStart, writeEnd);
-          for (const name of ['update_course','update_lesson','manage_lesson_media','credit_user_wallet','update_platform_setting','change_user_role','grade_essay_result']) {
+          for (const name of ['update_course','update_lesson','manage_lesson_media','credit_user_wallet','update_platform_setting','change_user_role','grade_essay_result','create_platform_user','send_password_reset']) {
             if (!writeSet.includes('"' + name + '"')) throw new Error('Write tool missing verification gate: ' + name);
           }
           if (!source.includes('resultData?.verified === true')) throw new Error('Verified write gate missing');
