@@ -41,3 +41,11 @@ The assistant currently exposes 46 allowlisted tools with explicit server-side h
 ## Deployment notes
 
 The deployed Worker is `edall-assistant`. When uploading a new version, preserve all existing bindings (`AI`, `GEMINI_API_KEY`, and `SUPABASE_PUBLISHABLE_KEY`). Do not replace secret values, disable authentication, use a service-role key, or bypass Supabase RLS.
+
+
+## Production deployment safety
+
+- The Cloudflare Workers Builds production branch is `main`.
+- Production deployments run `node scripts/deploy-edall-assistant.mjs`, which passes the configured Gemini build secret to Wrangler through a temporary secrets file and removes the file afterward.
+- Automatic deployments from non-production branches are disabled. Preview builds remain disabled until a separate preview command and isolated preview configuration are explicitly configured.
+- Keep `GEMINI_API_KEY` in Cloudflare Build secrets and Worker Runtime Secrets only. Never place its value in GitHub, project files, or logs.
