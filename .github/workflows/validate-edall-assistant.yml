@@ -6,12 +6,14 @@ on:
     paths:
       - "workers/edall-assistant/**"
       - "public/ed_assistant.js"
+      - "supabase/functions/admin-delete-user/**"
       - ".github/workflows/validate-edall-assistant.yml"
   push:
-    branches: [feat/assistant-account-onboarding]
+    branches: [feat/assistant-safe-account-deletion]
     paths:
       - "workers/edall-assistant/**"
       - "public/ed_assistant.js"
+      - "supabase/functions/admin-delete-user/**"
       - ".github/workflows/validate-edall-assistant.yml"
 
 permissions:
@@ -25,15 +27,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
       - name: Check Worker and assistant UI syntax
         run: |
           node --check workers/edall-assistant/index.js
           node --check public/ed_assistant.js
+          deno check supabase/functions/admin-delete-user/index.ts
       - name: Verify assistant tool routing and write coverage
         run: |
           node <<'NODE'
           const fs = require('node:fs');
           const source = fs.readFileSync('workers/edall-assistant/index.js', 'utf8');
+          const deletion = fs.readFileSync('supabase/functions/admin-delete-user/index.ts', 'utf8');
+          for (const required of ['auth.admin.deleteUser', 'has_role', 'created_by', 'wallet_transactions', 'targetRoles.includes("admin")', 'verified: true']) {
+            if (!deletion.includes(required)) throw new Error('Account deletion safety check missing: ' + required);
+          }
           const specs = [...source.matchAll(/\{ name: "([^"]+)", description:/g)].map(match => match[1]);
           const duplicates = specs.filter((name, index) => specs.indexOf(name) !== index);
           if (duplicates.length) throw new Error('Duplicate tool specs: ' + [...new Set(duplicates)].join(', '));
@@ -41,7 +51,7 @@ jobs:
             'update_course', 'create_lesson', 'update_lesson', 'manage_lesson_media',
             'update_exam', 'update_exam_question', 'list_course_students',
             'get_student_progress', 'credit_user_wallet', 'update_platform_setting',
-            'change_user_role', 'grade_essay_result', 'create_platform_user', 'send_password_reset'
+            'change_user_role', 'grade_essay_result', 'create_platform_user', 'send_password_reset', 'delete_platform_user'
           ];
           for (const name of required) {
             if (!specs.includes(name)) throw new Error('Missing tool spec: ' + name);
@@ -50,7 +60,7 @@ jobs:
           const writeStart = source.indexOf('const WRITE_TOOLS = new Set(');
           const writeEnd = source.indexOf(');', writeStart);
           const writeSet = source.slice(writeStart, writeEnd);
-          for (const name of ['update_course','update_lesson','manage_lesson_media','credit_user_wallet','update_platform_setting','change_user_role','grade_essay_result','create_platform_user','send_password_reset']) {
+          for (const name of ['update_course','update_lesson','manage_lesson_media','credit_user_wallet','update_platform_setting','change_user_role','grade_essay_result','create_platform_user','send_password_reset','delete_platform_user']) {
             if (!writeSet.includes('"' + name + '"')) throw new Error('Write tool missing verification gate: ' + name);
           }
           if (!source.includes('resultData?.verified === true')) throw new Error('Verified write gate missing');
