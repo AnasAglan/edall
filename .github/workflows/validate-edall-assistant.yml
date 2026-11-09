@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "workers/edall-assistant/**"
+      - "wrangler.assistant.toml"
       - "public/ed_assistant.js"
       - "supabase/functions/admin-delete-user/**"
       - ".github/workflows/validate-edall-assistant.yml"
@@ -12,6 +13,7 @@ on:
     branches: [feat/assistant-student-engagement-and-notifications]
     paths:
       - "workers/edall-assistant/**"
+      - "wrangler.assistant.toml"
       - "public/ed_assistant.js"
       - "supabase/functions/admin-delete-user/**"
       - ".github/workflows/validate-edall-assistant.yml"
@@ -40,6 +42,17 @@ jobs:
           node <<'NODE'
           const fs = require('node:fs');
           const source = fs.readFileSync('workers/edall-assistant/index.js', 'utf8');
+          const assistantConfig = fs.readFileSync('wrangler.assistant.toml', 'utf8');
+          const geminiHelper = source.slice(source.indexOf('async function runAssistantModel'), source.indexOf('async function classifyExplicitWriteIntent'));
+          if (!geminiHelper.includes('compatibleOptions.stream === true') || !geminiHelper.includes('return response.body')) {
+            throw new Error('Gemini streaming responses must return the response body stream.');
+          }
+          if (!geminiHelper.includes('await response.json()') || !geminiHelper.includes('Array.isArray(result.choices)')) {
+            throw new Error('Gemini non-streaming responses must be parsed and validated as OpenAI-compatible JSON.');
+          }
+          if (!assistantConfig.includes('GEMINI_API_KEY')) {
+            throw new Error('GEMINI_API_KEY must be declared as a required Worker secret.');
+          }
           const deletion = fs.readFileSync('supabase/functions/admin-delete-user/index.ts', 'utf8');
           for (const required of ['auth.admin.deleteUser', 'has_role', 'created_by', 'wallet_transactions', 'targetRoles.includes("admin")', 'verified: true']) {
             if (!deletion.includes(required)) throw new Error('Account deletion safety check missing: ' + required);
