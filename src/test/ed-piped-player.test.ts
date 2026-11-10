@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { runInNewContext, Script } from "node:vm";
 import { TextEncoder } from "node:util";
-import { discoverPiped, discoverInvidious } from "../../scripts/sync-video-instances.mjs";
+import { discoverPiped, discoverInvidious, assessSamplePlayback } from "../../scripts/sync-video-instances.mjs";
 
 const playerSource = readFileSync(resolve(process.cwd(), "public/ed_piped_player.js"), "utf8");
 const platformHtml = readFileSync(resolve(process.cwd(), "public/ed_master.html"), "utf8");
@@ -78,6 +78,38 @@ const audioTrack = {
   indexEnd: 999,
 };
 
+
+describe("daily playback quality assessment", () => {
+  it("does not classify video-only media as playable without a tested audio stream", () => {
+    const result = assessSamplePlayback({
+      mediaProbes: [{ ok: true, status: 206 }],
+      audioProbes: [{ ok: false, status: 403 }],
+      muxedAudio: false,
+    });
+    expect(result.playable).toBe(false);
+    expect(result.audioAvailable).toBe(false);
+  });
+
+  it("accepts a verified separate video and audio pair", () => {
+    const result = assessSamplePlayback({
+      mediaProbes: [{ ok: true, status: 206 }],
+      audioProbes: [{ ok: true, status: 206 }],
+      muxedAudio: false,
+    });
+    expect(result.playable).toBe(true);
+    expect(result.audioAvailable).toBe(true);
+  });
+
+  it("accepts a verified muxed stream or a valid CORS-enabled manifest", () => {
+    expect(assessSamplePlayback({
+      mediaProbes: [{ ok: true, status: 206 }],
+      muxedAudio: true,
+    }).playable).toBe(true);
+    expect(assessSamplePlayback({
+      manifestProbes: [{ ok: true, format: "dash", corsAllowed: true }],
+    }).playable).toBe(true);
+  });
+});
 
 describe("Daily extractor instance discovery", () => {
   it("discovers API hosts from the official Piped table and ignores badge URLs", () => {
