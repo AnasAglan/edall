@@ -58,7 +58,8 @@ async function loadOfficialInstances(): Promise<Array<{ url: string; score: numb
         score: Number(item?.score) || 0,
         status: String(item?.status || "unknown"),
         official: item?.official === true,
-      })).filter((item: any) => item.url && item.official);
+        apiListed: item?.apiListed === true,
+      })).filter((item: any) => item.url && item.official && item.apiListed);
       const usable = cleaned.filter((item: any) => item.status !== "unhealthy");
       if (usable.length) return usable;
     }
@@ -73,7 +74,7 @@ async function loadOfficialInstances(): Promise<Array<{ url: string; score: numb
   const instances: Array<{ url: string; score: number; status: string }> = [];
   for (const row of payload as any[]) {
     const meta = row?.[1] || {};
-    if (String(meta.type || "").toLowerCase() !== "https") continue;
+    if (String(meta.type || "").toLowerCase() !== "https" || meta.api !== true) continue;
     const url = cleanBase(meta.uri);
     if (!url || url.toLowerCase().endsWith(".ygg")) continue;
     instances.push({
@@ -468,7 +469,7 @@ async function extract(videoId: string, excluded: string[]) {
       return rank(b.status) - rank(a.status) || b.score - a.score || a.url.localeCompare(b.url);
     });
 
-  if (!instances.length) throw new Error("No official HTTPS Invidious instances are available.");
+  if (!instances.length) throw new Error("No official HTTPS Invidious instances currently advertise API access.");
   const failures: string[] = [];
   let best: any = null;
 

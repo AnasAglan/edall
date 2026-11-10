@@ -69,6 +69,10 @@ export function discoverPiped(markdown) {
   return uniqueByUrl(urls);
 }
 
+export function supportsInvidiousApi(instance) {
+  return instance?.provider !== "invidious" || instance?.apiListed === true;
+}
+
 export function discoverInvidious(payload) {
   if (!Array.isArray(payload)) throw new Error("Invalid Invidious instances API response.");
   const entries = [];
@@ -424,6 +428,25 @@ export function classifyPlaybackHealth({ sampleChecks = [], heights = [] }) {
 // Keep the sync probe's response fields aligned with the Worker media verification checks.
 async function probeInstance(instance) {
   const started = Date.now();
+  if (!supportsInvidiousApi(instance)) {
+    return {
+      ...instance,
+      status: "unhealthy",
+      score: 0,
+      responseMs: 0,
+      mediaProbe: null,
+      manifestProbe: null,
+      videoCount: 0,
+      audioCount: 0,
+      audioAvailable: false,
+      heights: [],
+      sampleChecks: [],
+      testedVideoIds: SAMPLE_VIDEO_IDS,
+      lastCheckedAt: new Date().toISOString(),
+      lastSuccessAt: null,
+      error: "The official Invidious directory reports api=false; its video API is disabled, so extraction was not attempted.",
+    };
+  }
   try {
     const sampleResults = await Promise.allSettled(SAMPLE_VIDEO_IDS.map(async (videoId) => {
       const endpoint = instance.provider === "piped"
