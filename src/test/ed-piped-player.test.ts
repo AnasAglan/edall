@@ -170,10 +170,15 @@ describe("ED ALL Piped player", () => {
     expect(electronMain).toContain("yt-dlp.exe");
     expect(electronMain).toContain("The desktop yt-dlp extractor is not installed.");
     expect(platformHtml).not.toContain("edall.anasaglan.deno.net");
-    expect(platformHtml).toContain("The YouTube fallback will use automatic quality.");
+    const webFallbackGuard = platformHtml.indexOf("Ordinary web playback is quality-extraction-only");
+    const nativeFallbackCode = platformHtml.indexOf("www.youtube-nocookie.com/embed/");
+    expect(webFallbackGuard).toBeGreaterThan(-1);
+    expect(nativeFallbackCode).toBeGreaterThan(webFallbackGuard);
+    expect(platformHtml.slice(webFallbackGuard, nativeFallbackCode)).toContain("if (!isAndroidApp)");
+    expect(platformHtml.slice(webFallbackGuard, nativeFallbackCode)).toContain("return;");
+    expect(platformHtml).toContain("No automatic-quality YouTube fallback was opened.");
     expect(platformHtml).toContain("www.youtube-nocookie.com/embed/");
     expect(platformHtml).toContain("Plyr dependency failed to load:");
-    expect(platformHtml).toContain("سيتم استخدام مشغل YouTube الاحتياطي بجودته التلقائية.");
   });
 
   it("parses the player script without syntax errors", () => {
