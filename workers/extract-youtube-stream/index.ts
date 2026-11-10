@@ -186,7 +186,7 @@ async function probeMediaUrl(url: string) {
     });
     const contentType = response.headers.get("content-type") || "";
     const httpOk = response.status === 206 || response.status === 200;
-    const mediaTypeOk = !/(text\\/html|application\\/json)/i.test(contentType);
+    const mediaTypeOk = !/(text\/html|application\/json)/i.test(contentType);
     const result = {
       ok: httpOk && mediaTypeOk,
       status: response.status,
