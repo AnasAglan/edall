@@ -4368,15 +4368,22 @@ window.triggerModalClose = function() {
                     if (lessonsError) throw lessonsError;
 
                     const lessonIds = (lessonsData || []).map(l => l.id);
+                    const canPreviewAllLessonVideos = canUserEditCourse(course);
+                    const webVisibleLessonIds = (lessonsData || [])
+                        .filter(l => canPreviewAllLessonVideos || l.web_playback_enabled !== false)
+                        .map(l => l.id);
                     let allVideos = [], allFiles = [], allExams = [];
 
                     if (lessonIds.length > 0) {
-                        const [vRes, fRes, eRes] = await Promise.all([
-                            withRequestTimeout(
-                                sb.from('lesson_videos').select('*').in('lesson_id', lessonIds).order('sort_order'),
+                        const videoQuery = webVisibleLessonIds.length
+                            ? withRequestTimeout(
+                                sb.from('lesson_videos').select('*').in('lesson_id', webVisibleLessonIds).order('sort_order'),
                                 15000,
                                 currentLanguage === 'ar' ? 'انتهت مهلة تحميل فيديوهات الكورس' : 'Timed out while loading lesson videos'
-                            ),
+                            )
+                            : Promise.resolve({ data: [], error: null });
+                        const [vRes, fRes, eRes] = await Promise.all([
+                            videoQuery,
                             withRequestTimeout(
                                 sb.from('lesson_files').select('*').in('lesson_id', lessonIds).order('sort_order'),
                                 15000,
@@ -4452,6 +4459,7 @@ window.triggerModalClose = function() {
                         return {
                             id: l.id, title: l.title, content: l.content,
                             isFree: !!l.is_free,
+                            webPlaybackEnabled: l.web_playback_enabled !== false,
                             videos: lVideos, exams: lExams, files: lFiles,
                             pdfData: null, pdfName: ''
                         };
@@ -9153,10 +9161,19 @@ exam.questions.forEach((question, index) => {
                             <span>${currentLanguage === 'ar' ? 'محاضرة مجانية (يمكن للجميع فتحها)' : 'Free lesson (open for everyone)'}</span>
                         </label>
                        </div>` : '';
+                const webPlaybackModeHtml = `<div style="margin:10px 0;padding:10px;background:var(--bg-lighter);border-radius:8px;">
+                    <label for="lessonWebPlaybackEnabled" style="display:block;font-weight:700;margin-bottom:7px;">${currentLanguage === 'ar' ? 'طريقة إتاحة فيديو المحاضرة' : 'Lesson video availability'}</label>
+                    <select id="lessonWebPlaybackEnabled" style="width:100%;">
+                        <option value="true" selected>${currentLanguage === 'ar' ? 'المنصة والتطبيق' : 'Web platform and app'}</option>
+                        <option value="false">${currentLanguage === 'ar' ? 'التطبيق فقط' : 'App only'}</option>
+                    </select>
+                    <small style="display:block;color:var(--text-muted);margin-top:6px;">${currentLanguage === 'ar' ? 'عند اختيار التطبيق فقط، لن يظهر مشغل الفيديو للطالب داخل المنصة.' : 'App only hides the video player from students on the web platform.'}</small>
+                </div>`;
                 showModal(`
                     <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">${currentLanguage === 'ar' ? 'إضافة محاضرة جديدة' : 'Add New Lesson'}</div>
                     <input id="lessonTitle" placeholder="${currentLanguage === 'ar' ? 'عنوان المحاضرة' : 'Lesson title'}">
                     ${freeToggleHtml}
+                    ${webPlaybackModeHtml}
                     <textarea id="lessonContent" rows="3" placeholder="${currentLanguage === 'ar' ? 'محتوى المحاضرة' : 'Lesson content'}"></textarea>
                     
                     <div style="font-weight:bold;margin:10px 0 5px;">${currentLanguage === 'ar' ? 'روابط الفيديو:' : 'Video URLs:'}</div>
@@ -9426,6 +9443,8 @@ exam.questions.forEach((question, index) => {
                 const videos = getFilledInputValues('.lesson-video-input');
                 const freeChk = document.getElementById('lessonIsFree');
                 const isFreeLesson = Number(course.price || 0) === 0 ? true : (freeChk ? !!freeChk.checked : false);
+                const webPlaybackSelect = document.getElementById('lessonWebPlaybackEnabled');
+                const webPlaybackEnabled = webPlaybackSelect ? webPlaybackSelect.value !== 'false' : true;
 
                 if (!title) { showToast('يرجى إدخال عنوان المحاضرة', 'warning'); return; }
 
@@ -9440,7 +9459,8 @@ exam.questions.forEach((question, index) => {
                     title,
                     content: content || null,
                     sort_order: sortOrder,
-                    is_free: isFreeLesson
+                    is_free: isFreeLesson,
+                    web_playback_enabled: webPlaybackEnabled
                 }).select().single();
 
                 if (result.error) throw new Error('فشل في حفظ المحاضرة: ' + result.error.message);
@@ -9488,7 +9508,8 @@ exam.questions.forEach((question, index) => {
                     files: lessonFiles,
                     pdfData: null,
                     pdfName: '',
-                    isFree: isFreeLesson
+                    isFree: isFreeLesson,
+                    webPlaybackEnabled
                 };
 
                 if (!Array.isArray(course.lessons)) course.lessons = [];
@@ -10118,6 +10139,12 @@ exam.questions.forEach((question, index) => {
                 showModal(`
                     <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">${currentLanguage === 'ar' ? 'تعديل المحاضرة' : 'Edit Lesson'}</div>
                     <input id="editLessonTitle" value="${edEsc(lesson.title)}" placeholder="${currentLanguage === 'ar' ? 'عنوان المحاضرة' : 'Lesson title'}">
+                    <label for="editLessonWebPlaybackEnabled" style="display:block;font-weight:700;margin:12px 0 6px;">${currentLanguage === 'ar' ? 'طريقة إتاحة فيديو المحاضرة' : 'Lesson video availability'}</label>
+                    <select id="editLessonWebPlaybackEnabled" style="width:100%;margin-bottom:10px;">
+                        <option value="true" ${lesson.webPlaybackEnabled !== false ? 'selected' : ''}>${currentLanguage === 'ar' ? 'المنصة والتطبيق' : 'Web platform and app'}</option>
+                        <option value="false" ${lesson.webPlaybackEnabled === false ? 'selected' : ''}>${currentLanguage === 'ar' ? 'التطبيق فقط' : 'App only'}</option>
+                    </select>
+                    <small style="display:block;color:var(--text-muted);margin-bottom:10px;">${currentLanguage === 'ar' ? 'عند اختيار التطبيق فقط، لن يظهر مشغل الفيديو للطالب داخل المنصة.' : 'App only hides the video player from students on the web platform.'}</small>
                     <textarea id="editLessonContent" rows="3" placeholder="${currentLanguage === 'ar' ? 'محتوى المحاضرة' : 'Lesson content'}">${edEsc(lesson.content) || ''}</textarea>
                     ${Number(course.price || 0) > 0 ? `<div style="margin:10px 0;padding:10px;background:var(--bg-lighter);border-radius:8px;"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:700;"><input type="checkbox" id="editLessonIsFree" ${lesson.isFree ? 'checked' : ''}><span>${currentLanguage === 'ar' ? 'محاضرة مجانية (يمكن للجميع فتحها)' : 'Free lesson (open for everyone)'}</span></label></div>` : ''}
                     
@@ -10225,10 +10252,23 @@ exam.questions.forEach((question, index) => {
                 const courseObjEdit = courses.find(c => c.id === courseId);
                 const editFreeChk = document.getElementById('editLessonIsFree');
                 const editIsFree = Number((courseObjEdit && courseObjEdit.price) || 0) === 0 ? true : (editFreeChk ? !!editFreeChk.checked : false);
-                const { error: lessonError } = await sb.from('lessons').update({ title, content: content || null, is_free: editIsFree }).eq('id', lessonId);
+                const editWebPlaybackSelect = document.getElementById('editLessonWebPlaybackEnabled');
+                const editWebPlaybackEnabled = editWebPlaybackSelect ? editWebPlaybackSelect.value !== 'false' : true;
+                const { error: lessonError } = await sb.from('lessons').update({
+                    title,
+                    content: content || null,
+                    is_free: editIsFree,
+                    web_playback_enabled: editWebPlaybackEnabled
+                }).eq('id', lessonId);
                 if (lessonError) throw new Error('فشل في تعديل المحاضرة: ' + lessonError.message);
                 // Update local
-                try { const _l = (courseObjEdit && courseObjEdit.lessons || []).find(l => l.id === lessonId); if (_l) _l.isFree = editIsFree; } catch(e){}
+                try {
+                    const _l = (courseObjEdit && courseObjEdit.lessons || []).find(l => l.id === lessonId);
+                    if (_l) {
+                        _l.isFree = editIsFree;
+                        _l.webPlaybackEnabled = editWebPlaybackEnabled;
+                    }
+                } catch(e){}
                 console.log('[updateLesson] Step 1 done - lesson updated');
 
                 // Step 2: Replace videos
@@ -10269,6 +10309,7 @@ exam.questions.forEach((question, index) => {
                     if (lesson) {
                         lesson.title = title;
                         lesson.content = content;
+                        lesson.webPlaybackEnabled = editWebPlaybackEnabled;
                         lesson.videos = newVideos;
                         if (newFiles.length > 0) {
                             lesson.files = [...(lesson.files || []), ...newFiles];
