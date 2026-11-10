@@ -232,6 +232,7 @@ export function assessSamplePlayback({ mediaProbes = [], audioProbes = [], manif
   return { playable, audioAvailable, mediaProbe, audioProbe, manifestProbe };
 }
 
+// Keep the sync probe's response fields aligned with the Worker media verification checks.
 async function probeInstance(instance) {
   const started = Date.now();
   try {
