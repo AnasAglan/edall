@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 const PIPED_SOURCE = "https://raw.githubusercontent.com/TeamPiped/documentation/main/content/docs/public-instances/index.md";
 const INVIDIOUS_SOURCE = "https://api.invidious.io/instances.json?sort_by=health";
 const OUTPUT = new URL("../public/video-instances.json", import.meta.url);
-const SAMPLE_VIDEO_ID = "dQw4w9WgXcQ";
+const SAMPLE_VIDEO_IDS = ["dQw4w9WgXcQ", "aqz-KE-bpKQ"];
 const REQUEST_TIMEOUT_MS = 7000;
 const CONCURRENCY = 8;
 
@@ -196,52 +196,112 @@ async function probeManifest(url) {
   }
 }
 
+function sampleStreamSet(instance, data) {
+  const videoItems = instance.provider === "piped"
+    ? (Array.isArray(data?.videoStreams) ? data.videoStreams : [])
+    : [...(Array.isArray(data?.formatStreams) ? data.formatStreams : []), ...(Array.isArray(data?.adaptiveFormats) ? data.adaptiveFormats : [])]
+        .filter((stream) => String(stream?.type || "").startsWith("video/"));
+  const audioItems = instance.provider === "piped"
+    ? (Array.isArray(data?.audioStreams) ? data.audioStreams : [])
+    : [...(Array.isArray(data?.formatStreams) ? data.formatStreams : []), ...(Array.isArray(data?.adaptiveFormats) ? data.adaptiveFormats : [])]
+        .filter((stream) => String(stream?.type || "").startsWith("audio/"));
+  const heights = [...new Set(videoItems.map(parseQuality).filter(Boolean))].sort((a, b) => b - a);
+  const muxedAudio = videoItems.some((stream) =>
+    (instance.provider === "piped" && stream?.videoOnly !== true) ||
+    /mp4a|opus|vorbis|aac/i.test(String(stream?.type || stream?.mimeType || stream?.codec || ""))
+  );
+  return { videoItems, audioItems, heights, muxedAudio };
+}
+
+export function assessSamplePlayback({ mediaProbes = [], audioProbes = [], manifestProbes = [], muxedAudio = false }) {
+  const mediaProbe = mediaProbes.find((probe) => probe?.ok) || mediaProbes[0] || null;
+  const audioProbe = audioProbes.find((probe) => probe?.ok) || audioProbes[0] || null;
+  const manifestProbe = manifestProbes.find((probe) => probe?.ok) || manifestProbes[0] || null;
+  const manifestPlayable = !!(manifestProbe && manifestProbe.ok);
+  const audioAvailable = !!(muxedAudio || (mediaProbe && mediaProbe.ok && audioProbe && audioProbe.ok) || manifestPlayable);
+  const playable = manifestPlayable || !!(mediaProbe && mediaProbe.ok && audioAvailable);
+  return { playable, audioAvailable, mediaProbe, audioProbe, manifestProbe };
+}
+
 async function probeInstance(instance) {
   const started = Date.now();
-  const endpoint = instance.provider === "piped"
-    ? instance.url + "/streams/" + SAMPLE_VIDEO_ID
-    : instance.url + "/api/v1/videos/" + SAMPLE_VIDEO_ID + "?fields=title,lengthSeconds,liveNow,hlsUrl,dashUrl,formatStreams,adaptiveFormats";
   try {
-    const data = await fetchJson(endpoint);
-    const inspected = instance.provider === "piped" ? pipedHasStreams(data) : invidiousHasStreams(data);
-    if (!inspected.valid || !inspected.videoCount && !data.hlsUrl && !data.hls && !data.dashUrl && !data.dash) {
-      throw new Error("API answered but returned no usable video streams.");
+    const sampleResults = await Promise.allSettled(SAMPLE_VIDEO_IDS.map(async (videoId) => {
+      const endpoint = instance.provider === "piped"
+        ? instance.url + "/streams/" + videoId
+        : instance.url + "/api/v1/videos/" + videoId + "?fields=title,lengthSeconds,liveNow,hlsUrl,dashUrl,formatStreams,adaptiveFormats";
+      const data = await fetchJson(endpoint);
+      const streams = sampleStreamSet(instance, data);
+      if (!streams.videoItems.some((stream) => stream && /^https:\/\//i.test(String(stream.url || ""))) &&
+          !data?.hls && !data?.dash && !data?.hlsUrl && !data?.dashUrl) {
+        throw new Error("API returned no HTTPS video stream or manifest.");
+      }
+      const mediaCandidates = streams.videoItems
+        .filter((stream) => /^https:\/\//i.test(String(stream?.url || "")))
+        .sort((a, b) => parseQuality(b) - parseQuality(a))
+        .slice(0, 3);
+      const audioCandidates = streams.audioItems
+        .filter((stream) => /^https:\/\//i.test(String(stream?.url || "")))
+        .slice(0, 2);
+      const manifestUrls = instance.provider === "piped"
+        ? [data?.dash, data?.hls]
+        : [data?.dashUrl, data?.hlsUrl];
+      const [mediaProbes, audioProbes, manifestProbes] = await Promise.all([
+        Promise.all(mediaCandidates.map((stream) => probeMediaRange(stream.url))),
+        Promise.all(audioCandidates.map((stream) => probeMediaRange(stream.url))),
+        Promise.all(manifestUrls.filter(Boolean).map(probeManifest)),
+      ]);
+      const assessment = assessSamplePlayback({
+        mediaProbes,
+        audioProbes,
+        manifestProbes,
+        muxedAudio: streams.muxedAudio,
+      });
+      return {
+        videoId,
+        playable: assessment.playable,
+        audioAvailable: assessment.audioAvailable,
+        heights: streams.heights,
+        videoCount: streams.videoItems.length,
+        audioCount: streams.audioItems.length,
+        mediaProbe: assessment.mediaProbe,
+        audioProbe: assessment.audioProbe,
+        manifestProbe: assessment.manifestProbe,
+      };
+    }));
+    const samples = sampleResults.map((result, index) => result.status === "fulfilled"
+      ? result.value
+      : { videoId: SAMPLE_VIDEO_IDS[index], playable: false, audioAvailable: false, heights: [], videoCount: 0, audioCount: 0, error: String(result.reason?.message || result.reason).slice(0, 180) });
+    const playableSamples = samples.filter((sample) => sample.playable && sample.audioAvailable);
+    if (!playableSamples.length) {
+      throw new Error("API was reachable, but no sample returned a browser-playable video+audio path: " +
+        samples.map((sample) => sample.error || (sample.videoId + " " + ((sample.mediaProbe && sample.mediaProbe.error) || (sample.manifestProbe && sample.manifestProbe.error) || "playback not verified"))).join(" | "));
     }
-    const videoItems = instance.provider === "piped"
-      ? (Array.isArray(data.videoStreams) ? data.videoStreams : [])
-      : [...(Array.isArray(data.formatStreams) ? data.formatStreams : []), ...(Array.isArray(data.adaptiveFormats) ? data.adaptiveFormats : [])]
-          .filter((stream) => String(stream && stream.type || "").startsWith("video/"));
-    const sampleMedia = videoItems.find((stream) => stream && /^https:\/\//i.test(String(stream.url || "")));
-    const manifestUrls = instance.provider === "piped"
-      ? [data.dash, data.hls]
-      : [data.dashUrl, data.hlsUrl];
-    const [mediaProbe, ...manifestProbes] = await Promise.all([
-      probeMediaRange(sampleMedia && sampleMedia.url),
-      ...manifestUrls.filter(Boolean).map(probeManifest),
-    ]);
-    const manifestProbe = manifestProbes.find((probe) => probe.ok) || manifestProbes[0] || null;
-    const playbackVerified = mediaProbe.ok || !!(manifestProbe && manifestProbe.ok);
+    const heights = [...new Set(playableSamples.flatMap((sample) => sample.heights || []))].sort((a, b) => b - a);
+    const maxHeight = Math.max(0, ...heights);
+    const audioCount = Math.max(0, ...playableSamples.map((sample) => sample.audioCount || 0));
     const responseMs = Date.now() - started;
-    const score = 1000 +
-      Math.min(inspected.heights.length, 10) * 45 +
-      Math.min(Math.max(...inspected.heights, 0), 2160) / 4 +
-      (inspected.audioCount ? 100 : 0) +
-      (mediaProbe.ok ? 250 : -100) +
-      (manifestProbe && manifestProbe.ok ? 300 : 0) +
-      (mediaProbe.status === 206 ? 50 : 0) +
+    const score = Math.min(maxHeight, 4320) * 100 +
+      Math.min(heights.length, 12) * 400 +
+      (audioCount ? 350 : 0) +
+      playableSamples.length * 250 +
       (instance.uptime || 0) * 2 -
-      Math.min(responseMs, 10000) / 20;
+      Math.min(responseMs, 20000) / 20;
+    const mediaProbe = playableSamples.find((sample) => sample.mediaProbe?.ok)?.mediaProbe || null;
+    const manifestProbe = playableSamples.find((sample) => sample.manifestProbe?.ok)?.manifestProbe || null;
     return {
       ...instance,
-      // Prefer endpoints whose direct media or CORS-enabled DASH/HLS path was actually verified.
-      status: playbackVerified ? "healthy" : "degraded",
+      status: maxHeight >= 720 ? "healthy" : "degraded",
       score: Math.round(score),
       responseMs,
       mediaProbe,
       manifestProbe,
-      videoCount: inspected.videoCount,
-      audioCount: inspected.audioCount,
-      heights: inspected.heights.sort((a, b) => b - a),
+      videoCount: Math.max(...playableSamples.map((sample) => sample.videoCount || 0)),
+      audioCount,
+      audioAvailable: true,
+      heights,
+      sampleChecks: samples,
+      testedVideoIds: SAMPLE_VIDEO_IDS,
       lastCheckedAt: new Date().toISOString(),
       lastSuccessAt: new Date().toISOString(),
       error: null,
@@ -250,16 +310,19 @@ async function probeInstance(instance) {
     return {
       ...instance,
       status: "unhealthy",
-      score: Math.max(0, Math.round((instance.uptime || 0) * 2)),
+      score: 0,
       responseMs: Date.now() - started,
       mediaProbe: null,
       manifestProbe: null,
       videoCount: 0,
       audioCount: 0,
+      audioAvailable: false,
       heights: [],
+      sampleChecks: [],
+      testedVideoIds: SAMPLE_VIDEO_IDS,
       lastCheckedAt: new Date().toISOString(),
       lastSuccessAt: null,
-      error: String(error && error.message || error).slice(0, 240),
+      error: String(error && error.message || error).slice(0, 500),
     };
   }
 }
@@ -338,7 +401,7 @@ async function main() {
       onlyHttps: true,
       failedInstancesAreRetained: true,
       healthyInstancesFirst: true,
-      probeVideoId: SAMPLE_VIDEO_ID,
+      probeVideoIds: SAMPLE_VIDEO_IDS,
     },
   };
 
@@ -356,7 +419,10 @@ async function main() {
     responseMs: item.responseMs,
     videoCount: item.videoCount,
     audioCount: item.audioCount,
+    audioAvailable: item.audioAvailable === true,
     heights: item.heights,
+    testedVideoIds: item.testedVideoIds || [],
+    sampleChecks: item.sampleChecks || [],
     mediaProbe: item.mediaProbe || null,
     manifestProbe: item.manifestProbe || null,
     apiError: item.error || null,
@@ -381,6 +447,11 @@ async function main() {
 
   if (sourceErrors.length === 2) {
     throw new Error("Both official directories failed; kept the previous registry but did not claim a successful refresh.");
+  }
+  const total = checkedPiped.length + checkedInvidious.length;
+  const playable = [...checkedPiped, ...checkedInvidious].filter((item) => item.status === "healthy" || item.status === "degraded");
+  if (!total || !playable.length) {
+    throw new Error("No candidate passed playback verification. The previous registry must not be replaced by an unusable registry.");
   }
 }
 
