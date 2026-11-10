@@ -9614,17 +9614,9 @@ exam.questions.forEach((question, index) => {
                     throw new Error((data && data.error) || 'خدمة الحذف لم تؤكد أن الحساب حُذف فعليًا.');
                 }
 
-                // Verify the visible profile and role rows are gone before changing the UI.
-                const [profileCheck, rolesCheck] = await Promise.all([
-                    sb.from('profiles').select('id').eq('id', userId).maybeSingle(),
-                    sb.from('user_roles').select('id').eq('user_id', userId).limit(1)
-                ]);
-                if (profileCheck.error || rolesCheck.error) {
-                    throw new Error('أُرسلت عملية الحذف لكن تعذر التحقق من اختفاء سجل الحساب؛ لم أعتبر العملية مكتملة.');
-                }
-                if (profileCheck.data || (rolesCheck.data || []).length > 0) {
-                    throw new Error('ما زالت قاعدة البيانات تُظهر سجلات لهذا المستخدم؛ لم أعتبر الحذف ناجحًا.');
-                }
+                // The Edge Function deletes with the service role and independently verifies
+                // Auth, profile, and role removal before returning deleted=true / verified=true.
+                // Trust that verified server result; a second browser-side query may be blocked by RLS.
 
                 // Update the local view only after the backend deletion and verification succeed.
                 users.splice(userIndex, 1);
