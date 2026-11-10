@@ -474,6 +474,8 @@
     const batchSize = 8;
     let best = null;
     let bestScore = -1;
+    // Always inspect every eligible batch before selecting a source. A single
+    // 720p response must not hide a later endpoint with 1080p or 4K formats.
     for (let offset = 0; offset < instances.length; offset += batchSize) {
       const controllers = [];
       const requests = instances.slice(offset, offset + batchSize).map(base => {
