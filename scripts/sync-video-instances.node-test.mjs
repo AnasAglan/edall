@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { discoverPiped, discoverInvidious, assessSamplePlayback, SAMPLE_VIDEO_IDS, parseHlsPlaylist, verifiedSampleHeights } from "./sync-video-instances.mjs";
+import { discoverPiped, discoverInvidious, assessSamplePlayback, SAMPLE_VIDEO_IDS, parseHlsPlaylist, verifiedSampleHeights, classifyPlaybackHealth } from "./sync-video-instances.mjs";
 
 test("discovers Piped API hosts from the current public directory table only", () => {
   const markdown = [
@@ -90,6 +90,36 @@ test("counts only directly probed or manifest-segment-verified resolutions", () 
     manifestProbes: [{ ok: true, format: "hls", heights: [720, 480] }, { ok: false, heights: [4320] }],
   });
   assert.deepEqual(heights, [1080, 720, 480]);
+});
+
+test("marks a source healthy only when every sample has verified video and audio", () => {
+  assert.equal(classifyPlaybackHealth({
+    sampleChecks: [
+      { playable: true, audioAvailable: true },
+      { playable: true, audioAvailable: true },
+    ],
+    heights: [1080, 720],
+  }), "healthy");
+  assert.equal(classifyPlaybackHealth({
+    sampleChecks: [
+      { playable: true, audioAvailable: true },
+      { playable: false, audioAvailable: false },
+    ],
+    heights: [1080],
+  }), "degraded");
+  assert.equal(classifyPlaybackHealth({
+    sampleChecks: [
+      { playable: true, audioAvailable: true },
+    ],
+    heights: [360],
+  }), "degraded");
+  assert.equal(classifyPlaybackHealth({
+    sampleChecks: [
+      { playable: false, audioAvailable: false },
+      { playable: false, audioAvailable: false },
+    ],
+    heights: [],
+  }), "unhealthy");
 });
 
 test("rejects a server when every media path is blocked", () => {
