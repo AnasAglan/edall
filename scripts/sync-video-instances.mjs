@@ -142,31 +142,181 @@ async function probeMediaRange(url) {
     const cors = response.headers.get("access-control-allow-origin");
     const contentType = response.headers.get("content-type") || "";
     const httpOk = response.status === 206 || response.status === 200;
-    const mediaTypeOk = !/(text\/html|application\/json)/i.test(contentType);
+    const isManifest = /mpegurl|dash\+xml/i.test(contentType) || /\.m3u8?(?:[?#]|$)/i.test(url);
+    const mediaTypeOk = !/(text\/html|application\/json)/i.test(contentType) && !isManifest;
     const result = {
-      // Direct <video>/<audio> playback does not require CORS; MSE manifests do.
-      // Reject HTML bot challenges and JSON error pages even when they return HTTP 200.
       ok: httpOk && mediaTypeOk,
+      isManifest,
       status: response.status,
       cors,
       corsAllowed: cors === "*" || cors === "https://edall.lovable.app",
       rangeSupported: response.status === 206,
       contentType,
-      error: !httpOk ? "Media HTTP " + response.status : !mediaTypeOk ? "Media URL returned a non-media content type: " + contentType : null,
+      error: !httpOk ? "Media HTTP " + response.status : isManifest ? "The URL returned a manifest, not a media segment." : !mediaTypeOk ? "Media URL returned a non-media content type: " + contentType : null,
     };
     if (response.body) await response.body.cancel().catch(() => {});
     return result;
   } catch (error) {
-    return { ok: false, status: null, cors: null, error: String(error && error.message || error).slice(0, 180) };
+    return { ok: false, isManifest: false, status: null, cors: null, error: String(error && error.message || error).slice(0, 180) };
   } finally {
     clearTimeout(timer);
   }
 }
 
+function parseHlsAttributes(line) {
+  const result = {};
+  const source = String(line || "").replace(/^#[^:]+:/, "");
+  for (const match of source.matchAll(/([A-Z0-9-]+)=("([^"]*)"|([^,]*))/gi)) {
+    result[match[1].toUpperCase()] = match[3] !== undefined ? match[3] : match[4];
+  }
+  return result;
+}
+
+export function parseHlsPlaylist(body, baseUrl, fallbackHeight = 0) {
+  const lines = String(body || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const audioTracks = [];
+  const variants = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (/^#EXT-X-MEDIA:/i.test(line)) {
+      const attrs = parseHlsAttributes(line);
+      if (String(attrs.TYPE || "").toUpperCase() === "AUDIO" && attrs.URI) {
+        try {
+          const uri = new URL(attrs.URI, baseUrl);
+          if (uri.protocol === "https:") audioTracks.push({ groupId: attrs["GROUP-ID"] || "", url: uri.href });
+        } catch {}
+      }
+    }
+    if (/^#EXT-X-STREAM-INF:/i.test(line)) {
+      const attrs = parseHlsAttributes(line);
+      const nextUri = lines.slice(index + 1).find((value) => value && !value.startsWith("#"));
+      if (!nextUri) continue;
+      try {
+        const uri = new URL(nextUri, baseUrl);
+        if (uri.protocol !== "https:") continue;
+        const resolution = String(attrs.RESOLUTION || "").match(/\d+x(\d+)/i);
+        variants.push({
+          url: uri.href,
+          height: Number(resolution && resolution[1]) || Number(fallbackHeight) || 0,
+          audioGroup: attrs.AUDIO || "",
+        });
+      } catch {}
+    }
+  }
+  let segmentUrl = null;
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!/^#EXTINF:/i.test(lines[index])) continue;
+    const nextUri = lines.slice(index + 1).find((value) => value && !value.startsWith("#"));
+    if (!nextUri) continue;
+    try {
+      const uri = new URL(nextUri, baseUrl);
+      if (uri.protocol === "https:") { segmentUrl = uri.href; break; }
+    } catch {}
+  }
+  if (!segmentUrl && !variants.length) {
+    const nextUri = lines.find((value) => value && !value.startsWith("#") && /^https?:|^[^:]/i.test(value));
+    if (nextUri) {
+      try {
+        const uri = new URL(nextUri, baseUrl);
+        if (uri.protocol === "https:") segmentUrl = uri.href;
+      } catch {}
+    }
+  }
+  return { variants, audioTracks, segmentUrl };
+}
+
+async function probeHlsPlaylist(url, expectedHeight = 0, depth = 0, initial = null) {
+  if (depth > 3) return { ok: false, format: "hls", height: expectedHeight, audioAvailable: false, error: "HLS playlist nesting limit reached." };
+  let body = initial && initial.body;
+  let corsAllowed = !!(initial && initial.corsAllowed);
+  let status = initial && initial.status;
+  let contentType = initial && initial.contentType;
+  if (typeof body !== "string") {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4500);
+    try {
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: { Accept: "application/vnd.apple.mpegurl, application/x-mpegURL, */*", Origin: "https://edall.lovable.app" },
+        cache: "no-store",
+      });
+      status = response.status;
+      contentType = response.headers.get("content-type");
+      const cors = response.headers.get("access-control-allow-origin");
+      corsAllowed = cors === "*" || cors === "https://edall.lovable.app";
+      body = response.ok ? await response.text() : "";
+      if (!response.ok || !/#EXTM3U/i.test(body) || !corsAllowed) {
+        return {
+          ok: false, format: "hls", status, cors, corsAllowed, contentType,
+          height: expectedHeight, audioAvailable: false,
+          error: !response.ok ? "Playlist HTTP " + response.status : !corsAllowed ? "Playlist CORS is not allowed." : "Response is not an HLS playlist.",
+        };
+      }
+    } catch (error) {
+      return { ok: false, format: "hls", status: null, corsAllowed: false, contentType: null, height: expectedHeight, audioAvailable: false, error: String(error && error.message || error).slice(0, 180) };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  const parsed = parseHlsPlaylist(body, url, expectedHeight);
+  if (parsed.variants.length) {
+    const bestVariants = parsed.variants.sort((a, b) => b.height - a.height).slice(0, 3);
+    const checks = await Promise.all(bestVariants.map(async (variant) => {
+      const video = await probeHlsPlaylist(variant.url, variant.height, depth + 1);
+      if (!video.ok) return { ...video, height: variant.height, audioAvailable: false };
+      if (!variant.audioGroup) return { ...video, height: variant.height, audioAvailable: true };
+      const audioTrack = parsed.audioTracks.find((track) => track.groupId === variant.audioGroup);
+      if (!audioTrack) return { ...video, ok: false, height: variant.height, audioAvailable: false, error: "HLS variant requires a separate audio group that has no URI." };
+      const audio = await probeHlsPlaylist(audioTrack.url, 0, depth + 1);
+      return {
+        ...video,
+        ok: video.ok && audio.ok,
+        height: variant.height,
+        audioAvailable: audio.ok,
+        audioProbe: { ok: audio.ok, status: audio.status || null, error: audio.error || null },
+        error: video.ok && audio.ok ? null : audio.error || video.error,
+      };
+    }));
+    const usable = checks.filter((check) => check.ok && check.audioAvailable);
+    const heights = [...new Set(usable.map((check) => check.height).filter((height) => height > 0))].sort((a, b) => b - a);
+    return {
+      ok: usable.length > 0,
+      format: "hls",
+      status,
+      contentType,
+      corsAllowed: true,
+      heights,
+      audioAvailable: usable.length > 0,
+      variantsChecked: checks.length,
+      segmentVerified: usable.length > 0,
+      error: usable.length ? null : checks.map((check) => check.error).filter(Boolean).join(" | ") || "No HLS variant had a verified media segment and audio path.",
+    };
+  }
+  if (!parsed.segmentUrl) {
+    return { ok: false, format: "hls", status, contentType, corsAllowed: true, height: expectedHeight, audioAvailable: false, error: "HLS media playlist contained no testable segment." };
+  }
+  const segmentProbe = await probeMediaRange(parsed.segmentUrl);
+  const segmentCorsAllowed = segmentProbe.corsAllowed === true;
+  const ok = segmentProbe.ok && segmentCorsAllowed;
+  return {
+    ok,
+    format: "hls",
+    status: segmentProbe.status,
+    contentType: segmentProbe.contentType,
+    corsAllowed: segmentCorsAllowed,
+    height: expectedHeight,
+    heights: ok && expectedHeight > 0 ? [expectedHeight] : [],
+    audioAvailable: ok,
+    segmentVerified: ok,
+    segmentProbe,
+    error: ok ? null : segmentProbe.error || "HLS segment did not pass media/range/CORS verification.",
+  };
+}
+
 async function probeManifest(url) {
   if (!url) return { ok: false, status: null, cors: null, contentType: null, format: null, error: "No DASH/HLS manifest URL was returned." };
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 4000);
+  const timer = setTimeout(() => controller.abort(), 4500);
   try {
     const response = await fetch(url, {
       method: "GET",
@@ -182,21 +332,34 @@ async function probeManifest(url) {
     const body = response.ok ? await response.text() : "";
     const isDash = /<MPD\b/i.test(body);
     const isHls = /#EXTM3U/i.test(body);
-    const format = isDash ? "dash" : isHls ? "hls" : null;
     const corsAllowed = cors === "*" || cors === "https://edall.lovable.app";
+    if (isHls && response.ok && corsAllowed) {
+      const verified = await probeHlsPlaylist(url, 0, 0, { body, corsAllowed, status: response.status, contentType, cors });
+      return { ...verified, cors, contentType, format: "hls" };
+    }
+    if (isDash && response.ok && corsAllowed) {
+      const baseMatch = body.match(/<BaseURL[^>]*>([^<]+)<\/BaseURL>/i);
+      if (baseMatch) {
+        const baseUrl = new URL(baseMatch[1].trim(), response.url || url).href;
+        const mediaProbe = await probeMediaRange(baseUrl);
+        const ok = mediaProbe.ok && mediaProbe.corsAllowed;
+        return { ok, status: mediaProbe.status, cors, contentType, format: "dash", heights: [], audioAvailable: ok, segmentVerified: ok, mediaProbe, error: ok ? null : mediaProbe.error || "DASH BaseURL media probe failed." };
+      }
+      return { ok: false, status: response.status, cors, contentType, format: "dash", heights: [], audioAvailable: false, error: "DASH MPD was reached, but no direct BaseURL media could be verified." };
+    }
     return {
-      ok: response.ok && !!format && corsAllowed,
+      ok: false,
       status: response.status,
       cors,
       contentType,
-      format,
+      format: isDash ? "dash" : isHls ? "hls" : null,
       error: !response.ok
         ? "Manifest HTTP " + response.status
-        : !format
+        : !isDash && !isHls
           ? "The response was not a DASH MPD or HLS playlist."
           : !corsAllowed
             ? "Manifest CORS does not allow https://edall.lovable.app."
-            : null,
+            : "Manifest media segments could not be verified.",
     };
   } catch (error) {
     return { ok: false, status: null, cors: null, contentType: null, format: null, error: String(error && error.message || error).slice(0, 180) };
@@ -204,7 +367,6 @@ async function probeManifest(url) {
     clearTimeout(timer);
   }
 }
-
 function sampleStreamSet(instance, data) {
   const videoItems = instance.provider === "piped"
     ? (Array.isArray(data?.videoStreams) ? data.videoStreams : [])
