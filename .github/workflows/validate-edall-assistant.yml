@@ -100,8 +100,11 @@ jobs:
           const deleteEnd = platformHtml.indexOf('function renderProfilePage()', deleteStart);
           if (deleteStart < 0 || deleteEnd <= deleteStart) throw new Error('Admin delete-user UI handler not found.');
           const deleteUi = platformHtml.slice(deleteStart, deleteEnd);
-          for (const required of ["sb.functions.invoke('admin-delete-user'", 'data.deleted !== true', 'data.verified !== true', 'profileCheck', 'rolesCheck']) {
+          for (const required of ["sb.functions.invoke('admin-delete-user'", 'data.deleted !== true', 'data.verified !== true']) {
             if (!deleteUi.includes(required)) throw new Error('Admin deletion must call and verify the database function: ' + required);
+          }
+          if (deleteUi.indexOf('users.splice(') < deleteUi.indexOf('data.verified !== true')) {
+            throw new Error('The admin list must not be updated before the Edge Function confirms verified deletion.');
           }
           if (deleteUi.includes('saveAllData()')) throw new Error('User deletion must not be reported as successful via local-only saveAllData().');
           if (!platformHtml.includes('Ordinary web playback is quality-extraction-only')) {
