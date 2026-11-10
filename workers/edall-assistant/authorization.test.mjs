@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canUseAssistantTool } from "./index.js";
+import worker, { canUseAssistantTool, canAccessAssistant } from "./index.js";
 
 const ownId = "11111111-1111-4111-8111-111111111111";
 const otherId = "22222222-2222-4222-8222-222222222222";
@@ -21,30 +21,48 @@ test("teachers can manage teaching workflows but not global administration", () 
   assert.equal(canUseAssistantTool("remove_course_enrollment", { user_id: otherId }, ["teacher"], ownId), false);
 });
 
-test("students receive only their own self-service and learning tools", () => {
+test("students are denied every assistant tool", () => {
   for (const name of [
     "list_courses", "get_course_lessons", "purchase_course", "list_favorites",
-    "manage_favorite", "manage_notifications_bulk", "upload_profile_avatar",
-    "update_user_profile", "send_password_reset", "get_wallet_info",
-    "list_notifications", "mark_notification_read", "delete_notification"
-  ]) assert.equal(canUseAssistantTool(name, {}, ["student"], ownId), true, name);
-
-  for (const name of [
-    "get_platform_stats", "search_platform_users", "create_course", "create_lesson",
-    "create_exam", "list_course_students", "get_student_progress", "grade_essay_result",
-    "credit_user_wallet", "change_user_role", "set_user_ban", "list_platform_settings",
-    "manage_topup_contact", "send_notification"
+    "get_wallet_info", "list_notifications", "get_platform_stats", "create_course"
   ]) assert.equal(canUseAssistantTool(name, {}, ["student"], ownId), false, name);
+  assert.equal(canAccessAssistant(["student"]), false);
+  assert.equal(canAccessAssistant(["teacher"]), true);
+  assert.equal(canAccessAssistant(["admin"]), true);
+  assert.equal(canAccessAssistant(["student", "teacher"]), true);
 });
 
-test("teachers and students cannot target another account with self-service tools", () => {
-  for (const role of ["student", "teacher"]) {
-    for (const name of ["send_password_reset", "update_user_profile", "get_wallet_info", "list_favorites"]) {
-      assert.equal(canUseAssistantTool(name, { user_id: otherId }, [role], ownId), false);
-      assert.equal(canUseAssistantTool(name, { user_id: ownId }, [role], ownId), true);
-      assert.equal(canUseAssistantTool(name, {}, [role], ownId), true);
-    }
+test("teachers cannot target another account with self-service tools", () => {
+  for (const name of ["send_password_reset", "update_user_profile", "get_wallet_info", "list_favorites"]) {
+    assert.equal(canUseAssistantTool(name, { user_id: otherId }, ["teacher"], ownId), false);
   }
+});
+
+async function callWorkerAs(roles) {
+  const calls = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const url = String(input instanceof Request ? input.url : input);
+    calls.push(url);
+    if (url.includes("/auth/v1/user")) return new Response(JSON.stringify({ id: ownId }), { status: 200, headers: { "content-type": "application/json" } });
+    if (url.includes("/rest/v1/user_roles")) return new Response(JSON.stringify(roles.map(role => ({ role }))), { status: 200, headers: { "content-type": "application/json" } });
+    throw new Error("unexpected upstream call: " + url);
+  };
+  try {
+    const res = await worker.fetch(new Request("https://edall-assistant.example/", {
+      method: "POST",
+      headers: { Origin: "https://edall.lovable.app", Authorization: "Bearer t", "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: [{ role: "user", content: "hi" }] })
+    }), { SUPABASE_URL: "https://db.example", SUPABASE_PUBLISHABLE_KEY: "k", GEMINI_API_KEY: "g", AI: { run() { throw new Error("model must not run"); } } });
+    return { res, calls };
+  } finally { globalThis.fetch = realFetch; }
+}
+
+test("worker rejects a student request with 403 before any model or tool call", async () => {
+  const { res, calls } = await callWorkerAs(["student"]);
+  assert.equal(res.status, 403);
+  assert.equal(calls.length, 2);
+  assert.ok(!calls.some(u => /gemini|googleapis/i.test(u)));
 });
 
 test("accounts without a valid platform role receive no tools", () => {

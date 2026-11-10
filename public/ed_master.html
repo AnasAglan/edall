@@ -1971,7 +1971,7 @@ word-spacing: normal !important;
             <div style="margin:20px 0;text-align:center;color:var(--text-muted);">أو أنشئ حسابًا جديدًا</div>
             <input id="signUpName" placeholder="الاسم الكامل">
             <input id="signUpEmail" placeholder="البريد الإلكتروني">
-            <input id="signUpPass" type="password" placeholder="كلمة المرور">
+            <input id="signUpPass" type="password" placeholder="كلمة المرور (5 أحرف على الأقل)" minlength="5" autocomplete="new-password">
             <select id="signUpRole">
                 <option value="student">طالب</option>
                 <option value="teacher">مدرس</option>
@@ -3905,7 +3905,7 @@ window.triggerModalClose = function() {
         };
 
         let currentUser = null;
-        function _syncUser(){ try { window.currentUser = currentUser; } catch(e){} }
+        function _syncUser(){ try { window.currentUser = currentUser; window.dispatchEvent(new Event('edall:user-changed')); } catch(e){} }
         _syncUser();
         let users = [];
         let courses = [];
@@ -3986,6 +3986,32 @@ window.triggerModalClose = function() {
                     }
                 }
 
+                // Auth listener is registered early (events are ignored until init completes) so
+                // an init failure can never leave the page without session tracking.
+                sb.auth.onAuthStateChange(async (event, session) => {
+                    if (!_initDone) return; // skip events during init
+                    if (event === 'SIGNED_IN' && session && session.user) {
+                        await ensureUserAccountRecord(session.user);
+                        await loadCurrentUserFromSupabase(session.user);
+                        if (currentUser && currentUser.banned) {
+                            await sb.auth.signOut();
+                            currentUser = null; _syncUser();
+                            updateUI();
+                            showToast(currentLanguage === 'ar' ? 'تم حظر حسابك. تواصل مع الإدارة.' : 'Your account has been blocked.', 'error');
+                            return;
+                        }
+                        _dataLoaded = false;
+                        await loadData();
+                        updateUI();
+                        renderCoursesGrid();
+                        updateQuickStats();
+                    } else if (event === 'SIGNED_OUT') {
+                        currentUser = null; _syncUser();
+                        _dataLoaded = false;
+                        updateUI();
+                        renderCoursesGrid();
+                    }
+                });
                 await loadData();
                 // Aggressively clear search input to defeat browser/password-manager autofill
                 (function forceClearSearch(){
@@ -4015,31 +4041,6 @@ window.triggerModalClose = function() {
                     updateBreadcrumb('mainPage');
                 }
 
-                // NOW set up auth listener for future changes (sign in/out after init)
-                sb.auth.onAuthStateChange(async (event, session) => {
-                    if (!_initDone) return; // skip events during init
-                    if (event === 'SIGNED_IN' && session && session.user) {
-                        await ensureUserAccountRecord(session.user);
-                        await loadCurrentUserFromSupabase(session.user);
-                        if (currentUser && currentUser.banned) {
-                            await sb.auth.signOut();
-                            currentUser = null; _syncUser();
-                            updateUI();
-                            showToast(currentLanguage === 'ar' ? 'تم حظر حسابك. تواصل مع الإدارة.' : 'Your account has been blocked.', 'error');
-                            return;
-                        }
-                        _dataLoaded = false;
-                        await loadData();
-                        updateUI();
-                        renderCoursesGrid();
-                        updateQuickStats();
-                    } else if (event === 'SIGNED_OUT') {
-                        currentUser = null; _syncUser();
-                        _dataLoaded = false;
-                        updateUI();
-                        renderCoursesGrid();
-                    }
-                });
             } catch (error) {
                 console.error('Error initializing app:', error);
                 const loadingOverlay = document.getElementById('loadingOverlay');
@@ -5247,9 +5248,9 @@ window.triggerModalClose = function() {
                 showBtnLoading(btn);
                 const { data, error } = await sb.auth.signInWithPassword({ email, password });
                 
-                if (error) {
+                if (error || !data || !data.session) {
                     hideBtnLoading(btn);
-                    showToast(currentLanguage === 'ar' ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة' : 'Invalid email or password', 'error');
+                    showToast(window.EDAuthRules.describeAuthError(error || { message: 'No session returned' }, currentLanguage, 'signin'), 'error');
                     return;
                 }
                 
@@ -5274,7 +5275,7 @@ window.triggerModalClose = function() {
             } catch (error) {
                 hideBtnLoading(btn);
                 console.error('Error signing in:', error);
-                showToast('حدث خطأ في تسجيل الدخول', 'error');
+                showToast(window.EDAuthRules.describeAuthError(error, currentLanguage, 'signin'), 'error');
             }
         }
 
@@ -5290,8 +5291,9 @@ window.triggerModalClose = function() {
                     return;
                 }
 
-                if (password.length < 6) {
-                    showToast(currentLanguage === 'ar' ? 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' : 'Password must be at least 6 characters', 'warning');
+                const pwCheck = window.EDAuthRules.validateSignupPassword(password, currentLanguage);
+                if (!pwCheck.ok) {
+                    showToast(pwCheck.message, 'warning');
                     return;
                 }
                 
@@ -5300,15 +5302,30 @@ window.triggerModalClose = function() {
                 const { data, error } = await sb.auth.signUp({
                     email,
                     password,
-                    options: { data: { name, requested_role: role } }
+                    options: { data: { name, requested_role: role }, emailRedirectTo: window.location.origin + window.location.pathname }
                 });
                 
                 if (error) {
                     hideBtnLoading(btn);
-                    if (error.message.includes('already registered')) {
-                        showToast(currentLanguage === 'ar' ? 'البريد الإلكتروني مستخدم بالفعل' : 'Email already exists', 'error');
+                    showToast(window.EDAuthRules.describeAuthError(error, currentLanguage, 'signup'), 'error');
+                    return;
+                }
+
+                const outcome = window.EDAuthRules.signupOutcome(data);
+                if (outcome !== 'signed_in') {
+                    // No session: email confirmation is pending (or the email already exists).
+                    // Do not pretend the user is logged in; a refresh would otherwise "lose" them.
+                    hideBtnLoading(btn);
+                    if (outcome === 'already_exists') {
+                        showToast(window.EDAuthRules.describeAuthError({ code: 'user_already_exists' }, currentLanguage, 'signup'), 'error');
+                    } else if (outcome === 'confirm_email') {
+                        document.getElementById('signInEmail').value = email;
+                        document.getElementById('signUpPass').value = '';
+                        showToast(currentLanguage === 'ar'
+                            ? 'تم إنشاء الحساب. أرسلنا رسالة تأكيد إلى ' + email + '، افتح الرابط فيها ثم سجّل الدخول بنفس البريد وكلمة المرور.'
+                            : 'Account created. We sent a confirmation link to ' + email + '. Open it, then sign in with the same email and password.', 'success');
                     } else {
-                        showToast(error.message, 'error');
+                        showToast(currentLanguage === 'ar' ? 'تعذر إنشاء الحساب، حاول مرة أخرى.' : 'Could not create the account, please try again.', 'error');
                     }
                     return;
                 }
@@ -5316,6 +5333,7 @@ window.triggerModalClose = function() {
                 await ensureUserAccountRecord(data.user, role);
                 
                 await loadCurrentUserFromSupabase(data.user);
+                _dataLoaded = false;
                 await loadData();
                 updateUI();
                 hideBtnLoading(btn);
@@ -5324,7 +5342,7 @@ window.triggerModalClose = function() {
             } catch (error) {
                 hideBtnLoading(document.getElementById('btnSignUp'));
                 console.error('Error signing up:', error);
-                showToast('حدث خطأ في إنشاء الحساب', 'error');
+                showToast(window.EDAuthRules.describeAuthError(error, currentLanguage, 'signup'), 'error');
             }
         }
 
@@ -11065,6 +11083,68 @@ exam.questions.forEach((question, index) => {
 </script>
 
 <!-- ED-ALL Assistant: modern streaming UI -->
+<script id="edAuthRules">
+// Pure, testable auth rules (covered by src/test/ed-auth-rules.test.ts).
+(function(){
+  var MIN_PASSWORD_LENGTH = 5;
+  function validateSignupPassword(password, lang){
+    var ok = typeof password === 'string' && password.length >= MIN_PASSWORD_LENGTH;
+    if (ok) return { ok: true, message: '' };
+    return { ok: false, message: lang === 'ar'
+      ? 'كلمة المرور يجب أن تكون 5 أحرف على الأقل.'
+      : 'Password must be at least 5 characters.' };
+  }
+  function describeAuthError(error, lang, context){
+    var ar = lang === 'ar';
+    var code = String((error && (error.code || error.error_code)) || '');
+    var msg = String((error && error.message) || '').toLowerCase();
+    var status = Number(error && error.status) || 0;
+    if (code === 'weak_password' || msg.indexOf('password should') > -1 || msg.indexOf('weak') > -1) {
+      if (msg.indexOf('pwned') > -1 || msg.indexOf('known to be weak') > -1 || msg.indexOf('easy to guess') > -1) {
+        return ar ? 'كلمة المرور هذه شائعة ومسرّبة، اختر كلمة مرور أخرى.' : 'This password is too common or leaked. Choose another one.';
+      }
+      var m = msg.match(/at least (\d+)/);
+      if (m && Number(m[1]) > MIN_PASSWORD_LENGTH) {
+        return ar ? ('الخادم يشترط حاليًا ' + m[1] + ' أحرف على الأقل لكلمة المرور.') : ('The server currently requires at least ' + m[1] + ' characters.');
+      }
+      return ar ? 'كلمة المرور يجب أن تكون 5 أحرف على الأقل.' : 'Password must be at least 5 characters.';
+    }
+    if (code === 'email_not_confirmed' || msg.indexOf('email not confirmed') > -1) {
+      return ar ? 'لم يتم تأكيد بريدك بعد. افتح رسالة التأكيد في بريدك ثم سجّل الدخول.' : 'Your email is not confirmed yet. Open the confirmation email, then sign in.';
+    }
+    if (code === 'user_already_exists' || code === 'email_exists' || msg.indexOf('already registered') > -1) {
+      return ar ? 'البريد الإلكتروني مستخدم بالفعل. سجّل الدخول بدلًا من ذلك.' : 'Email already exists. Please sign in instead.';
+    }
+    if (status === 429 || code.indexOf('rate_limit') > -1 || msg.indexOf('rate limit') > -1 || msg.indexOf('too many') > -1) {
+      return ar ? 'محاولات كثيرة. انتظر قليلًا ثم حاول مرة أخرى.' : 'Too many attempts. Please wait a moment and try again.';
+    }
+    if (code === 'invalid_credentials' || msg.indexOf('invalid login credentials') > -1) {
+      return ar ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة.' : 'Invalid email or password.';
+    }
+    if (code === 'email_address_invalid' || msg.indexOf('invalid format') > -1 || msg.indexOf('email address') > -1 && msg.indexOf('invalid') > -1) {
+      return ar ? 'صيغة البريد الإلكتروني غير صحيحة.' : 'The email address is invalid.';
+    }
+    if (code === 'signup_disabled') {
+      return ar ? 'إنشاء الحسابات الجديدة متوقف حاليًا.' : 'New sign-ups are currently disabled.';
+    }
+    if ((error && error.name === 'AuthRetryableFetchError') || msg.indexOf('failed to fetch') > -1 || msg.indexOf('network') > -1 || status === 0 && !code && msg) {
+      return ar ? 'تعذر الاتصال بالخادم. تحقق من الإنترنت وحاول مجددًا.' : 'Could not reach the server. Check your connection and try again.';
+    }
+    var fallback = context === 'signup'
+      ? (ar ? 'تعذر إنشاء الحساب' : 'Could not create the account')
+      : (ar ? 'تعذر تسجيل الدخول' : 'Could not sign in');
+    return fallback + (error && error.message ? ': ' + String(error.message).slice(0, 160) : '.');
+  }
+  // signUp returns no session while email confirmation is pending.
+  function signupOutcome(data){
+    if (data && data.session && data.user) return 'signed_in';
+    if (data && data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) return 'already_exists';
+    if (data && data.user) return 'confirm_email';
+    return 'failed';
+  }
+  window.EDAuthRules = { MIN_PASSWORD_LENGTH: MIN_PASSWORD_LENGTH, validateSignupPassword: validateSignupPassword, describeAuthError: describeAuthError, signupOutcome: signupOutcome };
+})();
+</script>
 <script src="/ed_assistant.js" defer></script>
 </body>
 </html>

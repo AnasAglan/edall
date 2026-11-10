@@ -1887,16 +1887,22 @@ const TEACHER_TOOLS = new Set([
 
 const KNOWN_TOOLS = new Set(toolSpecs.map(item => item.function.name));
 
+// The assistant is staff-only: admins and teachers. Students are denied server-side.
+export function canAccessAssistant(roles = []) {
+  const list = Array.isArray(roles) ? roles : [];
+  return list.includes("admin") || list.includes("teacher");
+}
+
 export function canUseAssistantTool(name, args = {}, roles = [], userId = "") {
   const roleSet = new Set(Array.isArray(roles) ? roles : []);
   if (!KNOWN_TOOLS.has(name)) return false;
+  if (!canAccessAssistant([...roleSet])) return false;
   if (roleSet.has("admin")) return true;
 
   const selfOnly = ["send_password_reset", "update_user_profile", "get_wallet_info", "list_favorites"];
   if (selfOnly.includes(name) && args.user_id && args.user_id !== userId) return false;
 
   if (roleSet.has("teacher")) return TEACHER_TOOLS.has(name);
-  if (roleSet.has("student")) return STUDENT_TOOLS.has(name);
   return false;
 }
 
@@ -2052,8 +2058,8 @@ export default {
     } catch {
       return json({ error: "تعذر التحقق من الصلاحيات." }, 403, origin);
     }
-    if (!roles.some(role => role === "admin" || role === "teacher" || role === "student")) {
-      return json({ error: "لا يوجد دور صالح لهذا الحساب لاستخدام مساعد ED-ALL." }, 403, origin);
+    if (!canAccessAssistant(roles)) {
+      return json({ error: "مساعد ED-ALL متاح للمدرسين والإدارة فقط." }, 403, origin);
     }
 
     let body;
