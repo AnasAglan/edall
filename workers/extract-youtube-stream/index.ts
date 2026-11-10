@@ -217,6 +217,25 @@ function parseHlsAttributes(line: string): Record<string, string> {
   return result;
 }
 
+type HlsProbeResult = {
+  ok: boolean;
+  audioAvailable: boolean;
+  status?: number | null;
+  cors?: string | null;
+  corsAllowed?: boolean;
+  contentType?: string | null;
+  height?: number;
+  heights?: number[];
+  segmentVerified?: boolean;
+  variantsChecked?: number;
+  segmentProbe?: any;
+  audioProbe?: any;
+  error?: string | null;
+  [key: string]: any;
+};
+
+type HlsVariant = { url: string; height: number; audioGroup: string };
+
 function parseHlsPlaylist(body: string, baseUrl: string, fallbackHeight = 0) {
   const lines = String(body || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const audioTracks: Array<{ groupId: string; url: string }> = [];
@@ -266,7 +285,7 @@ function parseHlsPlaylist(body: string, baseUrl: string, fallbackHeight = 0) {
   return { variants, audioTracks, segmentUrl };
 }
 
-async function probeHlsPlaylist(url: string, expectedHeight = 0, depth = 0, initial?: { body: string; cors: string | null; status: number; contentType: string | null }) {
+async function probeHlsPlaylist(url: string, expectedHeight = 0, depth = 0, initial?: { body: string; cors: string | null; status: number; contentType: string | null }): Promise<HlsProbeResult> {
   if (depth > 3) return { ok: false, format: "hls", height: expectedHeight, audioAvailable: false, error: "HLS playlist nesting limit reached." };
   let body = initial?.body;
   let cors = initial?.cors || null;
@@ -295,19 +314,19 @@ async function probeHlsPlaylist(url: string, expectedHeight = 0, depth = 0, init
   }
   const parsed = parseHlsPlaylist(body, url, expectedHeight);
   if (parsed.variants.length) {
-    const bestVariants = parsed.variants.sort((a, b) => b.height - a.height).slice(0, 3);
-    const checks = await Promise.all(bestVariants.map(async (variant) => {
-      const video = await probeHlsPlaylist(variant.url, variant.height, depth + 1);
+    const bestVariants: HlsVariant[] = parsed.variants.sort((a: HlsVariant, b: HlsVariant) => b.height - a.height).slice(0, 3);
+    const checks: HlsProbeResult[] = await Promise.all(bestVariants.map(async (variant: HlsVariant): Promise<HlsProbeResult> => {
+      const video: HlsProbeResult = await probeHlsPlaylist(variant.url, variant.height, depth + 1);
       if (!video.ok) return { ...video, height: variant.height, audioAvailable: false };
       if (!variant.audioGroup) return { ...video, height: variant.height, audioAvailable: true };
       const audioTrack = parsed.audioTracks.find((track) => track.groupId === variant.audioGroup);
       if (!audioTrack) return { ...video, ok: false, height: variant.height, audioAvailable: false, error: "HLS variant needs a separate audio group without a URI." };
-      const audio = await probeHlsPlaylist(audioTrack.url, 0, depth + 1);
+      const audio: HlsProbeResult = await probeHlsPlaylist(audioTrack.url, 0, depth + 1);
       return { ...video, ok: video.ok && audio.ok, height: variant.height, audioAvailable: audio.ok, audioProbe: { ok: audio.ok, status: audio.status || null, error: audio.error || null }, error: video.ok && audio.ok ? null : audio.error || video.error };
     }));
-    const usable = checks.filter((check) => check.ok && check.audioAvailable);
-    const heights = [...new Set(usable.map((check) => check.height).filter((height) => height > 0))].sort((a, b) => b - a);
-    return { ok: usable.length > 0, format: "hls", status, cors, corsAllowed: true, contentType, heights, audioAvailable: usable.length > 0, variantsChecked: checks.length, segmentVerified: usable.length > 0, error: usable.length ? null : checks.map((check) => check.error).filter(Boolean).join(" | ") || "No HLS variant passed segment/audio verification." };
+    const usable: HlsProbeResult[] = checks.filter((check: HlsProbeResult) => check.ok && check.audioAvailable);
+    const heights: number[] = [...new Set<number>(usable.map((check: HlsProbeResult) => Number(check.height) || 0).filter((height: number) => height > 0))].sort((a: number, b: number) => b - a);
+    return { ok: usable.length > 0, format: "hls", status, cors, corsAllowed: true, contentType, heights, audioAvailable: usable.length > 0, variantsChecked: checks.length, segmentVerified: usable.length > 0, error: usable.length ? null : checks.map((check: HlsProbeResult) => check.error).filter(Boolean).join(" | ") || "No HLS variant passed segment/audio verification." };
   }
   if (!parsed.segmentUrl) {
     return { ok: false, format: "hls", status, cors, corsAllowed: true, contentType, heights: [], audioAvailable: false, error: "HLS media playlist contained no testable segment." };
