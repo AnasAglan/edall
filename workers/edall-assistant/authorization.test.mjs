@@ -5,7 +5,8 @@ import worker, {
   canAccessAssistant,
   shouldForceInScope,
   inferRequiredReadTools,
-  buildScopeRouting
+  buildScopeRouting,
+  attachUserRoles
 } from "./index.js";
 
 const ownId = "11111111-1111-4111-8111-111111111111";
@@ -171,4 +172,45 @@ test("generic list follow-ups inherit the previous platform entity", () => {
     { role: "assistant", content: "سأبحث في الدورات." },
     { role: "user", content: "وريني اللي موجود" }
   ], ["admin"]), [{ name: "list_courses", args: { limit: 50 } }]);
+});
+
+test("platform statistics phrases always force verified reads for administrators", () => {
+  assert.deepEqual(inferRequiredReadTools([
+    { role: "user", content: "إحصائيات المنصة" }
+  ], ["admin"]), [{ name: "get_platform_stats", args: {} }]);
+  assert.deepEqual(inferRequiredReadTools([
+    { role: "user", content: "احصائيات المنصة" }
+  ], ["admin"]), [{ name: "get_platform_stats", args: {} }]);
+  assert.deepEqual(inferRequiredReadTools([
+    { role: "user", content: "إحصائيات المنصة" }
+  ], ["teacher"]), []);
+});
+
+test("teacher/student/admin directory requests are filtered by actual role", () => {
+  assert.deepEqual(inferRequiredReadTools([
+    { role: "user", content: "مين المدرسين؟" }
+  ], ["admin"]), [{ name: "search_platform_users", args: { query: "", limit: 50, offset: 0, role: "teacher" } }]);
+  assert.deepEqual(inferRequiredReadTools([
+    { role: "user", content: "مين الطلاب؟" }
+  ], ["admin"]), [{ name: "search_platform_users", args: { query: "", limit: 50, offset: 0, role: "student" } }]);
+  assert.deepEqual(inferRequiredReadTools([
+    { role: "user", content: "اعرض المديرين" }
+  ], ["admin"]), [{ name: "search_platform_users", args: { query: "", limit: 50, offset: 0, role: "admin" } }]);
+});
+
+test("user role labels are attached only from valid database role rows", () => {
+  const rows = attachUserRoles([
+    { id: ownId, name: "Teacher", email: "teacher@example.test", public_id: "T1" },
+    { id: otherId, name: "Student", email: "student@example.test", public_id: "S1" }
+  ], [
+    { user_id: ownId, role: "teacher" },
+    { user_id: ownId, role: "admin" },
+    { user_id: otherId, role: "student" },
+    { user_id: otherId, role: "unknown" },
+    { user_id: "not-a-uuid", role: "teacher" }
+  ]);
+  assert.deepEqual(rows, [
+    { id: ownId, name: "Teacher", email: "teacher@example.test", public_id: "T1", roles: ["teacher", "admin"] },
+    { id: otherId, name: "Student", email: "student@example.test", public_id: "S1", roles: ["student"] }
+  ]);
 });
