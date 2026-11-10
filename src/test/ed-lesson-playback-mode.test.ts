@@ -27,8 +27,13 @@ describe("per-lesson video playback mode", () => {
     expect(rules.canShowLessonVideoOnWeb({ webPlaybackEnabled: false }, false)).toBe(false);
   });
 
-  it("still lets the owning teacher or admin preview an app-only lesson", () => {
-    expect(rules.canShowLessonVideoOnWeb({ web_playback_enabled: false }, true)).toBe(true);
+  it("blocks app-only lessons on the web even for teachers and admins", () => {
+    expect(rules.canShowLessonVideoOnWeb({ web_playback_enabled: false }, true)).toBe(false);
+    expect(rules.canShowLessonVideoOnWeb({ webPlaybackEnabled: false }, true)).toBe(false);
+  });
+
+  it("fails closed when lesson data is missing", () => {
+    expect(rules.canShowLessonVideoOnWeb(null, true)).toBe(false);
   });
 
   it("persists the default true mode for all legacy lessons", () => {
@@ -44,10 +49,17 @@ describe("per-lesson video playback mode", () => {
     expect(html).toContain("web_playback_enabled: editWebPlaybackEnabled");
   });
 
-  it("does not request app-only video rows for ordinary web student sessions", () => {
+  it("filters app-only videos for every web role without a manager override", () => {
     expect(html).toContain("webVisibleLessonIds");
     expect(html).toContain("in('lesson_id', webVisibleLessonIds)");
+    expect(html).toContain(".filter(l => l.web_playback_enabled !== false)");
+    expect(html).not.toContain("canPreviewAllLessonVideos || l.web_playback_enabled");
     expect(html).toContain("webPlaybackEnabled: l.web_playback_enabled !== false");
+  });
+
+  it("does not fall back to a direct YouTube iframe in an ordinary browser", () => {
+    expect(html).toContain("Ordinary web playback is quality-extraction-only");
+    expect(html).toContain("No automatic-quality YouTube fallback was opened.");
   });
 
   it("keeps the app-only notice while leaving lesson text and other files in the lesson view", () => {
