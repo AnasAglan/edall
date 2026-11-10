@@ -300,8 +300,8 @@ export function inferRequiredReadTools(conversation, roles = []) {
   const focus = isGenericFollowUp ? current + " " + priorContext : current;
 
   const courseOrLesson = /(?:كورس|كورسات|الكورس|الكورسات|دورة|دورات|الدورة|الدورات|محاضرة|محاضرات|المحاضرة|المحاضرات|محاضره|الدرس|درس|دروس|الدروس|اختبار|اختبارات|امتحان|امتحانات|course|courses|lesson|lessons|exam|exams)/i;
-  const users = /(?:مستخدم|مستخدمين|المستخدم|المستخدمين|حساب|حسابات|طالب|طلاب|الطلاب|مدرس|مدرسين|المدرسين|المعلمين|معلم|معلمين|teacher|teachers|student|students|user|users)/i;
-  const platformStats = /(?:إحصاء|احصاء|إحصائيات|احصائيات|عدد|كم|كام|statistics|stats|count|how many)/i;
+  const users = /(?:مستخدم|مستخدمين|المستخدم|المستخدمين|حساب|حسابات|طالب|طلاب|الطلاب|مدرس|مدرسين|المدرسين|المعلمين|معلم|معلمين|مدير|مديرين|المديرين|teacher|teachers|student|students|admin|admins|user|users)/i;
+  const platformStats = /(?:إحصاء|احصاء|إحصائيات|احصائيات|إحصائية|احصائية|عدد|كم|كام|statistics|stats|count|how many)/i;
   const platformData = /(?:منصة|المنصة|مستخدم|طالب|مدرس|معلم|دورة|كورس|محاضرة|درس|فيديو|اختبار|تسجيل|محاولة|ملف|pdf|platform|course|lesson|teacher|student|user|exam)/i;
 
   // Global totals are only available to administrators. For teachers, list
