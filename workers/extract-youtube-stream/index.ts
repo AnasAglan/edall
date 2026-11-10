@@ -52,7 +52,7 @@ async function loadOfficialInstances(): Promise<Array<{ url: string; score: numb
     if (registryResponse.ok) {
       const registry = await registryResponse.json();
       const entries = Array.isArray(registry?.sources?.invidious) ? registry.sources.invidious : [];
-      const cleaned = entries.map((item) => ({
+      const cleaned = entries.map((item: any) => ({
         url: cleanBase(item?.url),
         score: Number(item?.score) || 0,
         status: String(item?.status || "unknown"),
@@ -257,7 +257,7 @@ async function probeInstance(instance: { url: string; score: number; status: str
     const audioCandidates = bundle.audioStreams
       .filter((stream: any) => typeof stream.url === "string")
       .slice(0, 2);
-    const manifestUrls = [bundle.dash, bundle.hls].filter(Boolean);
+    const manifestUrls = [bundle.dash, bundle.hls].filter((manifest): manifest is string => typeof manifest === "string" && !!manifest);
     const [mediaProbes, audioProbes, manifestProbes] = await Promise.all([
       Promise.all(videoCandidates.map((stream: any) => probeMediaUrl(stream.url))),
       Promise.all(audioCandidates.map((stream: any) => probeMediaUrl(stream.url))),
@@ -348,7 +348,7 @@ async function extract(videoId: string, excluded: string[]) {
   };
 }
 
-export default { async fetch(req) {
+export default { async fetch(req: Request) {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
