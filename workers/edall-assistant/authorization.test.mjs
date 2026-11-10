@@ -155,7 +155,7 @@ test("Arabic Egyptian phrasing routes course, teacher, and lesson questions to d
 
   assert.deepEqual(inferRequiredReadTools([
     { role: "user", content: "مين المدرسين؟" }
-  ], ["admin"]), [{ name: "search_platform_users", args: { query: "", limit: 50, offset: 0 } }]);
+  ], ["admin"]), [{ name: "search_platform_users", args: { query: "", limit: 50, offset: 0, role: "teacher" } }]);
 
   assert.deepEqual(inferRequiredReadTools([
     { role: "user", content: "في كام درس؟" }
