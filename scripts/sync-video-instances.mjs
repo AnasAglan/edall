@@ -69,12 +69,12 @@ export function discoverPiped(markdown) {
   return uniqueByUrl(urls);
 }
 
-export function discoverInvidious(payload) {
-  if (!Array.isArray(payload)) throw new Error("Invalid Invidious instances API response.");
 export function supportsInvidiousApi(instance) {
   return instance?.provider !== "invidious" || instance?.apiListed === true;
 }
 
+export function discoverInvidious(payload) {
+  if (!Array.isArray(payload)) throw new Error("Invalid Invidious instances API response.");
   const entries = [];
   for (const row of payload) {
     if (!Array.isArray(row) || row.length < 2) continue;
