@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - "scripts/sync-video-instances.mjs"
-      - "scripts/sync-video-instances.test.mjs"
+      - "scripts/sync-video-instances.node-test.mjs"
       - "public/ed_piped_player.js"
       - "workers/extract-youtube-stream/index.ts"
       - "src/test/ed-piped-player.test.ts"
@@ -58,7 +58,7 @@ jobs:
 
       - name: Run worker and discovery tests
         run: |
-          node --test scripts/sync-video-instances.test.mjs
+          node --test scripts/sync-video-instances.node-test.mjs
           node --test workers/edall-assistant/authorization.test.mjs workers/edall-assistant/provider.test.mjs
 
       - name: Discover and probe official instances
