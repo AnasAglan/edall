@@ -9,7 +9,7 @@ const SYSTEM = [
   "أنت مساعد ED-ALL التشغيلي الذكي للمديرين والمدرسين والطلاب. مهمتك مساعدة المستخدم في إنجاز الأعمال الحقيقية داخل ED-ALL: الدورات وأسعارها، الشراء والتسجيل والمحفظة، المفضلة، المحاضرات والفيديوهات وملفات PDF، الاختبارات والأسئلة والنتائج، حسابات الطلاب والمدرسين وصورهم الشخصية، الإشعارات، الإحصاءات وإعدادات المنصة.",
   "افهم كل طلب من معناه وسياق المحادثة، لا من كلمات الرسالة الأخيرة وحدها. افهم العربية المصرية والعامية والأخطاء الإملائية والكتابة المختصرة والضمائر والإشارات مثل: دي، ديها، لها، عليها، ارفعها، أرفقها، غيّرها، الصورة دي، الكورس ده. ارجع إلى الرسائل السابقة لمعرفة العنصر المقصود، حتى لو كان اسمه ذُكر منذ عدة رسائل.",
   "إذا كان الطلب الحالي متابعة منطقية لمهمة داخل ED-ALL فاعتبره متعلقًا بالمنصة ونفّذه أو اسأل عن المعلومة الناقصة. لا ترفض طلبًا بسبب غياب كلمات مثل ED-ALL أو دورة أو محاضرة من الرسالة الأخيرة. لا ترد برسالة رفض نمطية لمجرد أن الصياغة قصيرة أو أن المستخدم أرفق صورة. إذا تعذر تحديد العنصر، اسأل سؤالًا محددًا واحدًا.",
-  "ارفض باختصار فقط إذا كان الطلب الحالي مستقلًا بوضوح عن ED-ALL ولا يشير سياقه إلى مهمة بالمنصة. لا توسّع الرفض ليشمل طلبات تقنية أو إدارية تتعلق بتشغيل ED-ALL نفسها.",
+  "إذا كان السؤال عامًا ومستقلًا عن ED-ALL فأجب عنه طبيعيًا مثل مساعد عام. لا تنسب معلومات غير مؤكدة إلى المنصة، ولا تستخدم أدوات ED-ALL لهذا السؤال، ولا ترفضه لمجرد خروجه عن نطاق المنصة.",
   "عند إرفاق صورة وطلب وضعها أو رفعها أو إرفاقها كصورة لدورة، استخدم أداة upload_course_image لحفظ الصورة فعليًا في مخزن course-images وربط رابطها بحقل courses.image_url. حدّد الدورة من السياق أو ابحث عنها بالأدوات. لا تكتفِ بوصف الصورة ولا تقل إنك لا تستطيع حفظها. لا تنفّذ الرفع إذا كان المقصود أو الدورة غير واضحين؛ اسأل أولًا.",
   "إذا أرفق المستخدم صورة بغرض تحليلها أو السؤال عنها وليس حفظها، حلّلها باستخدام قدرات الرؤية ولا ترفعها إلى المنصة تلقائيًا.",
   "أجب بالعربية الواضحة. افهم نعم وأيوه وتمام وموافق ويلا ونفّذ بوصفها موافقة فقط عندما يكون هناك طلب تنفيذ واضح ومحدد في السياق القريب.",
@@ -286,15 +286,35 @@ export function inferRequiredReadTools(conversation, roles = []) {
   const current = userMessages.at(-1) || "";
   if (!current) return [];
 
-  const readIntent = /(?:ما|ماذا|ايه|إيه|اي|أي|اسم|أسماء|اسماء|عدد|كم|اعرض|اعرضلي|وريني|هات|قائمة|قولي|قول لي|اخبرني|خبرني|عايز اعرف|عاوز اعرف|ممكن اعرف|عندنا|الموجود|الموجودة|الموجودين|تفاصيل|ابحث|بحث|عرض|اظهر|أظهر|show|list|find|what|which|how many|tell me about)/i;
   const writeIntent = /(?:أنشئ|انشئ|اضف|أضف|أضيف|اضيف|ضيف|ضيفلي|إنشاء|انشاء|عدل|عدّل|تعديل|حدث|حدّث|تحديث|غير|غيّر|حذف|احذف|امسح|اشتري|اشتر|شراء|ارفع|رفع|ارسل|أرسل|ابعت|احظر|حظر|شحن|اشحن|نفذ|نفّذ|create|add|update|edit|change|delete|remove|buy|purchase|upload|send|ban|credit)/i;
-  if (!readIntent.test(current) || writeIntent.test(current)) return [];
+  if (writeIntent.test(current)) return [];
 
-  const courseOrLesson = /(?:كورس|كورسات|الكورس|الكورسات|دورة|دورات|الدورة|الدورات|محاضرة|محاضرات|المحاضرة|المحاضرات|درس|دروس|الدرس|الدروس|اختبار|اختبارات|امتحان|امتحانات|course|courses|lesson|lessons|exam|exams)/i;
-  const users = /(?:مستخدم|مستخدمين|المستخدم|المستخدمين|حساب|حسابات|طالب|طلاب|الطلاب|مدرس|مدرسين|المعلمين|معلم|teacher|teachers|student|students|user|users)/i;
+  const readIntent = /(?:ما|ماذا|ايه|إيه|اي|أي|اسم|أسماء|اسماء|عدد|كم|كام|مين|من هم|من هي|اعرض|اعرضلي|وريني|هات|قائمة|قولي|قول لي|اخبرني|خبرني|عايز اعرف|عاوز اعرف|ممكن اعرف|عندنا|الموجود|الموجودة|الموجودين|تفاصيل|ابحث|بحث|عرض|اظهر|أظهر|هل يوجد|هل عندنا|فيه|show|list|find|what|which|how many|tell me about)/i;
+  const currentIsRead = readIntent.test(current);
+  const isGenericFollowUp = /(?:وريني|اعرض|هات|قولي|قول لي|اظهر|أظهر|اللي موجود|الموجود|الموجودة|الموجودين|what is there|show me what|list them)/i.test(current);
+  if (!currentIsRead && !isGenericFollowUp) return [];
 
-  if (courseOrLesson.test(current)) return [{ name: "list_courses", args: { limit: 50 } }];
-  if (roles.includes("admin") && users.test(current)) {
+  // Short follow-ups such as "وريني اللي موجود" inherit the most recent
+  // user-mentioned platform entity, but never inherit a previous write command.
+  const priorContext = userMessages.slice(-6, -1).join(" ");
+  const focus = isGenericFollowUp ? current + " " + priorContext : current;
+
+  const courseOrLesson = /(?:كورس|كورسات|الكورس|الكورسات|دورة|دورات|الدورة|الدورات|محاضرة|محاضرات|المحاضرة|المحاضرات|محاضره|الدرس|درس|دروس|الدروس|اختبار|اختبارات|امتحان|امتحانات|course|courses|lesson|lessons|exam|exams)/i;
+  const users = /(?:مستخدم|مستخدمين|المستخدم|المستخدمين|حساب|حسابات|طالب|طلاب|الطلاب|مدرس|مدرسين|المدرسين|المعلمين|معلم|معلمين|teacher|teachers|student|students|user|users)/i;
+  const platformStats = /(?:إحصاء|احصاء|إحصائيات|احصائيات|عدد|كم|كام|statistics|stats|count|how many)/i;
+  const platformData = /(?:منصة|المنصة|مستخدم|طالب|مدرس|معلم|دورة|كورس|محاضرة|درس|فيديو|اختبار|تسجيل|محاولة|ملف|pdf|platform|course|lesson|teacher|student|user|exam)/i;
+
+  // Global totals are only available to administrators. For teachers, list
+  // their own courses first; the model can then read each selected course.
+  if (roles.includes("admin") && platformStats.test(current) && platformData.test(focus)) {
+    return [{ name: "get_platform_stats", args: {} }];
+  }
+  if (courseOrLesson.test(focus)) {
+    return [{ name: "list_courses", args: { limit: 50 } }];
+  }
+  if (roles.includes("admin") && users.test(focus)) {
+    // The tool is admin-gated on the server; names and roles must come from
+    // its database result, never from model memory.
     return [{ name: "search_platform_users", args: { query: "", limit: 50, offset: 0 } }];
   }
   return [];
@@ -330,6 +350,19 @@ async function classifyRequestScope(env, conversation, hasImages) {
     console.error("ED-ALL scope classifier unavailable:", error instanceof Error ? error.message : String(error));
     return "IN_SCOPE";
   }
+}
+
+export function buildScopeRouting(scope) {
+  if (scope === "OUT_OF_SCOPE") {
+    return {
+      allowPlatformTools: false,
+      instruction: "السؤال الحالي مستقل عن ED-ALL. أجب عنه مباشرة بوصفك مساعدًا عامًا وباللغة المناسبة، دون رفض نمطي. لا تستخدم أدوات المنصة ولا تخمّن أي معلومات عن قاعدة بياناتها أو مستخدميها أو دوراتها."
+    };
+  }
+  return {
+    allowPlatformTools: true,
+    instruction: "تم تقييم الرسالة الحالية مع سياق المحادثة، وهي ضمن نطاق ED-ALL أو متابعة محتملة لمهمة فيها. لا ترد برفض عام. حدّد المهمة من السياق، واستخدم أدوات القراءة عند الحاجة، وإذا كانت معلومة أساسية واحدة ناقصة فاسأل عنها مباشرة. لا تخترع أسماء دورات أو محاضرات أو اختبارات أو مستخدمين أو أرقامًا أو أسعارًا؛ كل معلومة حية عن قاعدة بيانات المنصة يجب أن تأتي من نتائج الأدوات فقط."
+  };
 }
 
 function corsHeaders(origin) {
@@ -2229,10 +2262,8 @@ export default {
     }
     const scope = await classifyRequestScope(env, messages, images.length > 0);
     if (!explicitWriteIntent) explicitWriteIntent = await classifyExplicitWriteIntent(env, messages);
-    if (scope === "OUT_OF_SCOPE") {
-      return sseTextResponse("هذا الطلب لا يبدو متعلقًا بمهام ED-ALL. أستطيع مساعدتك في إدارة الدورات والمحاضرات والاختبارات والطلاب والمدرسين والإشعارات والإحصاءات. ما المهمة التي تريد تنفيذها داخل المنصة؟", origin);
-    }
-    const semanticRoutingInstruction = "تم تقييم الرسالة الحالية مع سياق المحادثة، وهي ضمن نطاق ED-ALL أو متابعة محتملة لمهمة فيها. لا ترد برفض عام أو بعبارة أنك لا تساعد خارج المنصة. حدّد المهمة المطلوبة من السياق، استخدم الأدوات عند الحاجة، وإذا كانت معلومة واحدة فقط ناقصة فاسأل عنها مباشرة. قواعد منع الاختلاق إلزامية: لا تخترع أسماء دورات أو محاضرات أو اختبارات أو مستخدمين أو أرقامًا أو أسعارًا. أي معلومة حية عن قاعدة بيانات المنصة يجب أن تأتي من نتائج أدوات قاعدة البيانات فقط؛ إذا لم تظهر في النتائج فقل إنك لم تجدها أو اطلب معلومة توضيحية. لا تستخدم أسماء من الذاكرة العامة أو أمثلة افتراضية وكأنها موجودة في ED-ALL.";
+    const scopeRouting = buildScopeRouting(scope);
+    const semanticRoutingInstruction = scopeRouting.instruction;
 
     const verifiedReadSnapshots = [];
     for (const read of inferRequiredReadTools(messages, roles)) {
@@ -2279,8 +2310,7 @@ export default {
       for (let round = 0; round < 5; round++) {
           const result = await runAssistantModel(env, MODEL, {
             messages: finalMessages,
-            tools: availableTools,
-            tool_choice: "auto",
+            ...(scopeRouting.allowPlatformTools ? { tools: availableTools, tool_choice: "auto" } : {}),
             reasoning_effort: "low",
             chat_template_kwargs: { enable_thinking: false, clear_thinking: true },
             max_completion_tokens: 2400
