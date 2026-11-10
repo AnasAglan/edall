@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - "public/ed_piped_player.js"
+      - "workers/extract-youtube-stream/index.ts"
+      - "src/test/ed-auth-rules.test.ts"
+      - "scripts/sync-video-instances.node-test.mjs"
       - "public/ed_master.html"
       - "public/video-instances.json"
       - "scripts/**"
