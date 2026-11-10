@@ -174,6 +174,63 @@ function bundleScore(bundle: any): number {
     (bundle.hls ? 25 : 0);
 }
 
+async function probeMediaUrl(url: string) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 4500);
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      signal: controller.signal,
+      headers: { Range: "bytes=0-1", Origin: "https://edall.lovable.app" },
+      cache: "no-store",
+    });
+    const result = {
+      ok: response.status === 206 || response.status === 200,
+      status: response.status,
+      rangeSupported: response.status === 206,
+      cors: response.headers.get("access-control-allow-origin"),
+      contentType: response.headers.get("content-type"),
+    };
+    if (response.body) await response.body.cancel().catch(() => {});
+    return result;
+  } catch (error) {
+    return { ok: false, status: null, rangeSupported: false, cors: null, contentType: null, error: String((error as Error)?.message || error).slice(0, 180) };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function probeManifestUrl(url: string) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 4500);
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        Accept: "application/dash+xml, application/vnd.apple.mpegurl, application/x-mpegURL, */*",
+        Origin: "https://edall.lovable.app",
+      },
+      cache: "no-store",
+    });
+    const cors = response.headers.get("access-control-allow-origin");
+    const corsAllowed = cors === "*" || cors === "https://edall.lovable.app";
+    const body = response.ok ? await response.text() : "";
+    const format = /<MPD\\b/i.test(body) ? "dash" : /#EXTM3U/i.test(body) ? "hls" : null;
+    return {
+      ok: response.ok && !!format && corsAllowed,
+      status: response.status,
+      cors,
+      corsAllowed,
+      format,
+      contentType: response.headers.get("content-type"),
+    };
+  } catch (error) {
+    return { ok: false, status: null, cors: null, corsAllowed: false, format: null, contentType: null, error: String((error as Error)?.message || error).slice(0, 180) };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function probeInstance(instance: { url: string; score: number; status: string }, videoId: string) {
   const url = instance.url + "/api/v1/videos/" + encodeURIComponent(videoId) +
     "?fields=title,lengthSeconds,liveNow,hlsUrl,dashUrl,formatStreams,adaptiveFormats";
@@ -189,8 +246,29 @@ async function probeInstance(instance: { url: string; score: number; status: str
     if (!response.ok) throw new Error("Invidious HTTP " + response.status);
     const payload = await response.json();
     const bundle = normalizeInvidious(payload);
-    if (!bundle.videoStreams.length && !bundle.hls && !bundle.dash) {
-      throw new Error("Invidious returned no usable formats.");
+    const videoCandidates = bundle.videoStreams
+      .filter((stream: any) => typeof stream.url === "string")
+      .sort((a: any, b: any) => Number(b.height || 0) - Number(a.height || 0))
+      .slice(0, 3);
+    const audioCandidates = bundle.audioStreams
+      .filter((stream: any) => typeof stream.url === "string")
+      .slice(0, 2);
+    const manifestUrls = [bundle.dash, bundle.hls].filter(Boolean);
+    const [mediaProbes, audioProbes, manifestProbes] = await Promise.all([
+      Promise.all(videoCandidates.map((stream: any) => probeMediaUrl(stream.url))),
+      Promise.all(audioCandidates.map((stream: any) => probeMediaUrl(stream.url))),
+      Promise.all(manifestUrls.map((manifest: string) => probeManifestUrl(manifest))),
+    ]);
+    const mediaProbe: any = mediaProbes.find((probe: any) => probe.ok) || mediaProbes[0] || null;
+    const audioProbe: any = audioProbes.find((probe: any) => probe.ok) || audioProbes[0] || null;
+    const manifestProbe: any = manifestProbes.find((probe: any) => probe.ok) || manifestProbes[0] || null;
+    const hasMuxedAudio = bundle.videoStreams.some((stream: any) => !stream.videoOnly);
+    const manifestPlayable = !!(manifestProbe && manifestProbe.ok);
+    const hasAudioPath = hasMuxedAudio || (!!(mediaProbe && mediaProbe.ok) && !!(audioProbe && audioProbe.ok)) || manifestPlayable;
+    const playbackVerified = manifestPlayable || (!!(mediaProbe && mediaProbe.ok) && hasAudioPath);
+    if (!bundle.videoStreams.length || !playbackVerified) {
+      const status = mediaProbe?.status || audioProbe?.status || manifestProbe?.status || "none";
+      throw new Error("Video/audio playback verification failed (HTTP " + status + ").");
     }
     const heights = [...new Set(bundle.videoStreams.map((stream: any) => Number(stream.height)).filter((height: number) => height > 0))];
     return {
@@ -199,6 +277,11 @@ async function probeInstance(instance: { url: string; score: number; status: str
       elapsedMs: Date.now() - started,
       score: bundleScore(bundle) + Math.min(Number(instance.score) || 0, 200),
       heights,
+      playbackVerified,
+      audioAvailable: hasAudioPath,
+      mediaProbe,
+      audioProbe,
+      manifestProbe,
     };
   } finally {
     clearTimeout(timer);
@@ -229,7 +312,8 @@ async function extract(videoId: string, excluded: string[]) {
       }
     }
     const heights = best?.heights || [];
-    if (heights.length >= 3 && Math.max(...heights) >= 720) break;
+    // Evaluate every currently advertised official instance; a 720p result is not
+    // proof that a later instance cannot supply a higher selectable quality.
   }
 
   if (!best) throw new Error("All official Invidious instances failed: " + failures.slice(0, 5).join(" | "));
@@ -251,6 +335,11 @@ async function extract(videoId: string, excluded: string[]) {
       selectedInstanceMs: best.elapsedMs,
       selectedScore: best.score,
       failedInstances: failures.length,
+      playbackVerified: best.playbackVerified === true,
+      audioAvailable: best.audioAvailable === true,
+      mediaProbe: best.mediaProbe || null,
+      audioProbe: best.audioProbe || null,
+      manifestProbe: best.manifestProbe || null,
     },
   };
 }
