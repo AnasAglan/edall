@@ -42,8 +42,9 @@ describe("auth session behavior", () => {
 });
 
 describe("assistant visibility", () => {
-  const m = assistant.match(/function canAccessAssistant\(u\)\{[^\n]*?\}\}/);
-  const fn = new Function("return " + m![0].slice(0, -1))() as (u: unknown) => boolean;
+  const m = assistant.match(/function canAccessAssistant\\(u\\)\\s*\\{[^\\n]*\\}/);
+  if (!m) throw new Error("assistant access helper missing");
+  const fn = new Function("return (" + m[0] + ")")() as (u: unknown) => boolean;
   it("is visible only to admin and teacher", () => {
     expect(fn({ id: "1", roles: ["student"] })).toBe(false);
     expect(fn(null)).toBe(false);
