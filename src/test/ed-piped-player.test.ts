@@ -284,8 +284,9 @@ describe("ED ALL Piped player", () => {
     expect(helpers.scoreBundle(bundle)).toBeGreaterThan(0);
   });
 
-  it("allows the slower secondary extractor time to provide higher resolutions", () => {
-    expect(playerSource).toContain("setTimeout(() => resolve(null), 7000)");
+  it("waits for both providers before comparing available quality", () => {
+    expect(playerSource).toContain("Promise.allSettled([pipedPromise, invidiousPromise])");
+    expect(playerSource).not.toContain("setTimeout(() => resolve(null), 7000)");
   });
 
   it("prioritizes registry health before last-instance stickiness", () => {
