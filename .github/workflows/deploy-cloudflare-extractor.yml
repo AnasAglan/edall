@@ -1,6 +1,12 @@
 name: Deploy Invidious extractor to Cloudflare Workers
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "workers/extract-youtube-stream/**"
+      - "wrangler.toml"
+      - ".github/workflows/deploy-cloudflare-extractor.yml"
   workflow_dispatch:
 
 permissions:
@@ -31,3 +37,6 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           packageManager: npm
           command: deploy
+
+      - name: Verify real video and audio extraction
+        run: node scripts/invidious-worker-smoke-test.mjs
