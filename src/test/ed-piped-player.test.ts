@@ -148,7 +148,12 @@ describe("ED ALL Piped player", () => {
     expect(worker).toContain("async function probeMediaUrl");
     expect(worker).toContain("async function probeManifestUrl");
     expect(worker).toContain("const playbackVerified = manifestPlayable ||");
-    expect(worker).toContain("if ((!bundle.videoStreams.length && !manifestPlayable) || !playbackVerified)");
+    expect(worker).toContain("async function probeHlsPlaylist");
+    expect(worker).toContain("segmentVerified: true");
+    expect(worker).toContain("const playbackVerified = manifestPlayable || directPlayable");
+    expect(worker).toContain("const verifiedHeights = [");
+    expect(worker).toContain("bundle.videoStreams = verifiedDirectVideos");
+    expect(worker).toContain("bundle.audioStreams = verifiedDirectAudios");
     expect(worker).not.toContain("if (heights.length >= 3 && Math.max(...heights) >= 720) break;");
   });
 
