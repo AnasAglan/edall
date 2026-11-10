@@ -54,7 +54,9 @@ jobs:
         run: npm test -- --reporter=verbose
 
       - name: Check sync script syntax
-        run: node --check scripts/sync-video-instances.mjs
+        run: |
+          node --check scripts/sync-video-instances.mjs
+          node --check workers/edall-assistant/index.js
 
       - name: Test discovery and real media verification helpers
         run: node --test scripts/sync-video-instances.node-test.mjs
