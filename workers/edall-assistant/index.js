@@ -309,6 +309,12 @@ export function inferRequiredReadTools(conversation, roles = []) {
   if (roles.includes("admin") && platformStats.test(current) && platformData.test(focus)) {
     return [{ name: "get_platform_stats", args: {} }];
   }
+  // "المدرسين" contains the character sequence "درس"; prioritize an
+  // explicit people/name question before matching the lesson keyword.
+  const asksPeople = /(?:مين|من هم|من هي|اسم|أسماء|اسماء|names|who are)/i.test(current);
+  if (roles.includes("admin") && asksPeople && users.test(focus)) {
+    return [{ name: "search_platform_users", args: { query: "", limit: 50, offset: 0 } }];
+  }
   if (courseOrLesson.test(focus)) {
     return [{ name: "list_courses", args: { limit: 50 } }];
   }
