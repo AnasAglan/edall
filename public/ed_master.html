@@ -6673,7 +6673,7 @@ window.triggerModalClose = function() {
                     </div>
                 `;
                 
-                const canShowVideosOnWeb = lesson.webPlaybackEnabled !== false || canEditThis;
+                const canShowVideosOnWeb = window.EDAuthRules.canShowLessonVideoOnWeb(lesson, canEditThis);
                 if (!canShowVideosOnWeb) {
                     modalContent += `
                         <div style="margin:12px 0;padding:14px;border:1px solid rgba(245,158,11,.45);border-radius:10px;background:rgba(245,158,11,.08);">
@@ -11288,13 +11288,20 @@ exam.questions.forEach((question, index) => {
     if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session && session.user && session.user.id) return 'signed_in';
     return 'ignore';
   }
+  function canShowLessonVideoOnWeb(lesson, canManage){
+    if (canManage || !lesson) return true;
+    var enabled = Object.prototype.hasOwnProperty.call(lesson, 'web_playback_enabled')
+      ? lesson.web_playback_enabled
+      : lesson.webPlaybackEnabled;
+    return enabled !== false;
+  }
   function signupOutcome(data){
     if (data && data.session && data.user) return 'signed_in';
     if (data && data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) return 'already_exists';
     if (data && data.user) return 'confirm_email';
     return 'failed';
   }
-  window.EDAuthRules = { MIN_PASSWORD_LENGTH: MIN_PASSWORD_LENGTH, validateSignupPassword: validateSignupPassword, describeAuthError: describeAuthError, signupOutcome: signupOutcome, authEventOutcome: authEventOutcome };
+  window.EDAuthRules = { MIN_PASSWORD_LENGTH: MIN_PASSWORD_LENGTH, validateSignupPassword: validateSignupPassword, describeAuthError: describeAuthError, signupOutcome: signupOutcome, authEventOutcome: authEventOutcome, canShowLessonVideoOnWeb: canShowLessonVideoOnWeb };
 })();
 </script>
 <script src="/ed_assistant.js" defer></script>
