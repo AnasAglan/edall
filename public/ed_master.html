@@ -2311,7 +2311,14 @@ word-spacing: normal !important;
         // Supabase Client
         const SUPABASE_URL = 'https://iuaddjoofgrirzslzqfy.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml1YWRkam9vZmdyaXJ6c2x6cWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5ODczMjcsImV4cCI6MjA4OTU2MzMyN30.bkMuslyDuH4lkIWhwVoGdTqr_lgM9HMKdo57yj4xT5M';
-        const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+            auth: {
+                // Preserve the existing Supabase storage key so previously saved sessions remain readable.
+                persistSession: true,
+                autoRefreshToken: true,
+                detectSessionInUrl: true
+            }
+        });
                 // دالة تعقيم وحماية النصوص
         function edEsc(str) {
             if (str == null) return '';
@@ -3934,23 +3941,22 @@ window.triggerModalClose = function() {
         }
 
         async function ensureUserAccountRecord(authUser, requestedRole) {
-            try {
-                if (!authUser || !authUser.id || !authUser.email) return;
-
-                const roleToSave = normalizeRequestedRole(requestedRole || authUser.user_metadata?.requested_role);
-                const { error } = await sb.rpc('setup_new_user', {
-                    _user_id: authUser.id,
-                    _name: authUser.user_metadata?.name || authUser.email,
-                    _email: authUser.email,
-                    _requested_role: roleToSave
-                });
-
-                if (error) {
-                    console.error('Error ensuring user account record:', error);
-                }
-            } catch (error) {
-                console.error('Error ensuring user account record:', error);
+            if (!authUser || !authUser.id || !authUser.email) {
+                throw Object.assign(new Error('The authenticated user record is incomplete.'), { code: 'account_setup_failed' });
             }
+
+            const roleToSave = normalizeRequestedRole(requestedRole || authUser.user_metadata?.requested_role);
+            const { error } = await sb.rpc('setup_new_user', {
+                _user_id: authUser.id,
+                _name: authUser.user_metadata?.name || authUser.email,
+                _email: authUser.email,
+                _requested_role: roleToSave
+            });
+            if (error) {
+                console.error('Error ensuring user account record:', error);
+                throw Object.assign(new Error(error.message || 'Could not complete account setup.'), { code: 'account_setup_failed' });
+            }
+            return true;
         }
 
         document.addEventListener('DOMContentLoaded', function() {
@@ -3965,53 +3971,117 @@ window.triggerModalClose = function() {
         });
 
         let _initDone = false;
+        let _authListenerInstalled = false;
+        let _pendingAuthState = null;
+        let _activeAuthUserId = null;
+
+        function authEventOutcome(event, session) {
+            if (event === 'SIGNED_OUT') return 'signed_out';
+            if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user?.id) return 'signed_in';
+            return 'ignore';
+        }
+
+        async function processAuthStateChange(event, session) {
+            const outcome = authEventOutcome(event, session);
+            if (outcome === 'signed_out') {
+                currentUser = null;
+                _activeAuthUserId = null;
+                _syncUser();
+                _dataLoaded = false;
+                updateUI();
+                renderCoursesGrid();
+                return;
+            }
+            if (outcome !== 'signed_in') return;
+            if (_activeAuthUserId === session.user.id && currentUser?.id === session.user.id) return;
+
+            await ensureUserAccountRecord(session.user);
+            await loadCurrentUserFromSupabase(session.user);
+            if (currentUser?.banned) {
+                await sb.auth.signOut();
+                currentUser = null;
+                _activeAuthUserId = null;
+                _syncUser();
+                updateUI();
+                showToast(currentLanguage === 'ar' ? 'تم حظر حسابك. تواصل مع الإدارة.' : 'Your account has been blocked.', 'error');
+                return;
+            }
+
+            _activeAuthUserId = session.user.id;
+            _dataLoaded = false;
+            await loadData();
+            updateUI();
+            renderCoursesGrid();
+            updateQuickStats();
+        }
+
+        function reportAuthStateError(error) {
+            console.error('Auth state update failed:', error);
+            showToast(window.EDAuthRules.describeAuthError(
+                Object.assign(new Error(error?.message || 'Account setup failed.'), { code: 'account_setup_failed' }),
+                currentLanguage,
+                'signin'
+            ), 'error');
+        }
+
+        function flushPendingAuthState() {
+            const pending = _pendingAuthState;
+            _pendingAuthState = null;
+            if (!pending) return;
+            window.setTimeout(() => {
+                processAuthStateChange(pending.event, pending.session).catch(reportAuthStateError);
+            }, 0);
+        }
+
+        function installAuthStateListener() {
+            if (_authListenerInstalled) return;
+            _authListenerInstalled = true;
+            sb.auth.onAuthStateChange((event, session) => {
+                if (event === 'INITIAL_SESSION') return;
+                if (!_initDone) {
+                    _pendingAuthState = { event, session };
+                    return;
+                }
+                // Supabase recommends not awaiting other Supabase calls inside this callback.
+                window.setTimeout(() => {
+                    processAuthStateChange(event, session).catch(reportAuthStateError);
+                }, 0);
+            });
+        }
+
         async function initializeApp() {
+            const loadingOverlay = document.getElementById('loadingOverlay');
             try {
-                // Show loading overlay only during initial boot
-                const loadingOverlay = document.getElementById('loadingOverlay');
                 if (loadingOverlay) loadingOverlay.style.display = 'flex';
 
-                // Check existing session FIRST before setting up listener
-                const { data: { session } } = await sb.auth.getSession();
-                if (session && session.user) {
+                // Subscribe first, then read the persisted session. Events received during
+                // initialization are queued and processed after initial data loading.
+                installAuthStateListener();
+                const { data: { session }, error: sessionError } = await sb.auth.getSession();
+                if (sessionError) throw sessionError;
+
+                if (session?.user) {
                     await ensureUserAccountRecord(session.user);
                     await loadCurrentUserFromSupabase(session.user);
-                    if (currentUser && currentUser.banned) {
+                    if (currentUser?.banned) {
                         await sb.auth.signOut();
-                        currentUser = null; _syncUser();
+                        currentUser = null;
+                        _activeAuthUserId = null;
+                        _syncUser();
                         if (loadingOverlay) loadingOverlay.style.display = 'none';
+                        _initDone = true;
+                        flushPendingAuthState();
                         updateUI();
                         showToast(currentLanguage === 'ar' ? 'تم حظر حسابك. تواصل مع الإدارة.' : 'Your account has been blocked.', 'error');
                         return;
                     }
+                    _activeAuthUserId = session.user.id;
+                } else {
+                    currentUser = null;
+                    _activeAuthUserId = null;
+                    _syncUser();
                 }
 
-                // Auth listener is registered early (events are ignored until init completes) so
-                // an init failure can never leave the page without session tracking.
-                sb.auth.onAuthStateChange(async (event, session) => {
-                    if (!_initDone) return; // skip events during init
-                    if (event === 'SIGNED_IN' && session && session.user) {
-                        await ensureUserAccountRecord(session.user);
-                        await loadCurrentUserFromSupabase(session.user);
-                        if (currentUser && currentUser.banned) {
-                            await sb.auth.signOut();
-                            currentUser = null; _syncUser();
-                            updateUI();
-                            showToast(currentLanguage === 'ar' ? 'تم حظر حسابك. تواصل مع الإدارة.' : 'Your account has been blocked.', 'error');
-                            return;
-                        }
-                        _dataLoaded = false;
-                        await loadData();
-                        updateUI();
-                        renderCoursesGrid();
-                        updateQuickStats();
-                    } else if (event === 'SIGNED_OUT') {
-                        currentUser = null; _syncUser();
-                        _dataLoaded = false;
-                        updateUI();
-                        renderCoursesGrid();
-                    }
-                });
                 await loadData();
                 // Aggressively clear search input to defeat browser/password-manager autofill
                 (function forceClearSearch(){
@@ -4032,6 +4102,7 @@ window.triggerModalClose = function() {
                 
                 if (loadingOverlay) loadingOverlay.style.display = 'none';
                 _initDone = true;
+                flushPendingAuthState();
 
                 const params = new URLSearchParams(window.location.search);
                 if (params.has('page') || params.has('id')) {
@@ -4043,46 +4114,68 @@ window.triggerModalClose = function() {
 
             } catch (error) {
                 console.error('Error initializing app:', error);
-                const loadingOverlay = document.getElementById('loadingOverlay');
                 if (loadingOverlay) loadingOverlay.style.display = 'none';
                 _initDone = true;
-                showToast('حدث خطأ في تهيئة التطبيق', 'error');
+                flushPendingAuthState();
+                showToast(window.EDAuthRules.describeAuthError(
+                    Object.assign(new Error(error?.message || 'Could not restore your account.'), { code: 'account_setup_failed' }),
+                    currentLanguage,
+                    'signin'
+                ), 'error');
             }
         }
 
         async function loadCurrentUserFromSupabase(authUser) {
-            try {
-                let { data: profile } = await sb.from('profiles').select('*').eq('id', authUser.id).maybeSingle();
-                let { data: roles } = await sb.from('user_roles').select('role').eq('user_id', authUser.id);
-
-                if (!profile || !roles || roles.length === 0) {
-                    await ensureUserAccountRecord(authUser);
-                    const profileResult = await sb.from('profiles').select('*').eq('id', authUser.id).maybeSingle();
-                    const roleResult = await sb.from('user_roles').select('role').eq('user_id', authUser.id);
-                    profile = profileResult.data;
-                    roles = roleResult.data;
-                }
-                
-                currentUser = {
-                    id: authUser.id,
-                    email: authUser.email,
-                    name: profile ? profile.name : (authUser.user_metadata?.name || authUser.email),
-                    phone: profile ? profile.phone : null,
-                    avatar_url: profile ? profile.avatar_url : null,
-                    bio: profile ? profile.bio : null,
-                    banned: profile ? profile.banned : false,
-                    public_id: profile ? profile.public_id : null,
-                    roles: roles && roles.length > 0 ? roles.map(r => r.role) : ['student'],
-                    lastActive: Date.now(),
-                    joined: profile ? new Date(profile.joined_at).getTime() : Date.now()
-                };
-                _syncUser();
-
-                // Update last_active
-                sb.from('profiles').update({ last_active: new Date().toISOString() }).eq('id', authUser.id).then(() => {});
-            } catch (error) {
-                console.error('Error loading current user:', error);
+            if (!authUser?.id || !authUser.email) {
+                throw Object.assign(new Error('The authenticated user record is incomplete.'), { code: 'account_setup_failed' });
             }
+
+            const readAccount = async () => {
+                const [profileResult, roleResult] = await Promise.all([
+                    sb.from('profiles').select('*').eq('id', authUser.id).maybeSingle(),
+                    sb.from('user_roles').select('role').eq('user_id', authUser.id)
+                ]);
+                if (profileResult.error || roleResult.error) {
+                    throw Object.assign(
+                        new Error(profileResult.error?.message || roleResult.error?.message || 'Could not load account profile or role.'),
+                        { code: 'account_setup_failed' }
+                    );
+                }
+                return { profile: profileResult.data, roles: roleResult.data || [] };
+            };
+
+            let { profile, roles } = await readAccount();
+            if (!profile || roles.length === 0) {
+                await ensureUserAccountRecord(authUser);
+                ({ profile, roles } = await readAccount());
+            }
+            if (!profile || roles.length === 0) {
+                throw Object.assign(
+                    new Error('Your session is valid, but your account profile or role is not ready. Refresh or contact an administrator.'),
+                    { code: 'account_setup_failed' }
+                );
+            }
+
+            currentUser = {
+                id: authUser.id,
+                email: authUser.email,
+                name: profile.name || authUser.user_metadata?.name || authUser.email,
+                phone: profile.phone || null,
+                avatar_url: profile.avatar_url || null,
+                bio: profile.bio || null,
+                banned: !!profile.banned,
+                public_id: profile.public_id || null,
+                roles: roles.map(r => r.role),
+                lastActive: Date.now(),
+                joined: profile.joined_at ? new Date(profile.joined_at).getTime() : Date.now()
+            };
+            _activeAuthUserId = authUser.id;
+            _syncUser();
+
+            // This ancillary update must never decide whether sign-in succeeds.
+            sb.from('profiles').update({ last_active: new Date().toISOString() }).eq('id', authUser.id)
+                .then(({ error }) => { if (error) console.warn('Could not update last_active:', error.message); });
+            return currentUser;
         }
 
         // Load every course's public metadata at startup. This is deliberately separate
@@ -4275,15 +4368,22 @@ window.triggerModalClose = function() {
                     if (lessonsError) throw lessonsError;
 
                     const lessonIds = (lessonsData || []).map(l => l.id);
+                    const canPreviewAllLessonVideos = canUserEditCourse(course);
+                    const webVisibleLessonIds = (lessonsData || [])
+                        .filter(l => canPreviewAllLessonVideos || l.web_playback_enabled !== false)
+                        .map(l => l.id);
                     let allVideos = [], allFiles = [], allExams = [];
 
                     if (lessonIds.length > 0) {
-                        const [vRes, fRes, eRes] = await Promise.all([
-                            withRequestTimeout(
-                                sb.from('lesson_videos').select('*').in('lesson_id', lessonIds).order('sort_order'),
+                        const videoQuery = webVisibleLessonIds.length
+                            ? withRequestTimeout(
+                                sb.from('lesson_videos').select('*').in('lesson_id', webVisibleLessonIds).order('sort_order'),
                                 15000,
                                 currentLanguage === 'ar' ? 'انتهت مهلة تحميل فيديوهات الكورس' : 'Timed out while loading lesson videos'
-                            ),
+                            )
+                            : Promise.resolve({ data: [], error: null });
+                        const [vRes, fRes, eRes] = await Promise.all([
+                            videoQuery,
                             withRequestTimeout(
                                 sb.from('lesson_files').select('*').in('lesson_id', lessonIds).order('sort_order'),
                                 15000,
@@ -4359,6 +4459,7 @@ window.triggerModalClose = function() {
                         return {
                             id: l.id, title: l.title, content: l.content,
                             isFree: !!l.is_free,
+                            webPlaybackEnabled: l.web_playback_enabled !== false,
                             videos: lVideos, exams: lExams, files: lFiles,
                             pdfData: null, pdfName: ''
                         };
@@ -6572,7 +6673,15 @@ window.triggerModalClose = function() {
                     </div>
                 `;
                 
-                if (lesson.videos && lesson.videos.length > 0) {
+                const canShowVideosOnWeb = window.EDAuthRules.canShowLessonVideoOnWeb(lesson, canEditThis);
+                if (!canShowVideosOnWeb) {
+                    modalContent += `
+                        <div style="margin:12px 0;padding:14px;border:1px solid rgba(245,158,11,.45);border-radius:10px;background:rgba(245,158,11,.08);">
+                            <div style="font-weight:800;margin-bottom:6px;"><i class="fas fa-mobile-alt"></i> ${currentLanguage === 'ar' ? 'الفيديو متاح من التطبيق فقط' : 'Video available in the app only'}</div>
+                            <div style="color:var(--text-muted);font-size:.9rem;">${currentLanguage === 'ar' ? 'يمكنك فتح فيديو هذه المحاضرة من تطبيق ED-ALL الرسمي. محتوى المحاضرة وملفاتها الأخرى تظل متاحة هنا وفق صلاحياتك.' : 'Open this lesson video from the official ED-ALL app. Lesson text and other files remain available here according to your access.'}</div>
+                        </div>
+                    `;
+                } else if (lesson.videos && lesson.videos.length > 0) {
                     modalContent += `
                         <div style="margin-bottom:20px;">
                             <h4>${currentLanguage === 'ar' ? 'فيديوهات المحاضرة' : 'Lesson Videos'} (${lesson.videos.length})</h4>
@@ -9060,10 +9169,19 @@ exam.questions.forEach((question, index) => {
                             <span>${currentLanguage === 'ar' ? 'محاضرة مجانية (يمكن للجميع فتحها)' : 'Free lesson (open for everyone)'}</span>
                         </label>
                        </div>` : '';
+                const webPlaybackModeHtml = `<div style="margin:10px 0;padding:10px;background:var(--bg-lighter);border-radius:8px;">
+                    <label for="lessonWebPlaybackEnabled" style="display:block;font-weight:700;margin-bottom:7px;">${currentLanguage === 'ar' ? 'طريقة إتاحة فيديو المحاضرة' : 'Lesson video availability'}</label>
+                    <select id="lessonWebPlaybackEnabled" style="width:100%;">
+                        <option value="true" selected>${currentLanguage === 'ar' ? 'المنصة والتطبيق' : 'Web platform and app'}</option>
+                        <option value="false">${currentLanguage === 'ar' ? 'التطبيق فقط' : 'App only'}</option>
+                    </select>
+                    <small style="display:block;color:var(--text-muted);margin-top:6px;">${currentLanguage === 'ar' ? 'عند اختيار التطبيق فقط، لن يظهر مشغل الفيديو للطالب داخل المنصة.' : 'App only hides the video player from students on the web platform.'}</small>
+                </div>`;
                 showModal(`
                     <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">${currentLanguage === 'ar' ? 'إضافة محاضرة جديدة' : 'Add New Lesson'}</div>
                     <input id="lessonTitle" placeholder="${currentLanguage === 'ar' ? 'عنوان المحاضرة' : 'Lesson title'}">
                     ${freeToggleHtml}
+                    ${webPlaybackModeHtml}
                     <textarea id="lessonContent" rows="3" placeholder="${currentLanguage === 'ar' ? 'محتوى المحاضرة' : 'Lesson content'}"></textarea>
                     
                     <div style="font-weight:bold;margin:10px 0 5px;">${currentLanguage === 'ar' ? 'روابط الفيديو:' : 'Video URLs:'}</div>
@@ -9333,6 +9451,8 @@ exam.questions.forEach((question, index) => {
                 const videos = getFilledInputValues('.lesson-video-input');
                 const freeChk = document.getElementById('lessonIsFree');
                 const isFreeLesson = Number(course.price || 0) === 0 ? true : (freeChk ? !!freeChk.checked : false);
+                const webPlaybackSelect = document.getElementById('lessonWebPlaybackEnabled');
+                const webPlaybackEnabled = webPlaybackSelect ? webPlaybackSelect.value !== 'false' : true;
 
                 if (!title) { showToast('يرجى إدخال عنوان المحاضرة', 'warning'); return; }
 
@@ -9347,7 +9467,8 @@ exam.questions.forEach((question, index) => {
                     title,
                     content: content || null,
                     sort_order: sortOrder,
-                    is_free: isFreeLesson
+                    is_free: isFreeLesson,
+                    web_playback_enabled: webPlaybackEnabled
                 }).select().single();
 
                 if (result.error) throw new Error('فشل في حفظ المحاضرة: ' + result.error.message);
@@ -9395,7 +9516,8 @@ exam.questions.forEach((question, index) => {
                     files: lessonFiles,
                     pdfData: null,
                     pdfName: '',
-                    isFree: isFreeLesson
+                    isFree: isFreeLesson,
+                    webPlaybackEnabled
                 };
 
                 if (!Array.isArray(course.lessons)) course.lessons = [];
@@ -9840,8 +9962,8 @@ exam.questions.forEach((question, index) => {
             try {
                 const newPwd = document.getElementById('newPasswordInput').value;
                 const confirmPwd = document.getElementById('confirmPasswordInput').value;
-                if (!newPwd || newPwd.length < 6) {
-                    showToast(currentLanguage === 'ar' ? 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' : 'Password must be at least 6 characters', 'error');
+                if (!newPwd || newPwd.length < 5) {
+                    showToast(currentLanguage === 'ar' ? 'كلمة المرور يجب أن تكون 5 أحرف على الأقل' : 'Password must be at least 5 characters', 'error');
                     return;
                 }
                 if (newPwd !== confirmPwd) {
@@ -10025,6 +10147,12 @@ exam.questions.forEach((question, index) => {
                 showModal(`
                     <div style="font-size:1.2rem;font-weight:900;margin-bottom:16px;">${currentLanguage === 'ar' ? 'تعديل المحاضرة' : 'Edit Lesson'}</div>
                     <input id="editLessonTitle" value="${edEsc(lesson.title)}" placeholder="${currentLanguage === 'ar' ? 'عنوان المحاضرة' : 'Lesson title'}">
+                    <label for="editLessonWebPlaybackEnabled" style="display:block;font-weight:700;margin:12px 0 6px;">${currentLanguage === 'ar' ? 'طريقة إتاحة فيديو المحاضرة' : 'Lesson video availability'}</label>
+                    <select id="editLessonWebPlaybackEnabled" style="width:100%;margin-bottom:10px;">
+                        <option value="true" ${lesson.webPlaybackEnabled !== false ? 'selected' : ''}>${currentLanguage === 'ar' ? 'المنصة والتطبيق' : 'Web platform and app'}</option>
+                        <option value="false" ${lesson.webPlaybackEnabled === false ? 'selected' : ''}>${currentLanguage === 'ar' ? 'التطبيق فقط' : 'App only'}</option>
+                    </select>
+                    <small style="display:block;color:var(--text-muted);margin-bottom:10px;">${currentLanguage === 'ar' ? 'عند اختيار التطبيق فقط، لن يظهر مشغل الفيديو للطالب داخل المنصة.' : 'App only hides the video player from students on the web platform.'}</small>
                     <textarea id="editLessonContent" rows="3" placeholder="${currentLanguage === 'ar' ? 'محتوى المحاضرة' : 'Lesson content'}">${edEsc(lesson.content) || ''}</textarea>
                     ${Number(course.price || 0) > 0 ? `<div style="margin:10px 0;padding:10px;background:var(--bg-lighter);border-radius:8px;"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:700;"><input type="checkbox" id="editLessonIsFree" ${lesson.isFree ? 'checked' : ''}><span>${currentLanguage === 'ar' ? 'محاضرة مجانية (يمكن للجميع فتحها)' : 'Free lesson (open for everyone)'}</span></label></div>` : ''}
                     
@@ -10132,10 +10260,23 @@ exam.questions.forEach((question, index) => {
                 const courseObjEdit = courses.find(c => c.id === courseId);
                 const editFreeChk = document.getElementById('editLessonIsFree');
                 const editIsFree = Number((courseObjEdit && courseObjEdit.price) || 0) === 0 ? true : (editFreeChk ? !!editFreeChk.checked : false);
-                const { error: lessonError } = await sb.from('lessons').update({ title, content: content || null, is_free: editIsFree }).eq('id', lessonId);
+                const editWebPlaybackSelect = document.getElementById('editLessonWebPlaybackEnabled');
+                const editWebPlaybackEnabled = editWebPlaybackSelect ? editWebPlaybackSelect.value !== 'false' : true;
+                const { error: lessonError } = await sb.from('lessons').update({
+                    title,
+                    content: content || null,
+                    is_free: editIsFree,
+                    web_playback_enabled: editWebPlaybackEnabled
+                }).eq('id', lessonId);
                 if (lessonError) throw new Error('فشل في تعديل المحاضرة: ' + lessonError.message);
                 // Update local
-                try { const _l = (courseObjEdit && courseObjEdit.lessons || []).find(l => l.id === lessonId); if (_l) _l.isFree = editIsFree; } catch(e){}
+                try {
+                    const _l = (courseObjEdit && courseObjEdit.lessons || []).find(l => l.id === lessonId);
+                    if (_l) {
+                        _l.isFree = editIsFree;
+                        _l.webPlaybackEnabled = editWebPlaybackEnabled;
+                    }
+                } catch(e){}
                 console.log('[updateLesson] Step 1 done - lesson updated');
 
                 // Step 2: Replace videos
@@ -10176,6 +10317,7 @@ exam.questions.forEach((question, index) => {
                     if (lesson) {
                         lesson.title = title;
                         lesson.content = content;
+                        lesson.webPlaybackEnabled = editWebPlaybackEnabled;
                         lesson.videos = newVideos;
                         if (newFiles.length > 0) {
                             lesson.files = [...(lesson.files || []), ...newFiles];
@@ -11109,6 +11251,11 @@ exam.questions.forEach((question, index) => {
       }
       return ar ? 'كلمة المرور يجب أن تكون 5 أحرف على الأقل.' : 'Password must be at least 5 characters.';
     }
+    if (code === 'account_setup_failed') {
+      return ar
+        ? 'تم قبول بيانات الدخول، لكن تعذر تحميل ملف الحساب أو صلاحياته. لم يتم تسجيل الخروج؛ أعد تحميل الصفحة أو تواصل مع الإدارة.'
+        : 'Your credentials were accepted, but the account profile or role could not be loaded. Your session was retained; refresh or contact an administrator.';
+    }
     if (code === 'email_not_confirmed' || msg.indexOf('email not confirmed') > -1) {
       return ar ? 'لم يتم تأكيد بريدك بعد. افتح رسالة التأكيد في بريدك ثم سجّل الدخول.' : 'Your email is not confirmed yet. Open the confirmation email, then sign in.';
     }
@@ -11136,13 +11283,25 @@ exam.questions.forEach((question, index) => {
     return fallback + (error && error.message ? ': ' + String(error.message).slice(0, 160) : '.');
   }
   // signUp returns no session while email confirmation is pending.
+  function authEventOutcome(event, session){
+    if (event === 'SIGNED_OUT') return 'signed_out';
+    if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session && session.user && session.user.id) return 'signed_in';
+    return 'ignore';
+  }
+  function canShowLessonVideoOnWeb(lesson, canManage){
+    if (canManage || !lesson) return true;
+    var enabled = Object.prototype.hasOwnProperty.call(lesson, 'web_playback_enabled')
+      ? lesson.web_playback_enabled
+      : lesson.webPlaybackEnabled;
+    return enabled !== false;
+  }
   function signupOutcome(data){
     if (data && data.session && data.user) return 'signed_in';
     if (data && data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) return 'already_exists';
     if (data && data.user) return 'confirm_email';
     return 'failed';
   }
-  window.EDAuthRules = { MIN_PASSWORD_LENGTH: MIN_PASSWORD_LENGTH, validateSignupPassword: validateSignupPassword, describeAuthError: describeAuthError, signupOutcome: signupOutcome };
+  window.EDAuthRules = { MIN_PASSWORD_LENGTH: MIN_PASSWORD_LENGTH, validateSignupPassword: validateSignupPassword, describeAuthError: describeAuthError, signupOutcome: signupOutcome, authEventOutcome: authEventOutcome, canShowLessonVideoOnWeb: canShowLessonVideoOnWeb };
 })();
 </script>
 <script src="/ed_assistant.js" defer></script>

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { runInNewContext, Script } from "node:vm";
 import { TextEncoder } from "node:util";
-import { discoverPiped, discoverInvidious } from "../../scripts/sync-video-instances.mjs";
+import { discoverPiped, discoverInvidious, assessSamplePlayback } from "../../scripts/sync-video-instances.mjs";
 
 const playerSource = readFileSync(resolve(process.cwd(), "public/ed_piped_player.js"), "utf8");
 const platformHtml = readFileSync(resolve(process.cwd(), "public/ed_master.html"), "utf8");
@@ -79,6 +79,38 @@ const audioTrack = {
 };
 
 
+describe("daily playback quality assessment", () => {
+  it("does not classify video-only media as playable without a tested audio stream", () => {
+    const result = assessSamplePlayback({
+      mediaProbes: [{ ok: true, status: 206 }],
+      audioProbes: [{ ok: false, status: 403 }],
+      muxedAudio: false,
+    });
+    expect(result.playable).toBe(false);
+    expect(result.audioAvailable).toBe(false);
+  });
+
+  it("accepts a verified separate video and audio pair", () => {
+    const result = assessSamplePlayback({
+      mediaProbes: [{ ok: true, status: 206 }],
+      audioProbes: [{ ok: true, status: 206 }],
+      muxedAudio: false,
+    });
+    expect(result.playable).toBe(true);
+    expect(result.audioAvailable).toBe(true);
+  });
+
+  it("accepts a verified muxed stream or a valid CORS-enabled manifest", () => {
+    expect(assessSamplePlayback({
+      mediaProbes: [{ ok: true, status: 206 }],
+      muxedAudio: true,
+    }).playable).toBe(true);
+    expect(assessSamplePlayback({
+      manifestProbes: [{ ok: true, format: "dash", corsAllowed: true }],
+    }).playable).toBe(true);
+  });
+});
+
 describe("Daily extractor instance discovery", () => {
   it("discovers API hosts from the official Piped table and ignores badge URLs", () => {
     const markdown = [
@@ -109,6 +141,20 @@ describe("ED ALL Piped player", () => {
   it("uses the official instance registry when available and only falls back when discovery fails", () => {
     expect(playerSource).toContain("const list = mergeInstances(discovered.length ? discovered : FALLBACKS);");
     expect(playerSource).toContain("const CACHE_TTL = 6 * 60 * 60 * 1000;");
+  });
+
+  it("requires Invidious media URL verification before extraction is returned", () => {
+    const worker = readFileSync(resolve(process.cwd(), "workers/extract-youtube-stream/index.ts"), "utf8");
+    expect(worker).toContain("async function probeMediaUrl");
+    expect(worker).toContain("async function probeManifestUrl");
+    expect(worker).toContain("const playbackVerified = manifestPlayable ||");
+    expect(worker).toContain("async function probeHlsPlaylist");
+    expect(worker).toContain("segmentVerified");
+    expect(worker).toContain("const playbackVerified = manifestPlayable || directPlayable");
+    expect(worker).toContain("const verifiedHeights = [");
+    expect(worker).toContain("bundle.videoStreams = verifiedDirectVideos");
+    expect(worker).toContain("bundle.audioStreams = verifiedDirectAudios");
+    expect(worker).not.toContain("if (heights.length >= 3 && Math.max(...heights) >= 720) break;");
   });
 
   it("keeps Piped playback exclusive to ordinary browsers", () => {
@@ -243,8 +289,9 @@ describe("ED ALL Piped player", () => {
     expect(helpers.scoreBundle(bundle)).toBeGreaterThan(0);
   });
 
-  it("allows the slower secondary extractor time to provide higher resolutions", () => {
-    expect(playerSource).toContain("setTimeout(() => resolve(null), 7000)");
+  it("waits for both providers before comparing available quality", () => {
+    expect(playerSource).toContain("Promise.allSettled([pipedPromise, invidiousPromise])");
+    expect(playerSource).not.toContain("setTimeout(() => resolve(null), 7000)");
   });
 
   it("prioritizes registry health before last-instance stickiness", () => {

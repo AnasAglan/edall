@@ -108,7 +108,9 @@
     let discovered = [];
     const registryHealth = new Map();
     if (registry && Array.isArray(registry.sources && registry.sources.piped)) {
-      const registered = registry.sources.piped.filter(item => item && item.official !== false);
+      const registered = registry.sources.piped.filter(item =>
+        item && item.official !== false && (typeof item === 'string' || item.status !== 'unhealthy')
+      );
       registered.forEach(item => {
         const url = typeof item === 'string' ? item : item.url;
         if (url) registryHealth.set(url, typeof item === 'string' ? { status: 'unknown', score: 0, responseMs: 999999 } : {
@@ -472,6 +474,8 @@
     const batchSize = 8;
     let best = null;
     let bestScore = -1;
+    // Always inspect every eligible batch before selecting a source. A single
+    // 720p response must not hide a later endpoint with 1080p or 4K formats.
     for (let offset = 0; offset < instances.length; offset += batchSize) {
       const controllers = [];
       const requests = instances.slice(offset, offset + batchSize).map(base => {
@@ -511,10 +515,8 @@
         }
       }
 
-      const bestHeights = best
-        ? Array.from(new Set((best.videoStreams || best.videos || []).map(item => Number(item.height)))).filter(height => height > 0)
-        : [];
-      if (bestHeights.length >= 3 && Math.max(...bestHeights) >= 720) break;
+      // Do not stop at the first 720p response: public instances often expose
+      // a reduced format set, while a later candidate can provide much higher quality.
     }
     if (!best) throw new Error('All public Piped API instances failed or returned no compatible streams.');
     try { localStorage.setItem(LAST_KEY, best.instance); } catch (_) {}
@@ -564,6 +566,7 @@
     }
   }
 
+  // Always compare both public extraction providers before ranking selectable quality.
   async function fetchBundle(videoId, excluded, extractorConfig) {
     const pipedPromise = fetchPipedBundle(videoId, excluded)
       .then(bundle => ({ provider: 'piped', bundle }))
@@ -572,35 +575,18 @@
       .then(bundle => ({ provider: 'invidious', bundle }))
       .catch(error => ({ provider: 'invidious', error }));
 
-    const first = await Promise.race([pipedPromise, invidiousPromise]);
-    if (first.error) {
-      const other = await (first.provider === 'piped' ? invidiousPromise : pipedPromise);
-      if (other.error) {
-        throw new Error('Piped and Invidious extraction failed. ' +
-          first.provider + ': ' + readErrorMessage(first.error) + ' | ' +
-          other.provider + ': ' + readErrorMessage(other.error));
-      }
-      try { localStorage.setItem(LAST_KEY, other.bundle.instance); } catch (_) {}
-      return other.bundle;
+    // Compare both providers before choosing. Racing them and returning the first
+    // 720p response made the player ignore a slower server with 1080p/1440p/2160p.
+    const settled = await Promise.allSettled([pipedPromise, invidiousPromise]);
+    const candidates = settled
+      .filter(result => result.status === 'fulfilled' && result.value && result.value.bundle)
+      .map(result => result.value.bundle);
+    const failures = settled
+      .filter(result => result.status === 'fulfilled' && result.value && result.value.error)
+      .map(result => result.value.provider + ': ' + readErrorMessage(result.value.error));
+    if (!candidates.length) {
+      throw new Error('Piped and Invidious extraction failed. ' + failures.join(' | '));
     }
-
-    const firstBundle = first.bundle;
-    const heights = Array.from(new Set((firstBundle.videoStreams || []).map(item => Number(item.height)).filter(height => height > 0)));
-    const hasPlayablePath = firstBundle.muxedVideos.length > 0 ||
-      (firstBundle.videoOnly.length > 0 && firstBundle.audioStreams.length > 0) ||
-      !!firstBundle.dash || !!firstBundle.hls;
-    const alreadyStrong = hasPlayablePath && heights.length >= 2 && Math.max(...heights) >= 720;
-
-    let candidates = [firstBundle];
-    if (!alreadyStrong) {
-      const otherPromise = first.provider === 'piped' ? invidiousPromise : pipedPromise;
-      const second = await Promise.race([
-        otherPromise,
-        new Promise(resolve => setTimeout(() => resolve(null), 7000))
-      ]);
-      if (second && second.bundle) candidates.push(second.bundle);
-    }
-
     candidates.sort((a, b) => {
       const score = scoreBundle(b) - scoreBundle(a);
       if (score) return score;

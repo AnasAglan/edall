@@ -5,6 +5,7 @@ import { runInNewContext } from "node:vm";
 
 const html = readFileSync(resolve(process.cwd(), "public/ed_master.html"), "utf8");
 const assistant = readFileSync(resolve(process.cwd(), "public/ed_assistant.js"), "utf8");
+const setupUserMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20261110170000_harden_setup_new_user_roles.sql"), "utf8");
 
 function loadRules() {
   const m = html.match(/<script id="edAuthRules">([\s\S]*?)<\/script>/);
@@ -41,9 +42,55 @@ describe("auth session behavior", () => {
   });
 });
 
+describe("auth state listener rules", () => {
+  const r = loadRules();
+  it("recognizes only signed-in, signed-out and token refresh events", () => {
+    expect(r.authEventOutcome("SIGNED_OUT", null)).toBe("signed_out");
+    expect(r.authEventOutcome("SIGNED_IN", { user: { id: "u" } })).toBe("signed_in");
+    expect(r.authEventOutcome("TOKEN_REFRESHED", { user: { id: "u" } })).toBe("signed_in");
+    expect(r.authEventOutcome("INITIAL_SESSION", { user: { id: "u" } })).toBe("ignore");
+  });
+
+  it("does not discard auth changes during initialization", () => {
+    const start = html.indexOf("async function initializeApp()");
+    const end = html.indexOf("async function loadCurrentUserFromSupabase", start);
+    const init = html.slice(start, end);
+    expect(init.indexOf("installAuthStateListener()")).toBeGreaterThan(-1);
+    expect(init.indexOf("installAuthStateListener()")).toBeLessThan(init.indexOf("sb.auth.getSession()"));
+    expect(init).toContain("flushPendingAuthState()");
+  });
+
+  it("does not silently swallow profile, role or setup RPC failures", () => {
+    expect(html).toContain("profileResult.error || roleResult.error");
+    expect(html).toContain("code: 'account_setup_failed'");
+    expect(html).toContain("throw Object.assign(new Error(error.message");
+  });
+});
+
+describe("database account bootstrap security", () => {
+  it("limits authenticated calls to the caller's own account", () => {
+    expect(setupUserMigration).toContain("auth.uid() <> _user_id");
+    expect(setupUserMigration).toContain("Not authorized to initialize another account");
+  });
+
+  it("does not allow the account bootstrap function to change an existing role", () => {
+    expect(setupUserMigration).toContain("IF auth.uid() IS NOT NULL THEN");
+    expect(setupUserMigration).toContain("IF NOT _has_role THEN");
+    expect(setupUserMigration).toContain("REVOKE ALL ON FUNCTION public.setup_new_user(uuid, text, text, text) FROM PUBLIC, anon;");
+    expect(setupUserMigration).toContain("GRANT EXECUTE ON FUNCTION public.setup_new_user(uuid, text, text, text) TO authenticated, service_role;");
+    const existingRoleBlock = setupUserMigration.slice(setupUserMigration.indexOf("IF auth.uid() IS NOT NULL THEN"), setupUserMigration.indexOf("-- This branch is for trusted"));
+    expect(existingRoleBlock).not.toContain("DELETE FROM public.user_roles");
+    expect(existingRoleBlock).not.toContain("INSERT INTO public.user_roles");
+  });
+});
+
 describe("assistant visibility", () => {
-  const m = assistant.match(/function canAccessAssistant\(u\)\{[^\n]*?\}\}/);
-  const fn = new Function("return " + m![0].slice(0, -1))() as (u: unknown) => boolean;
+  const helperStart = assistant.indexOf("function canAccessAssistant(u){");
+  if (helperStart < 0) throw new Error("assistant access helper missing");
+  const helperEnd = assistant.indexOf("}", helperStart);
+  if (helperEnd < 0) throw new Error("assistant access helper is incomplete");
+  const helperSource = assistant.slice(helperStart, helperEnd + 1);
+  const fn = new Function("return (" + helperSource + ")")() as (u: unknown) => boolean;
   it("is visible only to admin and teacher", () => {
     expect(fn({ id: "1", roles: ["student"] })).toBe(false);
     expect(fn(null)).toBe(false);
