@@ -566,6 +566,7 @@
     }
   }
 
+  // Always compare both public extraction providers before ranking selectable quality.
   async function fetchBundle(videoId, excluded, extractorConfig) {
     const pipedPromise = fetchPipedBundle(videoId, excluded)
       .then(bundle => ({ provider: 'piped', bundle }))
