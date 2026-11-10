@@ -2311,7 +2311,14 @@ word-spacing: normal !important;
         // Supabase Client
         const SUPABASE_URL = 'https://iuaddjoofgrirzslzqfy.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml1YWRkam9vZmdyaXJ6c2x6cWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5ODczMjcsImV4cCI6MjA4OTU2MzMyN30.bkMuslyDuH4lkIWhwVoGdTqr_lgM9HMKdo57yj4xT5M';
-        const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+            auth: {
+                // Preserve the existing Supabase storage key so previously saved sessions remain readable.
+                persistSession: true,
+                autoRefreshToken: true,
+                detectSessionInUrl: true
+            }
+        });
                 // دالة تعقيم وحماية النصوص
         function edEsc(str) {
             if (str == null) return '';
@@ -3934,23 +3941,22 @@ window.triggerModalClose = function() {
         }
 
         async function ensureUserAccountRecord(authUser, requestedRole) {
-            try {
-                if (!authUser || !authUser.id || !authUser.email) return;
-
-                const roleToSave = normalizeRequestedRole(requestedRole || authUser.user_metadata?.requested_role);
-                const { error } = await sb.rpc('setup_new_user', {
-                    _user_id: authUser.id,
-                    _name: authUser.user_metadata?.name || authUser.email,
-                    _email: authUser.email,
-                    _requested_role: roleToSave
-                });
-
-                if (error) {
-                    console.error('Error ensuring user account record:', error);
-                }
-            } catch (error) {
-                console.error('Error ensuring user account record:', error);
+            if (!authUser || !authUser.id || !authUser.email) {
+                throw Object.assign(new Error('The authenticated user record is incomplete.'), { code: 'account_setup_failed' });
             }
+
+            const roleToSave = normalizeRequestedRole(requestedRole || authUser.user_metadata?.requested_role);
+            const { error } = await sb.rpc('setup_new_user', {
+                _user_id: authUser.id,
+                _name: authUser.user_metadata?.name || authUser.email,
+                _email: authUser.email,
+                _requested_role: roleToSave
+            });
+            if (error) {
+                console.error('Error ensuring user account record:', error);
+                throw Object.assign(new Error(error.message || 'Could not complete account setup.'), { code: 'account_setup_failed' });
+            }
+            return true;
         }
 
         document.addEventListener('DOMContentLoaded', function() {
@@ -3965,53 +3971,117 @@ window.triggerModalClose = function() {
         });
 
         let _initDone = false;
+        let _authListenerInstalled = false;
+        let _pendingAuthState = null;
+        let _activeAuthUserId = null;
+
+        function authEventOutcome(event, session) {
+            if (event === 'SIGNED_OUT') return 'signed_out';
+            if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user?.id) return 'signed_in';
+            return 'ignore';
+        }
+
+        async function processAuthStateChange(event, session) {
+            const outcome = authEventOutcome(event, session);
+            if (outcome === 'signed_out') {
+                currentUser = null;
+                _activeAuthUserId = null;
+                _syncUser();
+                _dataLoaded = false;
+                updateUI();
+                renderCoursesGrid();
+                return;
+            }
+            if (outcome !== 'signed_in') return;
+            if (_activeAuthUserId === session.user.id && currentUser?.id === session.user.id) return;
+
+            await ensureUserAccountRecord(session.user);
+            await loadCurrentUserFromSupabase(session.user);
+            if (currentUser?.banned) {
+                await sb.auth.signOut();
+                currentUser = null;
+                _activeAuthUserId = null;
+                _syncUser();
+                updateUI();
+                showToast(currentLanguage === 'ar' ? 'تم حظر حسابك. تواصل مع الإدارة.' : 'Your account has been blocked.', 'error');
+                return;
+            }
+
+            _activeAuthUserId = session.user.id;
+            _dataLoaded = false;
+            await loadData();
+            updateUI();
+            renderCoursesGrid();
+            updateQuickStats();
+        }
+
+        function reportAuthStateError(error) {
+            console.error('Auth state update failed:', error);
+            showToast(window.EDAuthRules.describeAuthError(
+                Object.assign(new Error(error?.message || 'Account setup failed.'), { code: 'account_setup_failed' }),
+                currentLanguage,
+                'signin'
+            ), 'error');
+        }
+
+        function flushPendingAuthState() {
+            const pending = _pendingAuthState;
+            _pendingAuthState = null;
+            if (!pending) return;
+            window.setTimeout(() => {
+                processAuthStateChange(pending.event, pending.session).catch(reportAuthStateError);
+            }, 0);
+        }
+
+        function installAuthStateListener() {
+            if (_authListenerInstalled) return;
+            _authListenerInstalled = true;
+            sb.auth.onAuthStateChange((event, session) => {
+                if (event === 'INITIAL_SESSION') return;
+                if (!_initDone) {
+                    _pendingAuthState = { event, session };
+                    return;
+                }
+                // Supabase recommends not awaiting other Supabase calls inside this callback.
+                window.setTimeout(() => {
+                    processAuthStateChange(event, session).catch(reportAuthStateError);
+                }, 0);
+            });
+        }
+
         async function initializeApp() {
+            const loadingOverlay = document.getElementById('loadingOverlay');
             try {
-                // Show loading overlay only during initial boot
-                const loadingOverlay = document.getElementById('loadingOverlay');
                 if (loadingOverlay) loadingOverlay.style.display = 'flex';
 
-                // Check existing session FIRST before setting up listener
-                const { data: { session } } = await sb.auth.getSession();
-                if (session && session.user) {
+                // Subscribe first, then read the persisted session. Events received during
+                // initialization are queued and processed after initial data loading.
+                installAuthStateListener();
+                const { data: { session }, error: sessionError } = await sb.auth.getSession();
+                if (sessionError) throw sessionError;
+
+                if (session?.user) {
                     await ensureUserAccountRecord(session.user);
                     await loadCurrentUserFromSupabase(session.user);
-                    if (currentUser && currentUser.banned) {
+                    if (currentUser?.banned) {
                         await sb.auth.signOut();
-                        currentUser = null; _syncUser();
+                        currentUser = null;
+                        _activeAuthUserId = null;
+                        _syncUser();
                         if (loadingOverlay) loadingOverlay.style.display = 'none';
+                        _initDone = true;
+                        flushPendingAuthState();
                         updateUI();
                         showToast(currentLanguage === 'ar' ? 'تم حظر حسابك. تواصل مع الإدارة.' : 'Your account has been blocked.', 'error');
                         return;
                     }
+                    _activeAuthUserId = session.user.id;
+                } else {
+                    currentUser = null;
+                    _activeAuthUserId = null;
+                    _syncUser();
                 }
 
-                // Auth listener is registered early (events are ignored until init completes) so
-                // an init failure can never leave the page without session tracking.
-                sb.auth.onAuthStateChange(async (event, session) => {
-                    if (!_initDone) return; // skip events during init
-                    if (event === 'SIGNED_IN' && session && session.user) {
-                        await ensureUserAccountRecord(session.user);
-                        await loadCurrentUserFromSupabase(session.user);
-                        if (currentUser && currentUser.banned) {
-                            await sb.auth.signOut();
-                            currentUser = null; _syncUser();
-                            updateUI();
-                            showToast(currentLanguage === 'ar' ? 'تم حظر حسابك. تواصل مع الإدارة.' : 'Your account has been blocked.', 'error');
-                            return;
-                        }
-                        _dataLoaded = false;
-                        await loadData();
-                        updateUI();
-                        renderCoursesGrid();
-                        updateQuickStats();
-                    } else if (event === 'SIGNED_OUT') {
-                        currentUser = null; _syncUser();
-                        _dataLoaded = false;
-                        updateUI();
-                        renderCoursesGrid();
-                    }
-                });
                 await loadData();
                 // Aggressively clear search input to defeat browser/password-manager autofill
                 (function forceClearSearch(){
@@ -4032,6 +4102,7 @@ window.triggerModalClose = function() {
                 
                 if (loadingOverlay) loadingOverlay.style.display = 'none';
                 _initDone = true;
+                flushPendingAuthState();
 
                 const params = new URLSearchParams(window.location.search);
                 if (params.has('page') || params.has('id')) {
@@ -4043,46 +4114,68 @@ window.triggerModalClose = function() {
 
             } catch (error) {
                 console.error('Error initializing app:', error);
-                const loadingOverlay = document.getElementById('loadingOverlay');
                 if (loadingOverlay) loadingOverlay.style.display = 'none';
                 _initDone = true;
-                showToast('حدث خطأ في تهيئة التطبيق', 'error');
+                flushPendingAuthState();
+                showToast(window.EDAuthRules.describeAuthError(
+                    Object.assign(new Error(error?.message || 'Could not restore your account.'), { code: 'account_setup_failed' }),
+                    currentLanguage,
+                    'signin'
+                ), 'error');
             }
         }
 
         async function loadCurrentUserFromSupabase(authUser) {
-            try {
-                let { data: profile } = await sb.from('profiles').select('*').eq('id', authUser.id).maybeSingle();
-                let { data: roles } = await sb.from('user_roles').select('role').eq('user_id', authUser.id);
-
-                if (!profile || !roles || roles.length === 0) {
-                    await ensureUserAccountRecord(authUser);
-                    const profileResult = await sb.from('profiles').select('*').eq('id', authUser.id).maybeSingle();
-                    const roleResult = await sb.from('user_roles').select('role').eq('user_id', authUser.id);
-                    profile = profileResult.data;
-                    roles = roleResult.data;
-                }
-                
-                currentUser = {
-                    id: authUser.id,
-                    email: authUser.email,
-                    name: profile ? profile.name : (authUser.user_metadata?.name || authUser.email),
-                    phone: profile ? profile.phone : null,
-                    avatar_url: profile ? profile.avatar_url : null,
-                    bio: profile ? profile.bio : null,
-                    banned: profile ? profile.banned : false,
-                    public_id: profile ? profile.public_id : null,
-                    roles: roles && roles.length > 0 ? roles.map(r => r.role) : ['student'],
-                    lastActive: Date.now(),
-                    joined: profile ? new Date(profile.joined_at).getTime() : Date.now()
-                };
-                _syncUser();
-
-                // Update last_active
-                sb.from('profiles').update({ last_active: new Date().toISOString() }).eq('id', authUser.id).then(() => {});
-            } catch (error) {
-                console.error('Error loading current user:', error);
+            if (!authUser?.id || !authUser.email) {
+                throw Object.assign(new Error('The authenticated user record is incomplete.'), { code: 'account_setup_failed' });
             }
+
+            const readAccount = async () => {
+                const [profileResult, roleResult] = await Promise.all([
+                    sb.from('profiles').select('*').eq('id', authUser.id).maybeSingle(),
+                    sb.from('user_roles').select('role').eq('user_id', authUser.id)
+                ]);
+                if (profileResult.error || roleResult.error) {
+                    throw Object.assign(
+                        new Error(profileResult.error?.message || roleResult.error?.message || 'Could not load account profile or role.'),
+                        { code: 'account_setup_failed' }
+                    );
+                }
+                return { profile: profileResult.data, roles: roleResult.data || [] };
+            };
+
+            let { profile, roles } = await readAccount();
+            if (!profile || roles.length === 0) {
+                await ensureUserAccountRecord(authUser);
+                ({ profile, roles } = await readAccount());
+            }
+            if (!profile || roles.length === 0) {
+                throw Object.assign(
+                    new Error('Your session is valid, but your account profile or role is not ready. Refresh or contact an administrator.'),
+                    { code: 'account_setup_failed' }
+                );
+            }
+
+            currentUser = {
+                id: authUser.id,
+                email: authUser.email,
+                name: profile.name || authUser.user_metadata?.name || authUser.email,
+                phone: profile.phone || null,
+                avatar_url: profile.avatar_url || null,
+                bio: profile.bio || null,
+                banned: !!profile.banned,
+                public_id: profile.public_id || null,
+                roles: roles.map(r => r.role),
+                lastActive: Date.now(),
+                joined: profile.joined_at ? new Date(profile.joined_at).getTime() : Date.now()
+            };
+            _activeAuthUserId = authUser.id;
+            _syncUser();
+
+            // This ancillary update must never decide whether sign-in succeeds.
+            sb.from('profiles').update({ last_active: new Date().toISOString() }).eq('id', authUser.id)
+                .then(({ error }) => { if (error) console.warn('Could not update last_active:', error.message); });
+            return currentUser;
         }
 
         // Load every course's public metadata at startup. This is deliberately separate
@@ -11109,6 +11202,11 @@ exam.questions.forEach((question, index) => {
       }
       return ar ? 'كلمة المرور يجب أن تكون 5 أحرف على الأقل.' : 'Password must be at least 5 characters.';
     }
+    if (code === 'account_setup_failed') {
+      return ar
+        ? 'تم قبول بيانات الدخول، لكن تعذر تحميل ملف الحساب أو صلاحياته. لم يتم تسجيل الخروج؛ أعد تحميل الصفحة أو تواصل مع الإدارة.'
+        : 'Your credentials were accepted, but the account profile or role could not be loaded. Your session was retained; refresh or contact an administrator.';
+    }
     if (code === 'email_not_confirmed' || msg.indexOf('email not confirmed') > -1) {
       return ar ? 'لم يتم تأكيد بريدك بعد. افتح رسالة التأكيد في بريدك ثم سجّل الدخول.' : 'Your email is not confirmed yet. Open the confirmation email, then sign in.';
     }
@@ -11136,13 +11234,18 @@ exam.questions.forEach((question, index) => {
     return fallback + (error && error.message ? ': ' + String(error.message).slice(0, 160) : '.');
   }
   // signUp returns no session while email confirmation is pending.
+  function authEventOutcome(event, session){
+    if (event === 'SIGNED_OUT') return 'signed_out';
+    if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session && session.user && session.user.id) return 'signed_in';
+    return 'ignore';
+  }
   function signupOutcome(data){
     if (data && data.session && data.user) return 'signed_in';
     if (data && data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) return 'already_exists';
     if (data && data.user) return 'confirm_email';
     return 'failed';
   }
-  window.EDAuthRules = { MIN_PASSWORD_LENGTH: MIN_PASSWORD_LENGTH, validateSignupPassword: validateSignupPassword, describeAuthError: describeAuthError, signupOutcome: signupOutcome };
+  window.EDAuthRules = { MIN_PASSWORD_LENGTH: MIN_PASSWORD_LENGTH, validateSignupPassword: validateSignupPassword, describeAuthError: describeAuthError, signupOutcome: signupOutcome, authEventOutcome: authEventOutcome };
 })();
 </script>
 <script src="/ed_assistant.js" defer></script>
