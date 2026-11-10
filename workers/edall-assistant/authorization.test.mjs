@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import worker, { canUseAssistantTool, canAccessAssistant } from "./index.js";
+import worker, {
+  canUseAssistantTool,
+  canAccessAssistant,
+  shouldForceInScope,
+  inferRequiredReadTools
+} from "./index.js";
 
 const ownId = "11111111-1111-4111-8111-111111111111";
 const otherId = "22222222-2222-4222-8222-222222222222";
@@ -68,4 +73,60 @@ test("worker rejects a student request with 403 before any model or tool call", 
 test("accounts without a valid platform role receive no tools", () => {
   assert.equal(canUseAssistantTool("list_courses", {}, [], ownId), false);
   assert.equal(canUseAssistantTool("list_courses", {}, ["guest"], ownId), false);
+});
+
+
+test("Arabic platform topics always stay in scope without depending on the classifier", () => {
+  for (const text of [
+    "الفيديوهات لسه مش شغالة بالجودات",
+    "أمر التطبيق فقط لا يعمل على الموقع",
+    "لماذا المساعد يخترع أسماء كورسات؟",
+    "احذف المستخدم من لوحة الإدارة",
+    "كيف أصلح قاعدة بيانات ED-ALL؟",
+    "الموقع يفتح الفيديو بجودة تلقائية"
+  ]) {
+    assert.equal(shouldForceInScope([{ role: "user", content: text }]), true, text);
+  }
+});
+
+test("short Arabic follow-ups inherit recent ED-ALL context", () => {
+  assert.equal(shouldForceInScope([
+    { role: "user", content: "اعرض لي الكورسات الموجودة في ED-ALL" },
+    { role: "assistant", content: "هذه قائمة الدورات..." },
+    { role: "user", content: "طيب دي لسه مش شغالة" }
+  ]), true);
+  assert.equal(shouldForceInScope([
+    { role: "user", content: "How do I add a course to ED-ALL?" },
+    { role: "assistant", content: "..." },
+    { role: "user", content: "same issue" }
+  ]), true);
+});
+
+test("independent questions without platform context remain eligible for out-of-scope classification", () => {
+  assert.equal(shouldForceInScope([
+    { role: "user", content: "ما عاصمة فرنسا؟" }
+  ]), false);
+});
+
+test("course and lesson data questions force an actual course database read", () => {
+  const result = inferRequiredReadTools([
+    { role: "user", content: "ما أسماء الكورسات الموجودة عندنا؟" }
+  ], ["admin"]);
+  assert.deepEqual(result, [{ name: "list_courses", args: { limit: 50 } }]);
+});
+
+test("admin questions about accounts force a real account search", () => {
+  const result = inferRequiredReadTools([
+    { role: "user", content: "اعرض أسماء المستخدمين الموجودين" }
+  ], ["admin"]);
+  assert.deepEqual(result, [{ name: "search_platform_users", args: { query: "", limit: 50, offset: 0 } }]);
+});
+
+test("read routing never grants account search to teachers or turns writes into reads", () => {
+  assert.deepEqual(inferRequiredReadTools([
+    { role: "user", content: "اعرض المستخدمين" }
+  ], ["teacher"]), []);
+  assert.deepEqual(inferRequiredReadTools([
+    { role: "user", content: "أضف دورة جديدة" }
+  ], ["admin"]), []);
 });

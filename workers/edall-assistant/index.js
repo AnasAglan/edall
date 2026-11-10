@@ -258,7 +258,51 @@ async function classifyExplicitWriteIntent(env, conversation) {
   }
 }
 
+const PLATFORM_CONTEXT_PATTERN = /(?:ed[\s-]?all|المنصة|منصة|الموقع|موقع المنصة|الموقع الإلكتروني|الموقع الالكتروني|التطبيق|برنامج المنصة|لوحة الإدارة|لوحة الادارة|الإدارة|الادارة|إدارة المنصة|ادارة المنصة|الدورة|الدورات|دورة|دورات|الكورس|الكورسات|كورسات|كورس|المحاضرة|المحاضرات|المحاضره|الدرس|الدروس|درس|فيديو|فيديوهات|الجودة|الجودات|مشغل الفيديو|المشغل|الاختبار|الاختبارات|الامتحان|الامتحانات|الأسئلة|الاسئلة|الطلاب|طالب|المعلمين|مدرس|مدرسين|المستخدمين|مستخدم|حسابات المستخدمين|الحساب|حسابات|صلاحيات|صلاحية|الحظر|المحفظة|رصيد|التسجيلات|التسجيل|الإشعارات|الاشعارات|إشعار|اشعار|الإعدادات|اعدادات|المساعد|المساعدة|الذكاء الاصطناعي|بيانات المنصة|قاعدة البيانات|حذف المستخدم|حذف حساب|تسجيل الدخول|رفع ملف|ملف pdf|pdf|youtube|piped|invidious|yt-dlp|newpipe|cloudflare|supabase|lovable|admin panel|dashboard|course|courses|lesson|lessons|video|videos|quality|qualities|exam|exams|student|students|teacher|teachers|user|users|assistant|platform|website|web app|playback)/i;
+const PLATFORM_FOLLOW_UP_PATTERN = /^(?:طيب|طب|تمام|حسنًا|حسنا|أيوه|ايوه|اه|أه|نعم|لا|يلا|كمل|اكمل|كمّل|اعمل|نفذ|نفّذ|صلح|اصلح|عدّل|عدل|جرّب|جرب|ليه|لماذا|ازاي|إزاي|كيف|ماذا بعد|ما التالي|هذه|هذا|دي|ده|دول|ديها|عليها|عليه|لها|له|هم|ها|نفسه|نفسها|نفس المشكلة|ما زال|لسه|لسة|لسه لا|تمام كده|كده|كدا|the same|that one|it|this|those|yes|no|okay|ok|continue|go ahead|fix it|try again)[.!؟?\s،,]*$/i;
+const FOLLOW_UP_REFERENCE_PATTERN = /(?:\b(?:it|this|that|those|same)\b|ها|هم|عليه|عليها|له|لها|ده|دي|دول|نفس|كمان|برضه|أيضًا)/i;
+
+export function shouldForceInScope(conversation) {
+  const userMessages = (Array.isArray(conversation) ? conversation : [])
+    .filter(message => message && message.role === "user")
+    .map(message => String(message.content || "").trim())
+    .filter(Boolean);
+  const current = userMessages.at(-1) || "";
+  if (!current) return false;
+  if (PLATFORM_CONTEXT_PATTERN.test(current)) return true;
+
+  const prior = userMessages.slice(-6, -1);
+  const recentPlatformContext = prior.some(text => PLATFORM_CONTEXT_PATTERN.test(text));
+  if (!recentPlatformContext) return false;
+  return PLATFORM_FOLLOW_UP_PATTERN.test(current) ||
+    FOLLOW_UP_REFERENCE_PATTERN.test(current);
+}
+
+export function inferRequiredReadTools(conversation, roles = []) {
+  const userMessages = (Array.isArray(conversation) ? conversation : [])
+    .filter(message => message && message.role === "user")
+    .map(message => String(message.content || "").trim())
+    .filter(Boolean);
+  const current = userMessages.at(-1) || "";
+  if (!current) return [];
+
+  const readIntent = /(?:ما|ماذا|ايه|إيه|اي|أي|اسم|أسماء|اسماء|عدد|كم|اعرض|اعرضلي|وريني|هات|قائمة|قولي|قول لي|اخبرني|خبرني|عايز اعرف|عاوز اعرف|ممكن اعرف|عندنا|الموجود|الموجودة|الموجودين|تفاصيل|ابحث|بحث|عرض|اظهر|أظهر|show|list|find|what|which|how many|tell me about)/i;
+  const writeIntent = /(?:أنشئ|انشئ|اضف|أضف|أضيف|اضيف|ضيف|ضيفلي|إنشاء|انشاء|عدل|عدّل|تعديل|حدث|حدّث|تحديث|غير|غيّر|حذف|احذف|امسح|اشتري|اشتر|شراء|ارفع|رفع|ارسل|أرسل|ابعت|احظر|حظر|شحن|اشحن|نفذ|نفّذ|create|add|update|edit|change|delete|remove|buy|purchase|upload|send|ban|credit)/i;
+  if (!readIntent.test(current) || writeIntent.test(current)) return [];
+
+  const courseOrLesson = /(?:كورس|كورسات|الكورس|الكورسات|دورة|دورات|الدورة|الدورات|محاضرة|محاضرات|المحاضرة|المحاضرات|درس|دروس|الدرس|الدروس|اختبار|اختبارات|امتحان|امتحانات|course|courses|lesson|lessons|exam|exams)/i;
+  const users = /(?:مستخدم|مستخدمين|المستخدم|المستخدمين|حساب|حسابات|طالب|طلاب|الطلاب|مدرس|مدرسين|المعلمين|معلم|teacher|teachers|student|students|user|users)/i;
+
+  if (courseOrLesson.test(current)) return [{ name: "list_courses", args: { limit: 50 } }];
+  if (roles.includes("admin") && users.test(current)) {
+    return [{ name: "search_platform_users", args: { query: "", limit: 50, offset: 0 } }];
+  }
+  return [];
+}
+
 async function classifyRequestScope(env, conversation, hasImages) {
+  // Use deterministic context checks before relying on a one-token model classifier.
+  if (shouldForceInScope(conversation)) return "IN_SCOPE";
   const recent = conversation.slice(-20).map(message => ({
     role: message.role,
     content: String(message.content || "").slice(0, 1200)
@@ -2188,11 +2232,44 @@ export default {
     if (scope === "OUT_OF_SCOPE") {
       return sseTextResponse("هذا الطلب لا يبدو متعلقًا بمهام ED-ALL. أستطيع مساعدتك في إدارة الدورات والمحاضرات والاختبارات والطلاب والمدرسين والإشعارات والإحصاءات. ما المهمة التي تريد تنفيذها داخل المنصة؟", origin);
     }
-    const semanticRoutingInstruction = "تم تقييم الرسالة الحالية مع سياق المحادثة، وهي ضمن نطاق ED-ALL أو متابعة محتملة لمهمة فيها. لا ترد برفض عام أو بعبارة أنك لا تساعد خارج المنصة. حدّد المهمة المطلوبة من السياق، استخدم الأدوات عند الحاجة، وإذا كانت معلومة واحدة فقط ناقصة فاسأل عنها مباشرة.";
-    let routeMessages = [messages[0], { role: "system", content: semanticRoutingInstruction }, ...messages.slice(1)];
+    const semanticRoutingInstruction = "تم تقييم الرسالة الحالية مع سياق المحادثة، وهي ضمن نطاق ED-ALL أو متابعة محتملة لمهمة فيها. لا ترد برفض عام أو بعبارة أنك لا تساعد خارج المنصة. حدّد المهمة المطلوبة من السياق، استخدم الأدوات عند الحاجة، وإذا كانت معلومة واحدة فقط ناقصة فاسأل عنها مباشرة. قواعد منع الاختلاق إلزامية: لا تخترع أسماء دورات أو محاضرات أو اختبارات أو مستخدمين أو أرقامًا أو أسعارًا. أي معلومة حية عن قاعدة بيانات المنصة يجب أن تأتي من نتائج أدوات قاعدة البيانات فقط؛ إذا لم تظهر في النتائج فقل إنك لم تجدها أو اطلب معلومة توضيحية. لا تستخدم أسماء من الذاكرة العامة أو أمثلة افتراضية وكأنها موجودة في ED-ALL.";
+
+    const verifiedReadSnapshots = [];
+    for (const read of inferRequiredReadTools(messages, roles)) {
+      if (!canUseAssistantTool(read.name, read.args, roles, user.id)) continue;
+      try {
+        const data = await tool(read.name, read.args, env, authorization, user, roles, []);
+        verifiedReadSnapshots.push({ tool: read.name, verified: true, data });
+      } catch (error) {
+        verifiedReadSnapshots.push({
+          tool: read.name,
+          verified: false,
+          error: String(error?.message || "تعذر جلب البيانات.").slice(0, 300)
+        });
+      }
+    }
+    const verifiedReadContext = verifiedReadSnapshots.length
+      ? {
+          role: "system",
+          content: "بيانات حقيقية تم جلبها الآن من قاعدة بيانات ED-ALL بواسطة أدوات قراءة. استخدم هذه النتائج وحدها عند ذكر أسماء أو أرقام هذه الكيانات، ولا تضف عناصر غير موجودة فيها. إذا كانت المصفوفة فارغة فقل ذلك. إذا كانت verified=false فلا تدّعِ أنك قرأت البيانات.\n" +
+            JSON.stringify(verifiedReadSnapshots).slice(0, 24000)
+        }
+      : null;
+    let routeMessages = [
+      messages[0],
+      { role: "system", content: semanticRoutingInstruction },
+      ...(verifiedReadContext ? [verifiedReadContext] : []),
+      ...messages.slice(1)
+    ];
     if (explicitImageUploadIntent) {
       const uploadInstruction = "طلب المستخدم الحالي هو رفع الصورة المرفقة وربطها كصورة للدورة التي أشار إليها في سياق المحادثة. هذا طلب تعديل صريح. استخرج الدورة من السياق أو استدعِ list_courses إذا احتجت معرفها، ثم استدعِ upload_course_image مع image_index=0 (أو رقم الصورة المقصودة بدءًا من صفر). لا تكتفِ بتحليل الصورة ولا ترفض الرفع.";
-      routeMessages = [messages[0], { role: "system", content: semanticRoutingInstruction }, { role: "system", content: uploadInstruction }, ...messages.slice(1)];
+      routeMessages = [
+        messages[0],
+        { role: "system", content: semanticRoutingInstruction },
+        ...(verifiedReadContext ? [verifiedReadContext] : []),
+        { role: "system", content: uploadInstruction },
+        ...messages.slice(1)
+      ];
     }
 
     try {

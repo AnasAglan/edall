@@ -95,10 +95,32 @@ jobs:
           for (const required of ['process.env.GEMINI_API_KEY', '--secrets-file', 'mode: 0o600', 'rmSync(secretsFile']) {
             if (!deployHelper.includes(required)) throw new Error('Secure deploy helper requirement missing: ' + required);
           }
+          const platformHtml = fs.readFileSync('public/ed_master.html', 'utf8');
+          const deleteStart = platformHtml.indexOf('async function deleteUser(userId)');
+          const deleteEnd = platformHtml.indexOf('function renderProfilePage()', deleteStart);
+          if (deleteStart < 0 || deleteEnd <= deleteStart) throw new Error('Admin delete-user UI handler not found.');
+          const deleteUi = platformHtml.slice(deleteStart, deleteEnd);
+          for (const required of ["sb.functions.invoke('admin-delete-user'", 'data.deleted !== true', 'data.verified !== true']) {
+            if (!deleteUi.includes(required)) throw new Error('Admin deletion must call and verify the database function: ' + required);
+          }
+          if (deleteUi.indexOf('users.splice(') < deleteUi.indexOf('data.verified !== true')) {
+            throw new Error('The admin list must not be updated before the Edge Function confirms verified deletion.');
+          }
+          if (deleteUi.includes('saveAllData()')) throw new Error('User deletion must not be reported as successful via local-only saveAllData().');
+          if (!platformHtml.includes('Ordinary web playback is quality-extraction-only')) {
+            throw new Error('Ordinary web playback must not silently fall back to YouTube auto quality.');
+          }
+          const lessonMode = fs.readFileSync('src/test/ed-lesson-playback-mode.test.ts', 'utf8');
+          if (!lessonMode.includes('blocks app-only lessons on the web even for teachers and admins')) {
+            throw new Error('App-only mode regression test must cover teachers and admins.');
+          }
           const deletion = fs.readFileSync('supabase/functions/admin-delete-user/index.ts', 'utf8');
           for (const required of ['auth.admin.deleteUser', 'has_role', 'created_by', 'wallet_transactions', 'targetRoles.includes("admin")', 'verified: true']) {
             if (!deletion.includes(required)) throw new Error('Account deletion safety check missing: ' + required);
           }
+          if (!source.includes('shouldForceInScope(conversation)')) throw new Error('The assistant must use deterministic contextual scope overrides.');
+          if (!source.includes('inferRequiredReadTools(messages, roles)')) throw new Error('The assistant must force verified database reads for course/user questions.');
+          if (!source.includes('verifiedReadSnapshots.push({ tool: read.name, verified: true, data })')) throw new Error('Verified DB snapshots are not injected into the assistant context.');
           const specs = [...source.matchAll(/\{ name: "([^"]+)", description:/g)].map(match => match[1]);
           const duplicates = specs.filter((name, index) => specs.indexOf(name) !== index);
           if (duplicates.length) throw new Error('Duplicate tool specs: ' + [...new Set(duplicates)].join(', '));
