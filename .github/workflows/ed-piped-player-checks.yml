@@ -8,6 +8,9 @@ on:
       - "public/ed_master.html"
       - "public/video-instances.json"
       - "scripts/**"
+      - "workers/extract-youtube-stream/index.ts"
+      - "src/test/ed-auth-rules.test.ts"
+      - "scripts/sync-video-instances.node-test.mjs"
       - "supabase/functions/extract-youtube-stream/**"
       - "src/test/ed-piped-player.test.ts"
       - "package.json"
@@ -19,6 +22,9 @@ on:
       - "public/ed_master.html"
       - "public/video-instances.json"
       - "scripts/**"
+      - "workers/extract-youtube-stream/index.ts"
+      - "src/test/ed-auth-rules.test.ts"
+      - "scripts/sync-video-instances.node-test.mjs"
       - "supabase/functions/extract-youtube-stream/**"
       - "src/test/ed-piped-player.test.ts"
       - "package.json"
@@ -50,6 +56,9 @@ jobs:
       - name: Check sync script syntax
         run: node --check scripts/sync-video-instances.mjs
 
+      - name: Test discovery and real media verification helpers
+        run: node --test scripts/sync-video-instances.node-test.mjs
+
       - name: Check extractor deployment smoke script syntax
         run: node --check scripts/supabase-extractor-smoke-test.mjs
 
@@ -58,8 +67,10 @@ jobs:
         with:
           deno-version: v2.x
 
-      - name: Type-check Invidious Edge Function
-        run: deno check supabase/functions/extract-youtube-stream/index.ts
+      - name: Type-check Invidious extractors
+        run: |
+          deno check supabase/functions/extract-youtube-stream/index.ts
+          deno check workers/extract-youtube-stream/index.ts
 
       - name: Discover and probe official Piped and Invidious instances
         run: node scripts/sync-video-instances.mjs
