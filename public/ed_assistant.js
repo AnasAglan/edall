@@ -125,5 +125,5 @@ form.addEventListener("submit",async e=>{
  finally{busyState(false);input.focus();drawChats()}
 });
 try{const c=client();if(c&&c.auth&&c.auth.onAuthStateChange)c.auth.onAuthStateChange(()=>setTimeout(sync,0))}catch(_){}
-sync();setInterval(sync,900);
+sync();setInterval(sync,900);window.addEventListener("edall:user-changed",sync);
 })();

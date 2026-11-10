@@ -3905,7 +3905,7 @@ window.triggerModalClose = function() {
         };
 
         let currentUser = null;
-        function _syncUser(){ try { window.currentUser = currentUser; } catch(e){} }
+        function _syncUser(){ try { window.currentUser = currentUser; window.dispatchEvent(new Event('edall:user-changed')); } catch(e){} }
         _syncUser();
         let users = [];
         let courses = [];
