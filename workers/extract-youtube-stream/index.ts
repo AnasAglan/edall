@@ -266,7 +266,7 @@ async function probeInstance(instance: { url: string; score: number; status: str
     const manifestPlayable = !!(manifestProbe && manifestProbe.ok);
     const hasAudioPath = hasMuxedAudio || (!!(mediaProbe && mediaProbe.ok) && !!(audioProbe && audioProbe.ok)) || manifestPlayable;
     const playbackVerified = manifestPlayable || (!!(mediaProbe && mediaProbe.ok) && hasAudioPath);
-    if (!bundle.videoStreams.length || !playbackVerified) {
+    if ((!bundle.videoStreams.length && !manifestPlayable) || !playbackVerified) {
       const status = mediaProbe?.status || audioProbe?.status || manifestProbe?.status || "none";
       throw new Error("Video/audio playback verification failed (HTTP " + status + ").");
     }
