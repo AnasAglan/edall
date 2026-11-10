@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 const PIPED_SOURCE = "https://raw.githubusercontent.com/TeamPiped/documentation/main/content/docs/public-instances/index.md";
 const INVIDIOUS_SOURCE = "https://api.invidious.io/instances.json?sort_by=health";
 const OUTPUT = new URL("../public/video-instances.json", import.meta.url);
-const SAMPLE_VIDEO_IDS = ["dQw4w9WgXcQ", "aqz-KE-bpKQ"];
+export const SAMPLE_VIDEO_IDS = ["dQw4w9WgXcQ", "aqz-KE-bpKQ"];
 const REQUEST_TIMEOUT_MS = 7000;
 const CONCURRENCY = 8;
 
