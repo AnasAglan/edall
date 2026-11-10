@@ -142,7 +142,7 @@ async function probeMediaRange(url) {
     const cors = response.headers.get("access-control-allow-origin");
     const contentType = response.headers.get("content-type") || "";
     const httpOk = response.status === 206 || response.status === 200;
-    const mediaTypeOk = !/(text\\/html|application\\/json)/i.test(contentType);
+    const mediaTypeOk = !/(text\/html|application\/json)/i.test(contentType);
     const result = {
       // Direct <video>/<audio> playback does not require CORS; MSE manifests do.
       // Reject HTML bot challenges and JSON error pages even when they return HTTP 200.
