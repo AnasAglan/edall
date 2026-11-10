@@ -11,6 +11,7 @@ on:
       - "src/test/ed-auth-rules.test.ts"
       - "workers/edall-assistant/**"
       - ".github/workflows/video-instances-sync.yml"
+      - ".github/workflows/ed-piped-player-checks.yml"
   schedule:
     - cron: "23 2 * * *"
   workflow_dispatch:
