@@ -163,8 +163,8 @@ function cleanMediaUrl(value: unknown): string | null {
   }
 }
 
-function bundleScore(bundle: any): number {
-  const heights: number[] = [...new Set<number>(bundle.videoStreams.map((stream: any) => Number(stream.height)).filter((height: number) => height > 0))];
+function bundleScore(bundle: any, verifiedHeights: number[] = []): number {
+  const heights = verifiedHeights;
   const maxHeight = Math.max(0, ...heights);
   return heights.length * 100000 +
     Math.min(maxHeight, 4320) * 10 +
@@ -371,39 +371,68 @@ async function probeInstance(instance: { url: string; score: number; status: str
     const videoCandidates = bundle.videoStreams
       .filter((stream: any) => typeof stream.url === "string")
       .sort((a: any, b: any) => Number(b.height || 0) - Number(a.height || 0))
-      .slice(0, 3);
+      .slice(0, 5);
     const audioCandidates = bundle.audioStreams
       .filter((stream: any) => typeof stream.url === "string")
-      .slice(0, 2);
-    const manifestUrls = [bundle.dash, bundle.hls].filter((manifest): manifest is string => typeof manifest === "string" && !!manifest);
-    const [mediaProbes, audioProbes, manifestProbes] = await Promise.all([
+      .slice(0, 3);
+    const [initialVideoProbes, initialAudioProbes] = await Promise.all([
       Promise.all(videoCandidates.map((stream: any) => probeMediaUrl(stream.url))),
       Promise.all(audioCandidates.map((stream: any) => probeMediaUrl(stream.url))),
-      Promise.all(manifestUrls.map((manifest: string) => probeManifestUrl(manifest))),
     ]);
-    const mediaProbe: any = mediaProbes.find((probe: any) => probe.ok) || mediaProbes[0] || null;
-    const audioProbe: any = audioProbes.find((probe: any) => probe.ok) || audioProbes[0] || null;
+    const sourceManifestUrls = [bundle.dash, bundle.hls].filter(
+      (manifest): manifest is string => typeof manifest === "string" && !!manifest
+    );
+    const discoveredManifestUrls = [
+      ...sourceManifestUrls,
+      ...videoCandidates.filter((stream: any, index: number) => initialVideoProbes[index]?.isManifest).map((stream: any) => stream.url),
+      ...audioCandidates.filter((stream: any, index: number) => initialAudioProbes[index]?.isManifest).map((stream: any) => stream.url),
+    ];
+    const manifestUrls = [...new Set(discoveredManifestUrls)];
+    const manifestProbes = await Promise.all(manifestUrls.map((manifest) => probeManifestUrl(manifest)));
+    const mediaProbes = initialVideoProbes.filter((probe: any) => !probe.isManifest);
+    const audioProbes = initialAudioProbes.filter((probe: any) => !probe.isManifest);
+    const verifiedDirectVideos = videoCandidates.filter((stream: any, index: number) =>
+      !initialVideoProbes[index]?.isManifest && initialVideoProbes[index]?.ok
+    );
+    const verifiedDirectAudios = audioCandidates.filter((stream: any, index: number) =>
+      !initialAudioProbes[index]?.isManifest && initialAudioProbes[index]?.ok
+    );
     const manifestProbe: any = manifestProbes.find((probe: any) => probe.ok) || manifestProbes[0] || null;
-    const hasMuxedAudio = bundle.videoStreams.some((stream: any) => !stream.videoOnly);
-    const manifestPlayable = !!(manifestProbe && manifestProbe.ok);
-    const hasAudioPath = hasMuxedAudio || (!!(mediaProbe && mediaProbe.ok) && !!(audioProbe && audioProbe.ok)) || manifestPlayable;
-    const playbackVerified = manifestPlayable || (!!(mediaProbe && mediaProbe.ok) && hasAudioPath);
-    if ((!bundle.videoStreams.length && !manifestPlayable) || !playbackVerified) {
-      const status = mediaProbe?.status || audioProbe?.status || manifestProbe?.status || "none";
-      throw new Error("Video/audio playback verification failed (HTTP " + status + ").");
+    const manifestPlayable = !!(manifestProbe && manifestProbe.ok && manifestProbe.segmentVerified && manifestProbe.audioAvailable);
+    const verifiedMuxedStream = verifiedDirectVideos.some((stream: any) => !stream.videoOnly);
+    const verifiedAdaptivePair = verifiedDirectVideos.some((stream: any) => stream.videoOnly) && verifiedDirectAudios.length > 0;
+    const directPlayable = verifiedMuxedStream || verifiedAdaptivePair;
+    const playbackVerified = manifestPlayable || directPlayable;
+    if (!playbackVerified) {
+      const status = initialVideoProbes.find((probe: any) => !probe.ok)?.status ||
+        initialAudioProbes.find((probe: any) => !probe.ok)?.status ||
+        manifestProbe?.status || "none";
+      throw new Error("Video/audio media segments were not verified (HTTP " + status + ").");
     }
-    const heights = [...new Set(bundle.videoStreams.map((stream: any) => Number(stream.height)).filter((height: number) => height > 0))];
+    // Expose only directly probed stream URLs. Manifest playback remains in dash/hls.
+    bundle.videoStreams = verifiedDirectVideos;
+    bundle.audioStreams = verifiedDirectAudios;
+    const verifiedHeights = [
+      ...verifiedDirectVideos.map((stream: any) => Number(stream.height) || 0),
+      ...manifestProbes.filter((probe: any) => probe.ok && probe.segmentVerified && probe.audioAvailable)
+        .flatMap((probe: any) => Array.isArray(probe.heights) ? probe.heights : []),
+    ].filter((height: number) => height > 0);
+    const heights = [...new Set(verifiedHeights)].sort((a, b) => b - a);
+    if (!heights.length && !manifestPlayable) {
+      throw new Error("No video quality passed direct media or manifest segment verification.");
+    }
     return {
       ...bundle,
       instance: instance.url,
       elapsedMs: Date.now() - started,
-      score: bundleScore(bundle) + Math.min(Number(instance.score) || 0, 200),
+      score: bundleScore(bundle, heights) + Math.min(Number(instance.score) || 0, 200),
       heights,
       playbackVerified,
-      audioAvailable: hasAudioPath,
-      mediaProbe,
-      audioProbe,
+      audioAvailable: manifestPlayable || verifiedMuxedStream || verifiedAdaptivePair,
+      mediaProbe: mediaProbes.find((probe: any) => probe.ok) || mediaProbes[0] || null,
+      audioProbe: audioProbes.find((probe: any) => probe.ok) || audioProbes[0] || null,
       manifestProbe,
+      qualityVerified: true,
     };
   } finally {
     clearTimeout(timer);
