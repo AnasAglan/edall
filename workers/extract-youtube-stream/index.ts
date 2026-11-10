@@ -184,12 +184,16 @@ async function probeMediaUrl(url: string) {
       headers: { Range: "bytes=0-1", Origin: "https://edall.lovable.app" },
       cache: "no-store",
     });
+    const contentType = response.headers.get("content-type") || "";
+    const httpOk = response.status === 206 || response.status === 200;
+    const mediaTypeOk = !/(text\\/html|application\\/json)/i.test(contentType);
     const result = {
-      ok: response.status === 206 || response.status === 200,
+      ok: httpOk && mediaTypeOk,
       status: response.status,
       rangeSupported: response.status === 206,
       cors: response.headers.get("access-control-allow-origin"),
-      contentType: response.headers.get("content-type"),
+      contentType,
+      error: !httpOk ? "Media HTTP " + response.status : !mediaTypeOk ? "Media URL returned a non-media content type: " + contentType : null,
     };
     if (response.body) await response.body.cancel().catch(() => {});
     return result;
