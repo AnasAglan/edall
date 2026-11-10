@@ -143,6 +143,15 @@ describe("ED ALL Piped player", () => {
     expect(playerSource).toContain("const CACHE_TTL = 6 * 60 * 60 * 1000;");
   });
 
+  it("requires Invidious media URL verification before extraction is returned", () => {
+    const worker = readFileSync(resolve(process.cwd(), "workers/extract-youtube-stream/index.ts"), "utf8");
+    expect(worker).toContain("async function probeMediaUrl");
+    expect(worker).toContain("async function probeManifestUrl");
+    expect(worker).toContain("const playbackVerified = manifestPlayable ||");
+    expect(worker).toContain("if ((!bundle.videoStreams.length && !manifestPlayable) || !playbackVerified)");
+    expect(worker).not.toContain("if (heights.length >= 3 && Math.max(...heights) >= 720) break;");
+  });
+
   it("keeps Piped playback exclusive to ordinary browsers", () => {
     expect(platformHtml).toContain("_edLoadExternalScript('_edpiped', '/ed_piped_player.js'");
     expect(platformHtml).toContain("window.EDPipedPlayer.open");
