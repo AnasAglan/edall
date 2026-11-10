@@ -16,7 +16,9 @@ let history=[],attachments=[],objectUrls=[],busy=false,activeUserId=null,convers
 function client(){try{if(typeof sb!=="undefined"&&sb&&sb.auth)return sb}catch(_){}return window.sb&&window.sb.auth?window.sb:null}
 function readPlatformUser(){try{if(window.currentUser&&window.currentUser.id)return window.currentUser}catch(_){}try{if(typeof currentUser!=="undefined"&&currentUser&&currentUser.id)return currentUser}catch(_){}return null}
 function userId(){const u=readPlatformUser();return u&&u.id?u.id:null}
-function allowed(){const u=readPlatformUser();return !!(u&&u.id&&Array.isArray(u.roles)&&(u.roles.includes("admin")||u.roles.includes("teacher")||u.roles.includes("student")))}
+function canAccessAssistant(u){return !!(u&&u.id&&Array.isArray(u.roles)&&(u.roles.includes("admin")||u.roles.includes("teacher")))}
+window.EDAssistantAccess={canAccessAssistant};
+function allowed(){return canAccessAssistant(readPlatformUser())}
 function cleanUrls(){objectUrls.forEach(url=>{try{URL.revokeObjectURL(url)}catch(_){}});objectUrls=[]}
 function clearView(){cleanUrls();history=[];conversationId=null;log.replaceChildren()}
 function busyState(v){busy=!!v;send.disabled=busy;$("edAsstAttach").disabled=busy;$("edAsstNew").disabled=busy;send.classList.toggle("loading",busy);send.textContent=busy?"":"➤"}
@@ -92,7 +94,7 @@ panel.addEventListener("dragover",e=>e.preventDefault());
 panel.addEventListener("drop",e=>{e.preventDefault();addFiles(e.dataTransfer.files)});
 input.addEventListener("paste",e=>{const arr=Array.from(e.clipboardData&&e.clipboardData.items||[]).filter(x=>x.type&&x.type.startsWith("image/")).map(x=>x.getAsFile()).filter(Boolean);if(arr.length)addFiles(arr)});
 form.addEventListener("submit",async e=>{
- e.preventDefault();const msg=input.value.trim();if((!msg&&!attachments.length)||busy)return;if(!activeUserId||!allowed()){append("a","سجّل الدخول بحساب طالب أو مدرس أو مدير لاستخدام المساعد.",[],{error:true});return}
+ e.preventDefault();const msg=input.value.trim();if((!msg&&!attachments.length)||busy)return;if(!activeUserId||!allowed()){append("a","المساعد متاح للمدرسين والإدارة فقط.",[],{error:true});return}
  const prompt=msg||"حلل الصور المرفقة واشرح محتواها.",filesNow=attachments.slice(),urls=filesNow.map(x=>x.url);
  append("u",prompt,urls,{});const bubble=append("a","",[],{});bubble.innerHTML='<span class="edAsstTyping"><span class="edAsstSpinner"></span> جارٍ التفكير...</span>';
  input.value="";input.style.height="42px";busyState(true);
