@@ -140,16 +140,19 @@ async function probeMediaRange(url) {
       cache: "no-store",
     });
     const cors = response.headers.get("access-control-allow-origin");
+    const contentType = response.headers.get("content-type") || "";
+    const httpOk = response.status === 206 || response.status === 200;
+    const mediaTypeOk = !/(text\\/html|application\\/json)/i.test(contentType);
     const result = {
       // Direct <video>/<audio> playback does not require CORS; MSE manifests do.
-      // Record CORS and Range capability separately rather than hiding limited sources.
-      ok: response.status === 206 || response.status === 200,
+      // Reject HTML bot challenges and JSON error pages even when they return HTTP 200.
+      ok: httpOk && mediaTypeOk,
       status: response.status,
       cors,
       corsAllowed: cors === "*" || cors === "https://edall.lovable.app",
       rangeSupported: response.status === 206,
-      contentType: response.headers.get("content-type"),
-      error: response.status === 206 || response.status === 200 ? null : "Media HTTP " + response.status,
+      contentType,
+      error: !httpOk ? "Media HTTP " + response.status : !mediaTypeOk ? "Media URL returned a non-media content type: " + contentType : null,
     };
     if (response.body) await response.body.cancel().catch(() => {});
     return result;
