@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { discoverPiped, discoverInvidious, assessSamplePlayback, SAMPLE_VIDEO_IDS, parseHlsPlaylist, verifiedSampleHeights, classifyPlaybackHealth } from "./sync-video-instances.mjs";
+import { discoverPiped, discoverInvidious, supportsInvidiousApi, assessSamplePlayback, SAMPLE_VIDEO_IDS, parseHlsPlaylist, verifiedSampleHeights, classifyPlaybackHealth } from "./sync-video-instances.mjs";
 
 test("discovers Piped API hosts from the current public directory table only", () => {
   const markdown = [
@@ -129,4 +129,19 @@ test("rejects a server when every media path is blocked", () => {
     muxedAudio: false,
   });
   assert.equal(result.playable, false);
+});
+
+test("preserves the official directory's API capability flag", () => {
+  const entries = discoverInvidious([
+    ["api.example", { type: "https", uri: "https://api.example", api: true, cors: true }],
+    ["web-only.example", { type: "https", uri: "https://web-only.example", api: false, cors: false }],
+  ]);
+  assert.equal(entries.find((item) => item.url === "https://api.example").apiListed, true);
+  assert.equal(entries.find((item) => item.url === "https://web-only.example").apiListed, false);
+});
+
+test("does not probe Invidious instances whose official directory disables the API", () => {
+  assert.equal(supportsInvidiousApi({ provider: "invidious", apiListed: false }), false);
+  assert.equal(supportsInvidiousApi({ provider: "invidious", apiListed: true }), true);
+  assert.equal(supportsInvidiousApi({ provider: "piped" }), true);
 });
