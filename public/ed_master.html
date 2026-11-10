@@ -3986,6 +3986,32 @@ window.triggerModalClose = function() {
                     }
                 }
 
+                // Auth listener is registered early (events are ignored until init completes) so
+                // an init failure can never leave the page without session tracking.
+                sb.auth.onAuthStateChange(async (event, session) => {
+                    if (!_initDone) return; // skip events during init
+                    if (event === 'SIGNED_IN' && session && session.user) {
+                        await ensureUserAccountRecord(session.user);
+                        await loadCurrentUserFromSupabase(session.user);
+                        if (currentUser && currentUser.banned) {
+                            await sb.auth.signOut();
+                            currentUser = null; _syncUser();
+                            updateUI();
+                            showToast(currentLanguage === 'ar' ? 'تم حظر حسابك. تواصل مع الإدارة.' : 'Your account has been blocked.', 'error');
+                            return;
+                        }
+                        _dataLoaded = false;
+                        await loadData();
+                        updateUI();
+                        renderCoursesGrid();
+                        updateQuickStats();
+                    } else if (event === 'SIGNED_OUT') {
+                        currentUser = null; _syncUser();
+                        _dataLoaded = false;
+                        updateUI();
+                        renderCoursesGrid();
+                    }
+                });
                 await loadData();
                 // Aggressively clear search input to defeat browser/password-manager autofill
                 (function forceClearSearch(){
@@ -4015,31 +4041,6 @@ window.triggerModalClose = function() {
                     updateBreadcrumb('mainPage');
                 }
 
-                // NOW set up auth listener for future changes (sign in/out after init)
-                sb.auth.onAuthStateChange(async (event, session) => {
-                    if (!_initDone) return; // skip events during init
-                    if (event === 'SIGNED_IN' && session && session.user) {
-                        await ensureUserAccountRecord(session.user);
-                        await loadCurrentUserFromSupabase(session.user);
-                        if (currentUser && currentUser.banned) {
-                            await sb.auth.signOut();
-                            currentUser = null; _syncUser();
-                            updateUI();
-                            showToast(currentLanguage === 'ar' ? 'تم حظر حسابك. تواصل مع الإدارة.' : 'Your account has been blocked.', 'error');
-                            return;
-                        }
-                        _dataLoaded = false;
-                        await loadData();
-                        updateUI();
-                        renderCoursesGrid();
-                        updateQuickStats();
-                    } else if (event === 'SIGNED_OUT') {
-                        currentUser = null; _syncUser();
-                        _dataLoaded = false;
-                        updateUI();
-                        renderCoursesGrid();
-                    }
-                });
             } catch (error) {
                 console.error('Error initializing app:', error);
                 const loadingOverlay = document.getElementById('loadingOverlay');
@@ -5321,8 +5322,8 @@ window.triggerModalClose = function() {
                         document.getElementById('signInEmail').value = email;
                         document.getElementById('signUpPass').value = '';
                         showToast(currentLanguage === 'ar'
-                            ? 'تم إنشاء الحساب. أرسلنا رسالة تأكيد إلى ' + edEsc(email) + '، افتح الرابط فيها ثم سجّل الدخول بنفس البريد وكلمة المرور.'
-                            : 'Account created. We sent a confirmation link to ' + edEsc(email) + '. Open it, then sign in with the same email and password.', 'success');
+                            ? 'تم إنشاء الحساب. أرسلنا رسالة تأكيد إلى ' + email + '، افتح الرابط فيها ثم سجّل الدخول بنفس البريد وكلمة المرور.'
+                            : 'Account created. We sent a confirmation link to ' + email + '. Open it, then sign in with the same email and password.', 'success');
                     } else {
                         showToast(currentLanguage === 'ar' ? 'تعذر إنشاء الحساب، حاول مرة أخرى.' : 'Could not create the account, please try again.', 'error');
                     }
