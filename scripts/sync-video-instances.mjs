@@ -394,6 +394,25 @@ export function assessSamplePlayback({ mediaProbes = [], audioProbes = [], manif
   return { playable, audioAvailable, mediaProbe, audioProbe, manifestProbe };
 }
 
+export function verifiedSampleHeights({ videoCandidates = [], mediaProbes = [], manifestProbes = [] }) {
+  const heights = new Set();
+  videoCandidates.forEach((stream, index) => {
+    if (mediaProbes[index]?.ok) {
+      const height = parseQuality(stream);
+      if (height > 0) heights.add(height);
+    }
+  });
+  for (const manifest of manifestProbes) {
+    if (manifest?.ok && Array.isArray(manifest.heights)) {
+      for (const value of manifest.heights) {
+        const height = Number(value) || 0;
+        if (height > 0) heights.add(height);
+      }
+    }
+  }
+  return [...heights].sort((a, b) => b - a);
+}
+
 // Keep the sync probe's response fields aligned with the Worker media verification checks.
 async function probeInstance(instance) {
   const started = Date.now();
@@ -415,25 +434,32 @@ async function probeInstance(instance) {
       const audioCandidates = streams.audioItems
         .filter((stream) => /^https:\/\//i.test(String(stream?.url || "")))
         .slice(0, 2);
-      const manifestUrls = instance.provider === "piped"
+      const sourceManifestUrls = instance.provider === "piped"
         ? [data?.dash, data?.hls]
         : [data?.dashUrl, data?.hlsUrl];
-      const [mediaProbes, audioProbes, manifestProbes] = await Promise.all([
+      const [mediaProbes, audioProbes] = await Promise.all([
         Promise.all(mediaCandidates.map((stream) => probeMediaRange(stream.url))),
         Promise.all(audioCandidates.map((stream) => probeMediaRange(stream.url))),
-        Promise.all(manifestUrls.filter(Boolean).map(probeManifest)),
       ]);
+      const discoveredManifestUrls = [
+        ...sourceManifestUrls.filter(Boolean),
+        ...mediaCandidates.filter((stream, index) => mediaProbes[index]?.isManifest).map((stream) => stream.url),
+        ...audioCandidates.filter((stream, index) => audioProbes[index]?.isManifest).map((stream) => stream.url),
+      ];
+      const manifestUrls = [...new Set(discoveredManifestUrls)];
+      const manifestProbes = await Promise.all(manifestUrls.map(probeManifest));
       const assessment = assessSamplePlayback({
         mediaProbes,
         audioProbes,
         manifestProbes,
         muxedAudio: streams.muxedAudio,
       });
+      const verifiedHeights = verifiedSampleHeights({ videoCandidates: mediaCandidates, mediaProbes, manifestProbes });
       return {
         videoId,
         playable: assessment.playable,
         audioAvailable: assessment.audioAvailable,
-        heights: streams.heights,
+        heights: verifiedHeights,
         videoCount: streams.videoItems.length,
         audioCount: streams.audioItems.length,
         mediaProbe: assessment.mediaProbe,
