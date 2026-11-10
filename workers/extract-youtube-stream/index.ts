@@ -1,4 +1,5 @@
 // Cloudflare Workers version of the ED-ALL Invidious extractor.
+// Playback readiness requires an actual segment response, not only a metadata or manifest response.
 // Deploy as a Worker named edall-invidious-extractor.
 const corsHeaders = {
   "Access-Control-Allow-Origin": "https://edall.lovable.app",
