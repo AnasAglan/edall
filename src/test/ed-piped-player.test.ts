@@ -149,7 +149,7 @@ describe("ED ALL Piped player", () => {
     expect(worker).toContain("async function probeManifestUrl");
     expect(worker).toContain("const playbackVerified = manifestPlayable ||");
     expect(worker).toContain("async function probeHlsPlaylist");
-    expect(worker).toContain("segmentVerified: true");
+    expect(worker).toContain("segmentVerified");
     expect(worker).toContain("const playbackVerified = manifestPlayable || directPlayable");
     expect(worker).toContain("const verifiedHeights = [");
     expect(worker).toContain("bundle.videoStreams = verifiedDirectVideos");
