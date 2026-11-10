@@ -4,7 +4,8 @@ import worker, {
   canUseAssistantTool,
   canAccessAssistant,
   shouldForceInScope,
-  inferRequiredReadTools
+  inferRequiredReadTools,
+  buildScopeRouting
 } from "./index.js";
 
 const ownId = "11111111-1111-4111-8111-111111111111";
@@ -129,4 +130,45 @@ test("read routing never grants account search to teachers or turns writes into 
   assert.deepEqual(inferRequiredReadTools([
     { role: "user", content: "أضف دورة جديدة" }
   ], ["admin"]), []);
+});
+
+test("independent general questions are answered normally without ED-ALL tool access", () => {
+  const route = buildScopeRouting("OUT_OF_SCOPE");
+  assert.equal(route.allowPlatformTools, false);
+  assert.match(route.instruction, /أجب عنه مباشرة/);
+  assert.match(route.instruction, /لا تستخدم أدوات المنصة/);
+  assert.doesNotMatch(route.instruction, /ما المهمة التي تريد تنفيذها داخل المنصة/);
+});
+
+test("ED-ALL questions retain platform tools and anti-hallucination grounding", () => {
+  const route = buildScopeRouting("IN_SCOPE");
+  assert.equal(route.allowPlatformTools, true);
+  assert.match(route.instruction, /لا تخترع/);
+  assert.match(route.instruction, /نتائج الأدوات فقط/);
+});
+
+test("Arabic Egyptian phrasing routes course, teacher, and lesson questions to database reads", () => {
+  assert.deepEqual(inferRequiredReadTools([
+    { role: "user", content: "عندنا اي كورسات؟" }
+  ], ["admin"]), [{ name: "list_courses", args: { limit: 50 } }]);
+
+  assert.deepEqual(inferRequiredReadTools([
+    { role: "user", content: "مين المدرسين؟" }
+  ], ["admin"]), [{ name: "search_platform_users", args: { query: "", limit: 50, offset: 0 } }]);
+
+  assert.deepEqual(inferRequiredReadTools([
+    { role: "user", content: "في كام درس؟" }
+  ], ["admin"]), [{ name: "get_platform_stats", args: {} }]);
+
+  assert.deepEqual(inferRequiredReadTools([
+    { role: "user", content: "في كام درس؟" }
+  ], ["teacher"]), [{ name: "list_courses", args: { limit: 50 } }]);
+});
+
+test("generic list follow-ups inherit the previous platform entity", () => {
+  assert.deepEqual(inferRequiredReadTools([
+    { role: "user", content: "عندنا اي كورسات؟" },
+    { role: "assistant", content: "سأبحث في الدورات." },
+    { role: "user", content: "وريني اللي موجود" }
+  ], ["admin"]), [{ name: "list_courses", args: { limit: 50 } }]);
 });
