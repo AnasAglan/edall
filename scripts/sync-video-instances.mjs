@@ -139,11 +139,17 @@ async function probeMediaRange(url) {
       signal: controller.signal,
       cache: "no-store",
     });
+    const cors = response.headers.get("access-control-allow-origin");
     const result = {
+      // Direct <video>/<audio> playback does not require CORS; MSE manifests do.
+      // Record CORS and Range capability separately rather than hiding limited sources.
       ok: response.status === 206 || response.status === 200,
       status: response.status,
-      cors: response.headers.get("access-control-allow-origin"),
-      error: null,
+      cors,
+      corsAllowed: cors === "*" || cors === "https://edall.lovable.app",
+      rangeSupported: response.status === 206,
+      contentType: response.headers.get("content-type"),
+      error: response.status === 206 || response.status === 200 ? null : "Media HTTP " + response.status,
     };
     if (response.body) await response.body.cancel().catch(() => {});
     return result;
