@@ -289,7 +289,7 @@ export function inferRequiredReadTools(conversation, roles = []) {
   const writeIntent = /(?:أنشئ|انشئ|اضف|أضف|أضيف|اضيف|ضيف|ضيفلي|إنشاء|انشاء|عدل|عدّل|تعديل|حدث|حدّث|تحديث|غير|غيّر|حذف|احذف|امسح|اشتري|اشتر|شراء|ارفع|رفع|ارسل|أرسل|ابعت|احظر|حظر|شحن|اشحن|نفذ|نفّذ|create|add|update|edit|change|delete|remove|buy|purchase|upload|send|ban|credit)/i;
   if (writeIntent.test(current)) return [];
 
-  const readIntent = /(?:ما|ماذا|ايه|إيه|اي|أي|اسم|أسماء|اسماء|عدد|كم|كام|مين|من هم|من هي|اعرض|اعرضلي|وريني|هات|قائمة|قولي|قول لي|اخبرني|خبرني|عايز اعرف|عاوز اعرف|ممكن اعرف|عندنا|الموجود|الموجودة|الموجودين|تفاصيل|ابحث|بحث|عرض|اظهر|أظهر|هل يوجد|هل عندنا|فيه|show|list|find|what|which|how many|tell me about)/i;
+  const readIntent = /(?:إحصاء|احصاء|إحصائيات|احصائيات|إحصائية|احصائية|statistics|stats|ما|ماذا|ايه|إيه|اي|أي|اسم|أسماء|اسماء|عدد|كم|كام|مين|من هم|من هي|اعرض|اعرضلي|وريني|هات|قائمة|قولي|قول لي|اخبرني|خبرني|عايز اعرف|عاوز اعرف|ممكن اعرف|عندنا|الموجود|الموجودة|الموجودين|تفاصيل|ابحث|بحث|عرض|اظهر|أظهر|هل يوجد|هل عندنا|فيه|show|list|find|what|which|how many|tell me about)/i;
   const currentIsRead = readIntent.test(current);
   const isGenericFollowUp = /(?:وريني|اعرض|هات|قولي|قول لي|اظهر|أظهر|اللي موجود|الموجود|الموجودة|الموجودين|what is there|show me what|list them)/i.test(current);
   if (!currentIsRead && !isGenericFollowUp) return [];
@@ -309,19 +309,27 @@ export function inferRequiredReadTools(conversation, roles = []) {
   if (roles.includes("admin") && platformStats.test(current) && platformData.test(focus)) {
     return [{ name: "get_platform_stats", args: {} }];
   }
-  // "المدرسين" contains the character sequence "درس"; prioritize an
-  // explicit people/name question before matching the lesson keyword.
+  // "المدرسين" contains the character sequence "درس"; prioritize explicit
+  // people/role questions before matching the lesson keyword.
   const asksPeople = /(?:مين|من هم|من هي|اسم|أسماء|اسماء|names|who are)/i.test(current);
+  const requestedRole = /(?:مدرس|مدرسين|المدرسين|معلم|معلمين|المعلمين|teacher|teachers)/i.test(focus)
+    ? "teacher"
+    : /(?:طالب|طلاب|الطلاب|student|students)/i.test(focus)
+      ? "student"
+      : /(?:مدير|مديرين|المديرين|admin|admins)/i.test(focus)
+        ? "admin"
+        : undefined;
+  const userSearchArgs = { query: "", limit: 50, offset: 0, ...(requestedRole ? { role: requestedRole } : {}) };
   if (roles.includes("admin") && asksPeople && users.test(focus)) {
-    return [{ name: "search_platform_users", args: { query: "", limit: 50, offset: 0 } }];
+    return [{ name: "search_platform_users", args: userSearchArgs }];
   }
   if (courseOrLesson.test(focus)) {
     return [{ name: "list_courses", args: { limit: 50 } }];
   }
   if (roles.includes("admin") && users.test(focus)) {
-    // The tool is admin-gated on the server; names and roles must come from
-    // its database result, never from model memory.
-    return [{ name: "search_platform_users", args: { query: "", limit: 50, offset: 0 } }];
+    // The server reads the role from user_roles; the model never labels
+    // a profile as a teacher/student/admin from its name or memory.
+    return [{ name: "search_platform_users", args: userSearchArgs }];
   }
   return [];
 }
@@ -451,6 +459,25 @@ async function allUserRoles(env, token) {
 function validId(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
 }
+export function attachUserRoles(userRows, roleRows) {
+  const rolesByUser = new Map();
+  for (const row of Array.isArray(roleRows) ? roleRows : []) {
+    const userId = String(row?.user_id || "");
+    const role = String(row?.role || "");
+    if (!validId(userId) || !["admin", "teacher", "student"].includes(role)) continue;
+    const roles = rolesByUser.get(userId) || [];
+    if (!roles.includes(role)) roles.push(role);
+    rolesByUser.set(userId, roles);
+  }
+  return (Array.isArray(userRows) ? userRows : []).map(row => ({
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    public_id: row.public_id,
+    roles: rolesByUser.get(String(row.id || "")) || []
+  }));
+}
+
 function safeUrl(value) {
   try {
     const url = new URL(String(value || ""));
@@ -985,14 +1012,43 @@ async function tool(name, args, env, token, user, roles, images = []) {
   if (name === "search_platform_users") {
     if (!isAdmin) throw new Error("البحث في حسابات المستخدمين متاح للمدير فقط.");
     const term = String(args.query || "").trim().slice(0, 100);
+    const requestedRole = ["student", "teacher", "admin"].includes(String(args.role || "").toLowerCase())
+      ? String(args.role).toLowerCase()
+      : "";
     const limit = Math.min(50, Math.max(1, Number(args.limit) || 20));
     const offset = Math.min(5000, Math.max(0, Number(args.offset) || 0));
+
+    if (requestedRole && !term) {
+      const roleRows = await db(env,
+        "/rest/v1/user_roles?select=user_id,role&role=eq." + encodeURIComponent(requestedRole) +
+        "&order=user_id.asc&limit=" + limit + "&offset=" + offset, token);
+      if (!Array.isArray(roleRows)) throw new Error("تعذر قراءة المستخدمين حسب الدور المحدد.");
+      const ids = [...new Set(roleRows.map(row => String(row?.user_id || "")).filter(validId))];
+      if (!ids.length) return [];
+      const profiles = await db(env,
+        "/rest/v1/profiles?select=id,name,email,public_id&id=in.(" + ids.join(",") + ")&order=name.asc", token);
+      if (!Array.isArray(profiles)) throw new Error("تعذر قراءة الملفات الشخصية للمستخدمين المحددين.");
+      const normalizedTerm = term.toLocaleLowerCase();
+      return profiles
+        .filter(row => !normalizedTerm || [row.name, row.email, row.public_id]
+          .some(value => String(value || "").toLocaleLowerCase().includes(normalizedTerm)))
+        .map(row => ({ id: row.id, name: row.name, email: row.email, public_id: row.public_id, roles: [requestedRole] }));
+    }
+
+    const fetchLimit = requestedRole ? Math.min(250, limit * 5) : limit;
     const rows = await db(env, "/rest/v1/rpc/admin_search_users", token, "POST", {
-      _term: term, _limit: limit, _offset: offset
+      _term: term, _limit: fetchLimit, _offset: offset
     });
-    return (Array.isArray(rows) ? rows : []).map(row => ({
-      id: row.id, name: row.name, email: row.email, public_id: row.public_id
-    }));
+    const users = Array.isArray(rows) ? rows : [];
+    if (!users.length) return [];
+    const ids = [...new Set(users.map(row => String(row?.id || "")).filter(validId))];
+    const roleRows = ids.length
+      ? await db(env, "/rest/v1/user_roles?select=user_id,role&user_id=in.(" + ids.join(",") + ")", token)
+      : [];
+    const withRoles = attachUserRoles(users, roleRows);
+    return requestedRole
+      ? withRoles.filter(row => row.roles.includes(requestedRole)).slice(0, limit)
+      : withRoles;
   }
 
   if (name === "send_notification") {
@@ -1907,7 +1963,7 @@ const toolSpecs = [
   { name: "create_exam", description: "إنشاء اختبار لمحاضرة يملكها المدرس أو المدير.", parameters: { type: "object", properties: { lesson_id: { type: "string" }, title: { type: "string" }, passing_grade: { type: "integer" }, time_limit: { type: "integer" }, allow_retake: { type: "boolean" }, required_to_progress: { type: "boolean" }, max_attempts: { type: "integer" } }, required: ["lesson_id"] } },
   { name: "add_exam_question", description: "إضافة سؤال اختيار من متعدد أو سؤال مقالي إلى اختبار موجود يملكه المدرس أو المدير. correct_option يبدأ من صفر.", parameters: { type: "object", properties: { exam_id: { type: "string" }, text: { type: "string" }, type: { type: "string", enum: ["multiple", "essay"] }, options: { type: "array", items: { type: "string" } }, correct_option: { type: "integer" } }, required: ["exam_id", "text", "type"] } },
   { name: "get_platform_stats", description: "إحصاءات إجمالية دقيقة للمدير فقط: المستخدمون حسب الدور، الدورات، المحاضرات، الفيديوهات، ملفات PDF، التسجيلات والاختبارات.", parameters: { type: "object", properties: {}, required: [] } },
-  { name: "search_platform_users", description: "البحث عن المستخدمين بالاسم أو البريد أو المعرف العام. أداة مدير فقط.", parameters: { type: "object", properties: { query: { type: "string" }, limit: { type: "integer" }, offset: { type: "integer" } }, required: [] } },
+  { name: "search_platform_users", description: "البحث عن المستخدمين بالاسم أو البريد أو المعرف العام، مع إرجاع أدوارهم الفعلية من user_roles. يمكن تحديد role لعرض الطلاب أو المدرسين أو المديرين فقط. أداة مدير فقط.", parameters: { type: "object", properties: { query: { type: "string" }, role: { type: "string", enum: ["student", "teacher", "admin"] }, limit: { type: "integer" }, offset: { type: "integer" } }, required: [] } },
 
   { name: "update_course", description: "تعديل دورة موجودة يملكها المدرس أو يديرها المدير، بما في ذلك السعر. مرّر الحقول المطلوب تغييرها فقط؛ السعر صفر يعني مجانية.", parameters: { type: "object", properties: { course_id: { type: "string" }, title: { type: "string" }, description: { type: "string" }, price: { type: "number" }, image_url: { type: "string" } }, required: ["course_id"] } },
   { name: "delete_course", description: "حذف دورة يملكها المدرس أو المدير. عملية نهائية وتتطلب تأكيد المستخدم أولًا.", parameters: { type: "object", properties: { course_id: { type: "string" } }, required: ["course_id"] } },
