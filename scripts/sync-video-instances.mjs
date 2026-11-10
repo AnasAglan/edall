@@ -413,6 +413,14 @@ export function verifiedSampleHeights({ videoCandidates = [], mediaProbes = [], 
   return [...heights].sort((a, b) => b - a);
 }
 
+export function classifyPlaybackHealth({ sampleChecks = [], heights = [] }) {
+  const successfulSamples = sampleChecks.filter((sample) => sample && sample.playable && sample.audioAvailable);
+  if (!successfulSamples.length) return "unhealthy";
+  const allSamplesPassed = sampleChecks.length > 0 && successfulSamples.length === sampleChecks.length;
+  const maxHeight = Math.max(0, ...heights.map((height) => Number(height) || 0));
+  return allSamplesPassed && maxHeight >= 720 ? "healthy" : "degraded";
+}
+
 // Keep the sync probe's response fields aligned with the Worker media verification checks.
 async function probeInstance(instance) {
   const started = Date.now();
@@ -489,7 +497,7 @@ async function probeInstance(instance) {
     const manifestProbe = playableSamples.find((sample) => sample.manifestProbe?.ok)?.manifestProbe || null;
     return {
       ...instance,
-      status: maxHeight >= 720 ? "healthy" : "degraded",
+      status: classifyPlaybackHealth({ sampleChecks: samples, heights }),
       score: Math.round(score),
       responseMs,
       mediaProbe,
