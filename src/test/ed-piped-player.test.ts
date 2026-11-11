@@ -154,10 +154,12 @@ describe("ED ALL Piped player", () => {
     expect(worker).toContain("const verifiedHeights = [");
     expect(worker).toContain("bundle.videoStreams = verifiedDirectVideos");
     expect(worker).toContain("bundle.audioStreams = verifiedDirectAudios");
-    expect(worker).toContain("async function proxyMedia");
-    expect(worker).toContain('Access-Control-Allow-Origin": "*"');
-    expect(worker).toContain("mediaProxyUrl(workerOrigin, stream.url)");
-    expect(worker).toContain('requestUrl.pathname === "/media"');
+    const mediaProxy = readFileSync(resolve(process.cwd(), "workers/video-media-proxy/index.js"), "utf8");
+    expect(mediaProxy).toContain("getAllowedMediaUrl");
+    expect(mediaProxy).toContain('"Access-Control-Allow-Origin": "*"');
+    expect(mediaProxy).toContain("request.headers.get(\"Range\")");
+    expect(playerSource).toContain("mediaProxyBase + '/media?url='");
+    expect(playerSource).toContain("proxyUrl: mediaProxyBase");
 
     expect(worker).not.toContain("if (heights.length >= 3 && Math.max(...heights) >= 720) break;");
   });
