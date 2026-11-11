@@ -473,6 +473,7 @@ export type Database = {
           is_free: boolean
           sort_order: number
           title: string
+          web_playback_enabled: boolean
         }
         Insert: {
           content?: string | null
@@ -482,6 +483,7 @@ export type Database = {
           is_free?: boolean
           sort_order?: number
           title: string
+          web_playback_enabled?: boolean
         }
         Update: {
           content?: string | null
@@ -491,6 +493,7 @@ export type Database = {
           is_free?: boolean
           sort_order?: number
           title?: string
+          web_playback_enabled?: boolean
         }
         Relationships: [
           {
