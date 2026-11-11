@@ -1,1 +1,5 @@
 project_id = "iuaddjoofgrirzslzqfy"
+
+[auth.email.template.confirmation]
+subject = "رمز تأكيد حسابك في ED-ALL"
+content_path = "./supabase/templates/confirmation.html"
