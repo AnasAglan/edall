@@ -1,3 +1,5 @@
+const ALLOWED_ORIGINS = new Set(["https://edall.lovable.app", "https://id-preview--41c4997e-3169-4ff8-bf15-3da064df3594.lovable.app"]);
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
@@ -25,8 +27,19 @@ function getAllowedMediaUrl(raw) {
 export default {
   async fetch(request) {
     const requestUrl = new URL(request.url);
+    const origin = request.headers.get("Origin") || "";
+    if (origin && !ALLOWED_ORIGINS.has(origin)) {
+      return new Response("Origin not allowed", { status: 403, headers: responseCorsHeaders });
+    }
+    const responseCorsHeaders = new Headers(corsHeaders);
+    if (origin) responseCorsHeaders.set("Access-Control-Allow-Origin", origin);
+    if (requestUrl.pathname === "/health" && request.method === "GET") {
+      return new Response(JSON.stringify({ status: "ok", service: "edall-video-media-proxy" }), {
+        status: 200, headers: { ...Object.fromEntries(responseCorsHeaders), "Content-Type": "application/json" }
+      });
+    }
     if (request.method === "OPTIONS") {
-      return new Response(null, { status: 204, headers: corsHeaders });
+      return new Response(null, { status: 204, headers: responseCorsHeaders });
     }
     if (request.method !== "GET" && request.method !== "HEAD") {
       return new Response("Method not allowed", { status: 405, headers: corsHeaders });
@@ -51,7 +64,7 @@ export default {
     } catch (error) {
       return new Response(String(error && error.message || "Invalid media URL"), {
         status: 403,
-        headers: corsHeaders,
+        headers: responseCorsHeaders,
       });
     }
 
