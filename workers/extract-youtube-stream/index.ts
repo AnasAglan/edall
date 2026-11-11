@@ -499,8 +499,15 @@ async function extract(videoId: string, excluded: string[]) {
     dash: best.dash,
     hls: best.hls,
     proxyUrl: null,
-    videoStreams: best.videoStreams,
-    audioStreams: best.audioStreams,
+    proxyUrl: new URL(req.url).origin,
+    videoStreams: best.videoStreams.map((stream: any) => ({
+      ...stream,
+      url: mediaProxyUrl(new URL(req.url).origin, stream.url),
+    })),
+    audioStreams: best.audioStreams.map((stream: any) => ({
+      ...stream,
+      url: mediaProxyUrl(new URL(req.url).origin, stream.url),
+    })),
     qualities: best.heights,
     diagnostics: {
       testedInstances: instances.length,
@@ -516,7 +523,94 @@ async function extract(videoId: string, excluded: string[]) {
   };
 }
 
+
+const MEDIA_CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+  "Access-Control-Allow-Headers": "Range, Content-Type",
+  "Access-Control-Expose-Headers": "Accept-Ranges, Content-Length, Content-Range, Content-Type",
+  "Vary": "Origin",
+};
+
+function isGoogleVideoHost(hostname: string): boolean {
+  const host = String(hostname || "").toLowerCase();
+  return host === "googlevideo.com" || host.endsWith(".googlevideo.com");
+}
+
+function mediaProxyUrl(workerOrigin: string, mediaUrl: string): string {
+  try {
+    const parsed = new URL(mediaUrl);
+    if (!isGoogleVideoHost(parsed.hostname) || parsed.protocol !== "https:") return mediaUrl;
+    return workerOrigin.replace(/\/$/, "") + "/media?url=" + encodeURIComponent(parsed.toString());
+  } catch {
+    return mediaUrl;
+  }
+}
+
+async function proxyMedia(req: Request, requestUrl: URL): Promise<Response> {
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: MEDIA_CORS_HEADERS });
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    return new Response("Method not allowed", { status: 405, headers: MEDIA_CORS_HEADERS });
+  }
+
+  let upstreamUrl: URL;
+  try {
+    if (requestUrl.pathname === "/media") {
+      const raw = requestUrl.searchParams.get("url") || "";
+      upstreamUrl = new URL(raw);
+    } else if (requestUrl.pathname === "/videoplayback") {
+      const host = requestUrl.searchParams.get("host") || "";
+      if (!isGoogleVideoHost(host)) return new Response("Upstream host is not allowed", { status: 403, headers: MEDIA_CORS_HEADERS });
+      upstreamUrl = new URL("https://" + host + "/videoplayback");
+      for (const [key, value] of requestUrl.searchParams) {
+        if (key !== "host" && key !== "range") upstreamUrl.searchParams.append(key, value);
+      }
+    } else {
+      return new Response("Not found", { status: 404, headers: MEDIA_CORS_HEADERS });
+    }
+    if (upstreamUrl.protocol !== "https:" || !isGoogleVideoHost(upstreamUrl.hostname) ||
+        upstreamUrl.username || upstreamUrl.password || upstreamUrl.port ||
+        !upstreamUrl.pathname.startsWith("/videoplayback")) {
+      return new Response("Media URL is not allowed", { status: 403, headers: MEDIA_CORS_HEADERS });
+    }
+  } catch {
+    return new Response("Invalid media URL", { status: 400, headers: MEDIA_CORS_HEADERS });
+  }
+
+  const headers = new Headers({ "Accept": "*/*" });
+  const requestedRange = req.headers.get("Range") || requestUrl.searchParams.get("range");
+  if (requestedRange && /^bytes=\d+-\d*$/.test(requestedRange)) headers.set("Range", requestedRange);
+  const upstream = await fetch(upstreamUrl.toString(), {
+    method: req.method,
+    headers,
+    redirect: "follow",
+    cache: "no-store",
+  });
+  let finalUrl: URL;
+  try { finalUrl = new URL(upstream.url || upstreamUrl.toString()); }
+  catch { return new Response("Invalid upstream response", { status: 502, headers: MEDIA_CORS_HEADERS }); }
+  if (!isGoogleVideoHost(finalUrl.hostname)) {
+    return new Response("Upstream redirect host is not allowed", { status: 502, headers: MEDIA_CORS_HEADERS });
+  }
+
+  const responseHeaders = new Headers(MEDIA_CORS_HEADERS);
+  for (const name of ["accept-ranges", "content-length", "content-range", "content-type", "etag", "last-modified"]) {
+    const value = upstream.headers.get(name);
+    if (value) responseHeaders.set(name, value);
+  }
+  responseHeaders.set("Cache-Control", "private, no-store");
+  return new Response(req.method === "HEAD" ? null : upstream.body, {
+    status: upstream.status,
+    statusText: upstream.statusText,
+    headers: responseHeaders,
+  });
+}
+
 export default { async fetch(req: Request) {
+  const requestUrl = new URL(req.url);
+  if (requestUrl.pathname === "/media" || requestUrl.pathname === "/videoplayback") {
+    return proxyMedia(req, requestUrl);
+  }
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
