@@ -26,6 +26,22 @@ const hasPlayablePath =
   diagnostics.audioAvailable === true &&
   (videoStreams.length > 0 || Boolean(payload.hls || payload.dash));
 
+if (!payload.instance || !hasPlayablePath) {
+  throw new Error(
+    "Invidious Worker returned data but did not prove a browser-playable video+audio path: " +
+      JSON.stringify({
+        instance: payload.instance || null,
+        videoStreams: videoStreams.length,
+        audioStreams: audioStreams.length,
+        playbackVerified: diagnostics.playbackVerified === true,
+        audioAvailable: diagnostics.audioAvailable === true,
+        mediaProbe: diagnostics.mediaProbe || null,
+        audioProbe: diagnostics.audioProbe || null,
+        manifestProbe: diagnostics.manifestProbe || null,
+      }),
+  );
+}
+
 const MEDIA_PROXY_URL = "https://edall-video-media-proxy.anasaglan2011.workers.dev";
 async function verifyProxiedRange(stream, label) {
   if (!stream || !String(stream.url || "").includes("googlevideo.com")) {
@@ -48,22 +64,6 @@ async function verifyProxiedRange(stream, label) {
 }
 await verifyProxiedRange(videoStreams[0], "video");
 await verifyProxiedRange(audioStreams[0], "audio");
-
-if (!payload.instance || !hasPlayablePath) {
-  throw new Error(
-    "Invidious Worker returned data but did not prove a browser-playable video+audio path: " +
-      JSON.stringify({
-        instance: payload.instance || null,
-        videoStreams: videoStreams.length,
-        audioStreams: audioStreams.length,
-        playbackVerified: diagnostics.playbackVerified === true,
-        audioAvailable: diagnostics.audioAvailable === true,
-        mediaProbe: diagnostics.mediaProbe || null,
-        audioProbe: diagnostics.audioProbe || null,
-        manifestProbe: diagnostics.manifestProbe || null,
-      }),
-  );
-}
 
 console.log(
   JSON.stringify({
