@@ -384,7 +384,8 @@ export function buildVerifiedReadReply(snapshots, conversation = []) {
   if (snapshot.tool === "list_courses") {
     if (!Array.isArray(data)) return "تعذر قراءة قائمة الدورات من قاعدة البيانات.";
     if (!data.length) return "لا توجد دورات متاحة للعرض ضمن صلاحيات حسابك.";
-    if (wantsCount) {\n      if (/(?:محاضرة|محاضرات|درس|دروس|lesson)/i.test(lastUser) && !/(?:كورس|كورسات|دورة|دورات|course)/i.test(lastUser)) {
+    if (wantsCount) {
+      if (/(?:محاضرة|محاضرات|درس|دروس|lesson)/i.test(lastUser) && !/(?:كورس|كورسات|دورة|دورات|course)/i.test(lastUser)) {
       const available = data.map(item => String(item?.title || "").trim()).filter(Boolean).slice(0, 20);
       return "لا أريد أن أخلط بين عدد الدورات وعدد المحاضرات. حدّد الدورة التي تريد إحصاء محاضراتها. الدورات المتاحة ضمن صلاحياتك: " + (available.length ? available.join("، ") : "لا توجد أسماء متاحة") + ".";
     }
