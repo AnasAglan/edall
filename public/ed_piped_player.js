@@ -287,6 +287,33 @@
     };
   }
 
+  function withMediaProxy(data, extractorConfig) {
+    const config = extractorConfig || {};
+    const mediaProxyBase = String(config.mediaProxyUrl || '').replace(/\/$/, '');
+    if (!data || !mediaProxyBase || !Array.isArray(data.videoStreams)) return data;
+    const proxyStream = stream => {
+      if (!stream) return stream;
+      try {
+        const source = new URL(safeHttps(stream.url));
+        const host = source.hostname.toLowerCase();
+        if (source.protocol === 'https:' && (host === 'googlevideo.com' || host.endsWith('.googlevideo.com'))) {
+          return { ...stream, url: mediaProxyBase + '/media?url=' + encodeURIComponent(source.toString()) };
+        }
+      } catch (_) {}
+      return stream;
+    };
+    const videoStreams = data.videoStreams.map(proxyStream);
+    const audioStreams = Array.isArray(data.audioStreams) ? data.audioStreams.map(proxyStream) : data.audioStreams;
+    return {
+      ...data,
+      proxyUrl: mediaProxyBase,
+      dash: videoStreams.length ? null : data.dash,
+      hls: videoStreams.length ? null : data.hls,
+      videoStreams,
+      audioStreams
+    };
+  }
+
   function normalize(data) {
     if (data && !Array.isArray(data.videoStreams) &&
         (Array.isArray(data.formatStreams) || Array.isArray(data.adaptiveFormats))) {
@@ -469,7 +496,7 @@
     return String(error && error.message || error || 'Unknown extraction error');
   }
 
-  async function fetchPipedBundle(videoId, excluded) {
+  async function fetchPipedBundle(videoId, excluded, extractorConfig) {
     const instances = (await getInstances()).filter(base => !excluded.has(base));
     const batchSize = 8;
     let best = null;
@@ -493,7 +520,7 @@
           }).then(async response => {
             if (!response.ok) throw new Error('Piped HTTP ' + response.status);
             const data = await response.json();
-            const bundle = normalize(data);
+            const bundle = normalize(withMediaProxy(data, extractorConfig));
             if (!bundle) throw new Error('No compatible video streams');
             const elapsed = Date.now() - started;
             resolve({ ...bundle, instance: base, provider: 'piped', requestElapsedMs: elapsed });
@@ -557,25 +584,7 @@
       if (!response.ok || !payload.success) {
         throw new Error('Invidious extractor HTTP ' + response.status + ': ' + readErrorMessage(payload.error || payload.message));
       }
-      const mediaProxyBase = String(config.mediaProxyUrl || '').replace(/\/$/, '');
-      const proxyStream = stream => {
-        if (!stream || !mediaProxyBase) return stream;
-        try {
-          const source = new URL(safeHttps(stream.url));
-          const host = source.hostname.toLowerCase();
-          if (source.protocol === 'https:' && (host === 'googlevideo.com' || host.endsWith('.googlevideo.com'))) {
-            return { ...stream, url: mediaProxyBase + '/media?url=' + encodeURIComponent(source.toString()) };
-          }
-        } catch (_) {}
-        return stream;
-      };
-      const proxiedVideos = Array.isArray(payload.videoStreams) ? payload.videoStreams.map(proxyStream) : payload.videoStreams;
-      const proxiedAudios = Array.isArray(payload.audioStreams) ? payload.audioStreams.map(proxyStream) : payload.audioStreams;
-      const hasDirectStreamPath = Array.isArray(proxiedVideos) && proxiedVideos.length > 0;
-      const playablePayload = mediaProxyBase && hasDirectStreamPath
-        ? { ...payload, proxyUrl: mediaProxyBase, dash: null, hls: null, videoStreams: proxiedVideos, audioStreams: proxiedAudios }
-        : payload;
-      const bundle = normalize(playablePayload);
+      const bundle = normalize(withMediaProxy(payload, config));
       if (!bundle) throw new Error('Invidious returned no browser-compatible streams.');
       if (!payload.instance) throw new Error('Invidious response omitted the selected instance.');
       return { ...bundle, instance: payload.instance, provider: 'invidious', requestElapsedMs: Date.now() - requestStartedAt };
@@ -586,7 +595,7 @@
 
   // Always compare both public extraction providers before ranking selectable quality.
   async function fetchBundle(videoId, excluded, extractorConfig) {
-    const pipedPromise = fetchPipedBundle(videoId, excluded)
+    const pipedPromise = fetchPipedBundle(videoId, excluded, extractorConfig)
       .then(bundle => ({ provider: 'piped', bundle }))
       .catch(error => ({ provider: 'piped', error }));
     const invidiousPromise = fetchInvidiousBundle(videoId, excluded, extractorConfig)
