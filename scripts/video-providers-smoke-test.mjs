@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 const VIDEO_ID = "dQw4w9WgXcQ";
 const MEDIA_PROXY_URL = "https://edall-video-media-proxy.anasaglan2011.workers.dev";
 const INVIDIOUS_WORKER_URL = "https://edall-invidious-extractor.anasaglan2011.workers.dev";
+const APP_ORIGIN = "https://edall.lovable.app";
 const timeout = (ms) => AbortSignal.timeout(ms);
 
 function isGoogleVideo(url) {
@@ -21,15 +22,17 @@ async function probeMedia(url, label) {
     ? (() => { const value = new URL(MEDIA_PROXY_URL + "/media"); value.searchParams.set("url", url); return value; })()
     : new URL(url);
   const response = await fetch(target, {
-    headers: { Range: "bytes=0-1023" },
+    headers: { Range: "bytes=0-1023", Origin: APP_ORIGIN },
     signal: timeout(12000),
   });
   const contentRange = response.headers.get("content-range") || "";
   const allowOrigin = response.headers.get("access-control-allow-origin") || "";
   const contentType = response.headers.get("content-type") || "";
   await response.body?.cancel();
+  const corsAllowed = allowOrigin === "*" || allowOrigin === APP_ORIGIN;
+  const throughMediaProxy = target.origin === new URL(MEDIA_PROXY_URL).origin;
   if (response.status !== 206 || !contentRange.startsWith("bytes ") ||
-      (isGoogleVideo(url) && allowOrigin !== "*") ||
+      (throughMediaProxy && !corsAllowed) ||
       !/(?:video|audio)\//i.test(contentType)) {
     throw new Error(label + " media range failed: HTTP " + response.status +
       ", Content-Range=" + contentRange + ", Content-Type=" + contentType +
@@ -91,6 +94,77 @@ async function testInvidiousWorker() {
   return { provider: "invidious", instance: payload.instance, heights, videoStreams: videos.length, audioStreams: audios.length, path: "range-verified" };
 }
 
+
+async function testDirectInvidiousBrowserApi(registry) {
+  const listed = Array.isArray(registry.sources?.invidious) ? registry.sources.invidious : [];
+  const candidates = listed.filter(item => item?.official === true && item?.apiListed === true &&
+    item?.cors === true && item?.status !== "unhealthy");
+  if (!candidates.length) return null;
+
+  const failures = [];
+  for (const instance of candidates) {
+    const base = new URL(instance.url).origin;
+    try {
+      const endpoint = base + "/api/v1/videos/" + encodeURIComponent(VIDEO_ID) +
+        "?fields=title,lengthSeconds,liveNow,hlsUrl,dashUrl,formatStreams,adaptiveFormats";
+      const response = await fetch(endpoint, {
+        headers: { Accept: "application/json", Origin: APP_ORIGIN },
+        signal: timeout(10000),
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error("API HTTP " + response.status);
+      const allowOrigin = response.headers.get("access-control-allow-origin") || "";
+      if (allowOrigin !== "*" && allowOrigin !== APP_ORIGIN) {
+        throw new Error("API CORS did not allow " + APP_ORIGIN);
+      }
+      const data = await response.json();
+      const formats = [
+        ...(Array.isArray(data.formatStreams) ? data.formatStreams.map(stream => ({ ...stream, sourceKind: "muxed" })) : []),
+        ...(Array.isArray(data.adaptiveFormats) ? data.adaptiveFormats.map(stream => ({ ...stream, sourceKind: "adaptive" })) : []),
+      ];
+      const videos = formats.filter(stream => String(stream.type || stream.mimeType || "").split(";")[0].trim().toLowerCase().startsWith("video/"));
+      const audios = formats.filter(stream => String(stream.type || stream.mimeType || "").split(";")[0].trim().toLowerCase().startsWith("audio/"));
+      const heights = [...new Set(videos.map(stream => {
+        const raw = String(stream.qualityLabel || stream.resolution || stream.quality || "");
+        const match = raw.match(/(?:x|^|\D)(\d{3,4})(?:p|\b)/i);
+        return Number(match?.[1]) || 0;
+      }).filter(Boolean))].sort((a,b)=>b-a);
+      if (!videos.length || !heights.length) throw new Error("API returned no selectable video qualities.");
+
+      const rankedVideos = videos.slice().sort((a,b) => {
+        const getHeight = stream => Number((String(stream.qualityLabel || stream.resolution || stream.quality || "").match(/(?:x|^|\D)(\d{3,4})(?:p|\b)/i) || [])[1]) || 0;
+        return getHeight(b) - getHeight(a);
+      });
+      let playableVideo = false;
+      let lastVideoError = "";
+      for (const stream of rankedVideos.slice(0,4)) {
+        try { await probeMedia(stream.url, "Invidious browser API video"); playableVideo = true; break; }
+        catch (error) { lastVideoError = String(error?.message || error); }
+      }
+      if (!playableVideo) throw new Error(lastVideoError || "No media range-verified video stream.");
+
+      const hasMuxed = videos.some(stream => stream.sourceKind === "muxed" &&
+        /(?:mp4a|opus|vorbis|aac)/i.test(String(stream.type || stream.mimeType || "")));
+      let audioAvailable = hasMuxed;
+      if (!audioAvailable && audios.length) {
+        let lastAudioError = "";
+        for (const stream of audios.slice(0,3)) {
+          try { await probeMedia(stream.url, "Invidious browser API audio"); audioAvailable = true; break; }
+          catch (error) { lastAudioError = String(error?.message || error); }
+        }
+        if (!audioAvailable) throw new Error(lastAudioError || "No range-verified audio stream.");
+      }
+      if (!audioAvailable) throw new Error("API returned no verified audio path.");
+
+      return { provider: "invidious", instance: base, heights, videoStreams: videos.length,
+        audioStreams: audios.length, path: "browser-direct-api+range-verified", cors: allowOrigin };
+    } catch (error) {
+      failures.push(base + ": " + String(error?.message || error).slice(0,180));
+    }
+  }
+  throw new Error("All official browser-accessible Invidious API instances failed: " + failures.join(" | "));
+}
+
 const mediaHealthResponse = await fetch(MEDIA_PROXY_URL + "/health", { signal: timeout(10000) });
 const mediaHealth = await mediaHealthResponse.json().catch(() => null);
 if (!mediaHealthResponse.ok || mediaHealth?.status !== "ok") {
@@ -106,15 +180,28 @@ for (let offset = 0; offset < piped.length && !pipedResults.length; offset += 8)
   pipedResults.push(...results.filter(item => item.status === "fulfilled").map(item => item.value));
 }
 
-let invidiousResult = null;
-let invidiousError = null;
-try { invidiousResult = await testInvidiousWorker(); }
-catch (error) { invidiousError = String(error?.message || error); }
+let invidiousWorkerResult = null;
+let invidiousWorkerError = null;
+try { invidiousWorkerResult = await testInvidiousWorker(); }
+catch (error) { invidiousWorkerError = String(error?.message || error); }
 
+let invidiousBrowserResult = null;
+let invidiousBrowserError = null;
+try { invidiousBrowserResult = await testDirectInvidiousBrowserApi(registry); }
+catch (error) { invidiousBrowserError = String(error?.message || error); }
+
+const eligibleInvidious = (registry.sources?.invidious || []).some(item =>
+  item?.official === true && item?.apiListed === true && item?.cors === true && item?.status !== "unhealthy");
+const invidiousResult = invidiousWorkerResult || invidiousBrowserResult;
 if (!pipedResults.length && !invidiousResult) {
   throw new Error("No live video provider passed a real range/media test. Piped: " +
     (piped.length ? "all configured instances failed" : "no instances") +
-    "; Invidious: " + (invidiousError || "unavailable"));
+    "; Invidious Worker: " + (invidiousWorkerError || "unavailable") +
+    "; Invidious browser API: " + (invidiousBrowserError || "unavailable"));
+}
+if (eligibleInvidious && !invidiousBrowserResult && !invidiousWorkerResult) {
+  throw new Error("An official Invidious API/CORS instance is listed but neither the Worker nor direct browser API passed: " +
+    (invidiousBrowserError || invidiousWorkerError || "unknown failure"));
 }
 
 console.log(JSON.stringify({
@@ -123,5 +210,7 @@ console.log(JSON.stringify({
   mediaProxy: "healthy",
   piped: pipedResults,
   invidious: invidiousResult,
-  invidiousWarning: invidiousError,
+  invidiousWorker: invidiousWorkerResult,
+  invidiousWorkerWarning: invidiousWorkerError,
+  invidiousBrowserFallbackWarning: invidiousBrowserError,
 }, null, 2));
