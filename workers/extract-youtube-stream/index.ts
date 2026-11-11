@@ -460,7 +460,7 @@ async function probeInstance(instance: { url: string; score: number; status: str
   }
 }
 
-async function extract(videoId: string, excluded: string[]) {
+async function extract(videoId: string, excluded: string[], workerOrigin: string) {
   const excludedSet = new Set((excluded || []).map(cleanBase).filter(Boolean));
   const instances = (await loadOfficialInstances())
     .filter((item) => !excludedSet.has(item.url))
@@ -498,11 +498,10 @@ async function extract(videoId: string, excluded: string[]) {
     livestream: best.livestream,
     dash: best.dash,
     hls: best.hls,
-    proxyUrl: null,
-    proxyUrl: new URL(req.url).origin,
+    proxyUrl: workerOrigin,
     videoStreams: best.videoStreams.map((stream: any) => ({
       ...stream,
-      url: mediaProxyUrl(new URL(req.url).origin, stream.url),
+      url: mediaProxyUrl(workerOrigin, stream.url),
     })),
     audioStreams: best.audioStreams.map((stream: any) => ({
       ...stream,
@@ -627,7 +626,7 @@ export default { async fetch(req: Request) {
       return responseJson({ success: false, error: "A valid YouTube video ID is required." }, 400);
     }
     const excluded = Array.isArray(body?.excludeInstances) ? body.excludeInstances.map(String).slice(0, 30) : [];
-    const result = await extract(videoId, excluded);
+    const result = await extract(videoId, excluded, new URL(req.url).origin);
     return responseJson(result);
   } catch (error) {
     console.error("[extract-youtube-stream]", error);
