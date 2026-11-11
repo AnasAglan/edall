@@ -6,6 +6,8 @@ on:
     paths:
       - "public/ed_piped_player.js"
       - "workers/extract-youtube-stream/index.ts"
+      - "workers/video-media-proxy/**"
+      - ".github/workflows/deploy-video-media-proxy.yml"
       - "src/test/ed-auth-rules.test.ts"
       - "src/test/ed-lesson-playback-mode.test.ts"
       - "supabase/migrations/**"
@@ -15,6 +17,8 @@ on:
       - "scripts/**"
       - ".github/workflows/deploy-cloudflare-extractor.yml"
       - "workers/extract-youtube-stream/index.ts"
+      - "workers/video-media-proxy/**"
+      - ".github/workflows/deploy-video-media-proxy.yml"
       - "src/test/ed-auth-rules.test.ts"
       - "src/test/ed-lesson-playback-mode.test.ts"
       - "supabase/migrations/**"
@@ -67,6 +71,8 @@ jobs:
         run: |
           node --check scripts/sync-video-instances.mjs
           node --check workers/edall-assistant/index.js
+          node --check workers/video-media-proxy/index.js
+          node --check scripts/video-providers-smoke-test.mjs
 
       - name: Test discovery and real media verification helpers
         run: node --test scripts/sync-video-instances.node-test.mjs
@@ -75,6 +81,9 @@ jobs:
         run: |
           node --check scripts/supabase-extractor-smoke-test.mjs
           node --check scripts/invidious-worker-smoke-test.mjs
+
+      - name: Smoke test live Piped and Invidious playback paths
+        run: node scripts/video-providers-smoke-test.mjs
 
       - name: Check Deno Edge Function
         uses: denoland/setup-deno@v2

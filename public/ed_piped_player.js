@@ -287,6 +287,37 @@
     };
   }
 
+  function withMediaProxy(data, extractorConfig) {
+    const config = extractorConfig || {};
+    const mediaProxyBase = String(config.mediaProxyUrl || '').replace(/\/$/, '');
+    if (!data || !mediaProxyBase || !Array.isArray(data.videoStreams)) return data;
+    const proxyStream = stream => {
+      if (!stream) return stream;
+      try {
+        const source = new URL(safeHttps(stream.url));
+        const host = source.hostname.toLowerCase();
+        if (source.protocol === 'https:' && (host === 'googlevideo.com' || host.endsWith('.googlevideo.com'))) {
+          return { ...stream, url: mediaProxyBase + '/media?url=' + encodeURIComponent(source.toString()) };
+        }
+      } catch (_) {}
+      return stream;
+    };
+    const videoStreams = data.videoStreams.map(proxyStream);
+    const audioStreams = Array.isArray(data.audioStreams) ? data.audioStreams.map(proxyStream) : data.audioStreams;
+    const hasMuxedVideo = videoStreams.some(stream => stream && stream.videoOnly !== true && stream.videoOnly !== 'true');
+    const hasSeparateAudio = videoStreams.some(stream => stream && (stream.videoOnly === true || stream.videoOnly === 'true')) &&
+      Array.isArray(audioStreams) && audioStreams.length > 0;
+    const hasCompleteDirectStreams = hasMuxedVideo || hasSeparateAudio;
+    return {
+      ...data,
+      proxyUrl: mediaProxyBase,
+      dash: hasCompleteDirectStreams ? null : data.dash,
+      hls: hasCompleteDirectStreams ? null : data.hls,
+      videoStreams,
+      audioStreams
+    };
+  }
+
   function normalize(data) {
     if (data && !Array.isArray(data.videoStreams) &&
         (Array.isArray(data.formatStreams) || Array.isArray(data.adaptiveFormats))) {
@@ -469,7 +500,7 @@
     return String(error && error.message || error || 'Unknown extraction error');
   }
 
-  async function fetchPipedBundle(videoId, excluded) {
+  async function fetchPipedBundle(videoId, excluded, extractorConfig) {
     const instances = (await getInstances()).filter(base => !excluded.has(base));
     const batchSize = 8;
     let best = null;
@@ -493,7 +524,7 @@
           }).then(async response => {
             if (!response.ok) throw new Error('Piped HTTP ' + response.status);
             const data = await response.json();
-            const bundle = normalize(data);
+            const bundle = normalize(withMediaProxy(data, extractorConfig));
             if (!bundle) throw new Error('No compatible video streams');
             const elapsed = Date.now() - started;
             resolve({ ...bundle, instance: base, provider: 'piped', requestElapsedMs: elapsed });
@@ -530,45 +561,171 @@
     return best;
   }
 
+
+  async function getTrustedInvidiousInstances() {
+    const now = Date.now();
+    let registry = null;
+    try {
+      const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+      if (cached && cached.registry && Number.isFinite(Number(cached.savedAt)) &&
+          now - Number(cached.savedAt) < CACHE_TTL) registry = cached.registry;
+    } catch (_) {}
+
+    if (!registry) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 6500);
+      try {
+        const response = await fetch(REGISTRY_URL, {
+          method: 'GET',
+          cache: 'no-store',
+          headers: { Accept: 'application/json' },
+          signal: controller.signal
+        });
+        if (!response.ok) throw new Error('Invidious registry HTTP ' + response.status);
+        registry = await response.json();
+        if (registry && registry.schemaVersion === 1) {
+          try { localStorage.setItem(CACHE_KEY, JSON.stringify({ savedAt: now, registry })); } catch (_) {}
+        }
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    const entries = Array.isArray(registry && registry.sources && registry.sources.invidious)
+      ? registry.sources.invidious : [];
+    const rank = value => value === 'healthy' ? 3 : value === 'degraded' ? 2 : value === 'unknown' ? 1 : 0;
+    return entries
+      .filter(item => item && item.official === true && item.apiListed === true &&
+        item.cors === true && item.status !== 'unhealthy')
+      .map(item => {
+        try {
+          const raw = safeHttps(item.url);
+          const parsed = new URL(raw);
+          if (!raw || parsed.protocol !== 'https:' || parsed.username || parsed.password ||
+              (parsed.pathname !== '/' && parsed.pathname !== '') || parsed.search || parsed.hash) return null;
+          return {
+            url: parsed.origin,
+            status: String(item.status || 'unknown'),
+            score: Number(item.score) || 0,
+            responseMs: Number(item.responseMs) || 999999
+          };
+        } catch (_) {
+          return null;
+        }
+      })
+      .filter(Boolean)
+      .sort((a, b) => rank(b.status) - rank(a.status) ||
+        b.score - a.score || a.responseMs - b.responseMs);
+  }
+
+  async function fetchDirectInvidiousBundle(videoId, extractorConfig, excluded) {
+    const startedAt = Date.now();
+    const config = extractorConfig || {};
+    if (!config.mediaProxyUrl) throw new Error('The ED-ALL media proxy is not configured.');
+    const instances = await getTrustedInvidiousInstances();
+    const skipped = excluded instanceof Set ? excluded : new Set();
+    const failures = [];
+
+    for (const instance of instances) {
+      const base = instance.url.replace(/\/$/, '');
+      if (skipped.has(base)) continue;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8500);
+      try {
+        const endpoint = base + '/api/v1/videos/' + encodeURIComponent(videoId) +
+          '?fields=title,lengthSeconds,liveNow,hlsUrl,dashUrl,formatStreams,adaptiveFormats';
+        const response = await fetch(endpoint, {
+          method: 'GET',
+          mode: 'cors',
+          credentials: 'omit',
+          cache: 'no-store',
+          headers: { Accept: 'application/json' },
+          signal: controller.signal
+        });
+        if (!response.ok) throw new Error('Invidious API HTTP ' + response.status);
+        const payload = await response.json();
+        const normalized = normalizeInvidiousData(payload);
+        const bundle = normalize(withMediaProxy(normalized, config));
+        if (!bundle || !bundle.videoStreams.length) {
+          throw new Error('Invidious returned no browser-compatible selectable video streams.');
+        }
+        if (!bundle.muxedVideos.length && !bundle.audioStreams.length && !bundle.dash && !bundle.hls) {
+          throw new Error('Invidious returned video-only streams without an audio path.');
+        }
+        return {
+          ...bundle,
+          instance: base,
+          provider: 'invidious',
+          source: 'browser-api',
+          requestElapsedMs: Date.now() - startedAt
+        };
+      } catch (error) {
+        failures.push(base + ': ' + readErrorMessage(error).slice(0, 180));
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    throw new Error('Direct Invidious browser fallback failed for all official API/CORS instances: ' +
+      (failures.join(' | ') || 'no eligible official instance is currently listed'));
+  }
+
   async function fetchInvidiousBundle(videoId, excluded, extractorConfig) {
     const requestStartedAt = Date.now();
     const config = extractorConfig || {};
     const workerUrl = String(config.workerUrl || '').replace(/\/$/, '');
-    if (!workerUrl) {
-      throw new Error('Invidious Cloudflare Worker is not configured for this page.');
-    }
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 18500);
-    try {
-      const response = await fetch(workerUrl, {
-        method: 'POST',
-        cache: 'no-store',
-        signal: controller.signal,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({
-          videoId,
-          excludeInstances: Array.from(excluded).filter(value => /^https:\/\/[a-z0-9.-]+$/i.test(String(value)))
-        })
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || !payload.success) {
-        throw new Error('Invidious extractor HTTP ' + response.status + ': ' + readErrorMessage(payload.error || payload.message));
+    let workerError = null;
+
+    if (workerUrl) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 18500);
+      try {
+        const response = await fetch(workerUrl, {
+          method: 'POST',
+          cache: 'no-store',
+          signal: controller.signal,
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify({
+            videoId,
+            excludeInstances: Array.from(excluded).filter(value => /^https:\/\/[a-z0-9.-]+$/i.test(String(value)))
+          })
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.success) {
+          throw new Error('Invidious extractor HTTP ' + response.status + ': ' +
+            readErrorMessage(payload.error || payload.message));
+        }
+        const bundle = normalize(withMediaProxy(payload, config));
+        if (!bundle) throw new Error('Invidious returned no browser-compatible streams.');
+        if (!payload.instance) throw new Error('Invidious response omitted the selected instance.');
+        return { ...bundle, instance: payload.instance, provider: 'invidious',
+          requestElapsedMs: Date.now() - requestStartedAt };
+      } catch (error) {
+        workerError = error;
+      } finally {
+        clearTimeout(timer);
       }
-      const bundle = normalize(payload);
-      if (!bundle) throw new Error('Invidious returned no browser-compatible streams.');
-      if (!payload.instance) throw new Error('Invidious response omitted the selected instance.');
-      return { ...bundle, instance: payload.instance, provider: 'invidious', requestElapsedMs: Date.now() - requestStartedAt };
-    } finally {
-      clearTimeout(timer);
+    } else {
+      workerError = new Error('Invidious Cloudflare Worker is not configured for this page.');
+    }
+
+    console.warn('[ED-ALL] Invidious Worker route failed; trying official CORS-enabled Invidious APIs from the browser.',
+      readErrorMessage(workerError));
+    try {
+      const directBundle = await fetchDirectInvidiousBundle(videoId, config, excluded);
+      return { ...directBundle, requestElapsedMs: Date.now() - requestStartedAt };
+    } catch (directError) {
+      throw new Error('Invidious Worker route failed: ' + readErrorMessage(workerError) +
+        '; browser API fallback failed: ' + readErrorMessage(directError));
     }
   }
 
   // Always compare both public extraction providers before ranking selectable quality.
   async function fetchBundle(videoId, excluded, extractorConfig) {
-    const pipedPromise = fetchPipedBundle(videoId, excluded)
+    const pipedPromise = fetchPipedBundle(videoId, excluded, extractorConfig)
       .then(bundle => ({ provider: 'piped', bundle }))
       .catch(error => ({ provider: 'piped', error }));
     const invidiousPromise = fetchInvidiousBundle(videoId, excluded, extractorConfig)

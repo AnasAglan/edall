@@ -30,6 +30,8 @@ describe("per-lesson video playback mode", () => {
   it("blocks app-only lessons on the web even for teachers and admins", () => {
     expect(rules.canShowLessonVideoOnWeb({ web_playback_enabled: false }, true)).toBe(false);
     expect(rules.canShowLessonVideoOnWeb({ webPlaybackEnabled: false }, true)).toBe(false);
+    expect(rules.canShowLessonVideoOnWeb({ webPlaybackEnabled: "false" }, true)).toBe(false);
+    expect(rules.canShowLessonVideoOnWeb({ web_playback_enabled: 0 }, false)).toBe(false);
   });
 
   it("fails closed when lesson data is missing", () => {
@@ -51,8 +53,12 @@ describe("per-lesson video playback mode", () => {
 
   it("filters app-only videos for every web role without a manager override", () => {
     expect(html).toContain("webVisibleLessonIds");
+    expect(html).toContain("Re-read the authoritative playback flag to avoid stale browser caches.");
+    expect(html).toContain(".select('web_playback_enabled')");
     expect(html).toContain("in('lesson_id', webVisibleLessonIds)");
-    expect(html).toContain(".filter(l => l.web_playback_enabled !== false)");
+    expect(html).toContain(".filter(l => isEdAllNativePlaybackApp() || (l.web_playback_enabled !== false && l.web_playback_enabled !== 'false' && l.web_playback_enabled !== 0))");
+    expect(html).toContain("function isEdAllNativePlaybackApp()");
+    expect(html).toContain("const canShowVideosOnWeb = isEdAllNativePlaybackApp() || window.EDAuthRules");
     expect(html).not.toContain("canPreviewAllLessonVideos || l.web_playback_enabled");
     expect(html).toContain("webPlaybackEnabled: l.web_playback_enabled !== false");
   });

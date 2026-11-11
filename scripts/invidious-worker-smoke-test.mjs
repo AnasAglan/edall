@@ -1,6 +1,13 @@
 const WORKER_URL = "https://edall-invidious-extractor.anasaglan2011.workers.dev";
 const VIDEO_ID = "dQw4w9WgXcQ";
 
+const MEDIA_PROXY_URL = "https://edall-video-media-proxy.anasaglan2011.workers.dev";
+const mediaProxyHealth = await fetch(MEDIA_PROXY_URL + "/health", { signal: AbortSignal.timeout(10000) });
+const mediaProxyStatus = await mediaProxyHealth.json().catch(() => null);
+if (!mediaProxyHealth.ok || mediaProxyStatus?.status !== "ok") {
+  throw new Error("ED-ALL media proxy Worker is not healthy.");
+}
+
 const response = await fetch(WORKER_URL, {
   method: "POST",
   headers: {
@@ -40,6 +47,34 @@ if (!payload.instance || !hasPlayablePath) {
         manifestProbe: diagnostics.manifestProbe || null,
       }),
   );
+}
+
+async function verifyProxiedRange(stream, label) {
+  if (!stream || !String(stream.url || "").includes("googlevideo.com")) {
+    throw new Error("No GoogleVideo " + label + " stream was returned for the media proxy test.");
+  }
+  const proxyUrl = new URL(MEDIA_PROXY_URL + "/media");
+  proxyUrl.searchParams.set("url", stream.url);
+  const proxied = await fetch(proxyUrl, {
+    headers: { Range: "bytes=0-1023" },
+    signal: AbortSignal.timeout(15000),
+  });
+  const contentRange = proxied.headers.get("content-range") || "";
+  const allowOrigin = proxied.headers.get("access-control-allow-origin") || "";
+  if (proxied.status !== 206 || !contentRange.startsWith("bytes ") || allowOrigin !== "*") {
+    await proxied.body?.cancel();
+    throw new Error("Media proxy " + label + " range/CORS test failed: HTTP " + proxied.status +
+      ", Content-Range=" + contentRange + ", ACAO=" + allowOrigin);
+  }
+  await proxied.body?.cancel();
+}
+const proxyVideoStream = videoStreams.find((stream) => String(stream.url || "").includes("googlevideo.com"));
+const proxyAudioStream = audioStreams.find((stream) => String(stream.url || "").includes("googlevideo.com"));
+await verifyProxiedRange(proxyVideoStream, "video");
+if (proxyAudioStream) {
+  await verifyProxiedRange(proxyAudioStream, "audio");
+} else if (!videoStreams.some((stream) => stream.videoOnly !== true && stream.videoOnly !== "true")) {
+  throw new Error("No independently verified audio stream or muxed video+audio stream was returned.");
 }
 
 console.log(

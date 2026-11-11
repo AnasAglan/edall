@@ -5,6 +5,8 @@ import worker, {
   canAccessAssistant,
   shouldForceInScope,
   inferRequiredReadTools,
+  buildVerifiedReadReply,
+  parseScopeVerdict,
   buildScopeRouting,
   attachUserRoles
 } from "./index.js";
@@ -213,4 +215,46 @@ test("user role labels are attached only from valid database role rows", () => {
     { id: ownId, name: "Teacher", email: "teacher@example.test", public_id: "T1", roles: ["teacher", "admin"] },
     { id: otherId, name: "Student", email: "student@example.test", public_id: "S1", roles: ["student"] }
   ]);
+});
+
+
+test("verified course and user answers are rendered only from database snapshots", () => {
+  assert.match(buildVerifiedReadReply([{ tool: "list_courses", verified: true, data: [{ title: "Algebra 1", price: 0 }] }], [
+    { role: "user", content: "ما الكورسات الموجودة؟" }
+  ]), /Algebra 1/);
+  assert.doesNotMatch(buildVerifiedReadReply([{ tool: "list_courses", verified: true, data: [{ title: "Algebra 1", price: 0 }] }], [
+    { role: "user", content: "ما الكورسات الموجودة؟" }
+  ]), /Physics/);
+  assert.match(buildVerifiedReadReply([{ tool: "list_courses", verified: false, error: "database unavailable" }]), /لن أخمّن/);
+  assert.match(buildVerifiedReadReply([{ tool: "search_platform_users", verified: true, data: [{ name: "Test User", roles: ["student"] }] }]), /Test User/);
+});
+
+test("teacher directory wording is not misclassified as lesson wording", () => {
+  assert.deepEqual(inferRequiredReadTools([
+    { role: "user", content: "مين المدرسين؟" }
+  ], ["admin"]), [{ name: "search_platform_users", args: { query: "", limit: 50, offset: 0, role: "teacher" } }]);
+});
+
+test("independent general assistant questions do not become platform requests just because they mention an assistant", () => {
+  assert.equal(shouldForceInScope([{ role: "user", content: "ما أفضل مساعد ذكاء اصطناعي للبرمجة؟" }]), false);
+});
+
+test("verified read helper never invents course or user names", () => {
+  assert.match(buildVerifiedReadReply([{ tool: "list_courses", verified: true, data: [{ title: "Algebra 1", price: 0 }] }], [{ role: "user", content: "ما الكورسات الموجودة؟" }]), /Algebra 1/);
+  assert.doesNotMatch(buildVerifiedReadReply([{ tool: "list_courses", verified: true, data: [{ title: "Algebra 1", price: 0 }] }], [{ role: "user", content: "ما الكورسات الموجودة؟" }]), /Physics/);
+  assert.match(buildVerifiedReadReply([{ tool: "list_courses", verified: false, error: "database unavailable" }]), /لن أخمّن/);
+  assert.match(buildVerifiedReadReply([{ tool: "search_platform_users", verified: true, data: [{ name: "Test User", roles: ["student"] }] }]), /Test User/);
+});
+
+test("independent general assistant questions are not forced into ED-ALL", () => {
+  assert.equal(shouldForceInScope([{ role: "user", content: "ما أفضل مساعد ذكاء اصطناعي للبرمجة؟" }]), false);
+});
+
+test("scope classifier accepts common English and Arabic out-of-scope verdicts", () => {
+  assert.equal(parseScopeVerdict("OUT_OF_SCOPE"), "OUT_OF_SCOPE");
+  assert.equal(parseScopeVerdict("OUT OF SCOPE"), "OUT_OF_SCOPE");
+  assert.equal(parseScopeVerdict("not-in-scope"), "OUT_OF_SCOPE");
+  assert.equal(parseScopeVerdict("خارج النطاق"), "OUT_OF_SCOPE");
+  assert.equal(parseScopeVerdict("IN_SCOPE"), "IN_SCOPE");
+  assert.match(buildScopeRouting("OUT_OF_SCOPE").instruction, /لا تذكر أن السؤال خارج نطاق ED-ALL/);
 });

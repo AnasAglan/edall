@@ -3143,7 +3143,7 @@ if (existingWatermark && !layerHost.contains(existingWatermark)) {
 
                 const optionalLoads = await Promise.allSettled([
                     loadShaka(),
-                    _edLoadExternalScript('_edpiped', '/ed_piped_player.js', () => !!window.EDPipedPlayer)
+                    _edLoadExternalScript('_edpiped', '/ed_piped_player.js?v=20261111-finalfix', () => !!window.EDPipedPlayer)
                 ]);
                 if (window.shaka && window.shaka.polyfill && window.shaka.polyfill.installAll) {
                     window.shaka.polyfill.installAll();
@@ -3544,6 +3544,7 @@ cleanups.push(() => {
                             desktopBridge: null,
                             extractorConfig: {
                                 workerUrl: 'https://edall-invidious-extractor.anasaglan2011.workers.dev',
+                                mediaProxyUrl: 'https://edall-video-media-proxy.anasaglan2011.workers.dev',
                                 origin: window.location.origin
                             },
                             toast: (message, type) => showToast(message, type || 'info')
@@ -4357,6 +4358,18 @@ window.triggerModalClose = function() {
             }
         };
 
+        function isEdAllNativePlaybackApp() {
+            const isDesktop = !!(window.edallDesktop && window.edallDesktop.isDesktop);
+            let isAndroidApp = false;
+            try {
+                isAndroidApp = !!(
+                    (window.edallAndroid && typeof window.edallAndroid.isApp === 'function' && window.edallAndroid.isApp()) ||
+                    /EdAllAndroid/i.test(navigator.userAgent)
+                );
+            } catch (_) {}
+            return isDesktop || isAndroidApp;
+        }
+
         // Lazy load course details (lessons, videos, exams, files)
         async function loadCourseDetails(courseId) {
             const course = courses.find(c => c.id === courseId);
@@ -4380,7 +4393,7 @@ window.triggerModalClose = function() {
                     // The web platform must honor app-only mode for students, teachers, and admins.
                     // Desktop (yt-dlp) and Android (NewPipe) use their separate native app paths.
                     const webVisibleLessonIds = (lessonsData || [])
-                        .filter(l => l.web_playback_enabled !== false)
+                        .filter(l => isEdAllNativePlaybackApp() || (l.web_playback_enabled !== false && l.web_playback_enabled !== 'false' && l.web_playback_enabled !== 0))
                         .map(l => l.id);
                     let allVideos = [], allFiles = [], allExams = [];
 
@@ -4469,7 +4482,7 @@ window.triggerModalClose = function() {
                         return {
                             id: l.id, title: l.title, content: l.content,
                             isFree: !!l.is_free,
-                            webPlaybackEnabled: l.web_playback_enabled !== false,
+                            webPlaybackEnabled: l.web_playback_enabled !== false && l.web_playback_enabled !== 'false' && l.web_playback_enabled !== 0,
                             videos: lVideos, exams: lExams, files: lFiles,
                             pdfData: null, pdfName: ''
                         };
@@ -6629,10 +6642,10 @@ window.triggerModalClose = function() {
             }
         }
 
-        function openLesson(courseId, lessonId) {
+        async function openLesson(courseId, lessonId) {
             try {
                 const course = courses.find(c => c.id === courseId);
-                const lesson = course.lessons.find(l => l.id === lessonId);
+                const lesson = course && Array.isArray(course.lessons) ? course.lessons.find(l => l.id === lessonId) : null;
                 
                 if (!course || !lesson) {
                     showToast(currentLanguage === 'ar' ? 'المحاضرة غير موجودة' : 'Lesson not found', 'error');
@@ -6673,6 +6686,28 @@ window.triggerModalClose = function() {
                     return;
                 }
                 
+                // App-only mode applies to ordinary browsers only. Native apps retain their
+                // isolated yt-dlp (desktop) and NewPipe (Android) playback paths.
+                if (!isEdAllNativePlaybackApp()) {
+                    // Re-read the authoritative playback flag to avoid stale browser caches.
+                    try {
+                        const playbackResult = await sb.from('lessons').select('web_playback_enabled').eq('id', lessonId).maybeSingle();
+                        if (playbackResult.error || !playbackResult.data) throw new Error(playbackResult.error?.message || 'لم يتم العثور على إعداد إتاحة الفيديو.');
+                        const playbackSetting = playbackResult.data.web_playback_enabled;
+                        lesson.webPlaybackEnabled = playbackSetting;
+                        lesson.videos = (playbackSetting === false || playbackSetting === 'false' || playbackSetting === 0)
+                            ? []
+                            : (lesson.videos || []);
+                    } catch (playbackError) {
+                        console.error('[ED-ALL] Could not verify lesson web playback setting:', playbackError);
+                        showToast(currentLanguage === 'ar'
+                            ? 'تعذر التحقق من إعداد إتاحة الفيديو. لم يتم عرض الفيديو على الموقع.'
+                            : 'Could not verify video availability. The website will not display this video.', 'error');
+                        lesson.webPlaybackEnabled = false;
+                        lesson.videos = [];
+                    }
+                }
+
                 trackLessonProgress(courseId, lessonId, 'opened', true);
                 
                 let modalContent = `
@@ -6683,7 +6718,7 @@ window.triggerModalClose = function() {
                     </div>
                 `;
                 
-                const canShowVideosOnWeb = window.EDAuthRules.canShowLessonVideoOnWeb(lesson, canEditThis);
+                const canShowVideosOnWeb = isEdAllNativePlaybackApp() || window.EDAuthRules.canShowLessonVideoOnWeb(lesson, canEditThis);
                 if (!canShowVideosOnWeb) {
                     modalContent += `
                         <div style="margin:12px 0;padding:14px;border:1px solid rgba(245,158,11,.45);border-radius:10px;background:rgba(245,158,11,.08);">
@@ -9610,13 +9645,21 @@ exam.questions.forEach((question, index) => {
                     throw new Error(details && details.error ? details.error : (error.message || 'فشل الاتصال بخدمة حذف المستخدم.'));
                 }
 
-                if (!data || data.deleted !== true || data.verified !== true) {
+                if (!data || data.success !== true || data.deleted !== true || data.verified !== true) {
                     throw new Error((data && data.error) || 'خدمة الحذف لم تؤكد أن الحساب حُذف فعليًا.');
                 }
 
-                // The Edge Function deletes with the service role and independently verifies
-                // Auth, profile, and role removal before returning deleted=true / verified=true.
-                // Trust that verified server result; a second browser-side query may be blocked by RLS.
+                // Independently re-check the client-visible identity tables before showing success.
+                const [profileCheck, roleCheck] = await Promise.all([
+                    sb.from('profiles').select('id').eq('id', userId).maybeSingle(),
+                    sb.from('user_roles').select('user_id').eq('user_id', userId).limit(1)
+                ]);
+                if (profileCheck.error || roleCheck.error) {
+                    throw new Error('أعادت خدمة الحذف نجاحًا، لكن تعذر التحقق من اختفاء الحساب من قاعدة البيانات؛ لم أعرض نجاحًا.');
+                }
+                if (profileCheck.data || (roleCheck.data || []).length > 0) {
+                    throw new Error('خدمة الحذف لم تزل ملف المستخدم أو صلاحياته بالكامل؛ لم أعرض نجاحًا.');
+                }
 
                 // Update the local view only after the backend deletion and verification succeed.
                 users.splice(userIndex, 1);
@@ -11334,7 +11377,7 @@ exam.questions.forEach((question, index) => {
     var enabled = Object.prototype.hasOwnProperty.call(lesson, 'web_playback_enabled')
       ? lesson.web_playback_enabled
       : lesson.webPlaybackEnabled;
-    return enabled !== false;
+    return enabled !== false && enabled !== 'false' && enabled !== 0;
   }
   function signupOutcome(data){
     if (data && data.session && data.user) return 'signed_in';

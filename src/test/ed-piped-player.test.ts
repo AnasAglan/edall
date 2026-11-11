@@ -154,12 +154,23 @@ describe("ED ALL Piped player", () => {
     expect(worker).toContain("const verifiedHeights = [");
     expect(worker).toContain("bundle.videoStreams = verifiedDirectVideos");
     expect(worker).toContain("bundle.audioStreams = verifiedDirectAudios");
+    const mediaProxy = readFileSync(resolve(process.cwd(), "workers/video-media-proxy/index.js"), "utf8");
+    expect(mediaProxy).toContain("getAllowedMediaUrl");
+    expect(mediaProxy).toContain('"Access-Control-Allow-Origin": "*"');
+    expect(mediaProxy).toContain("request.headers.get(\"Range\")");
+    expect(playerSource).toContain("mediaProxyBase + '/media?url='");
+    expect(playerSource).toContain("proxyUrl: mediaProxyBase");
+    expect(playerSource).toContain("normalize(withMediaProxy(data, extractorConfig))");
+    expect(playerSource).toContain("normalize(withMediaProxy(payload, config))");
+    expect(playerSource).toContain("fetchPipedBundle(videoId, excluded, extractorConfig)");
+
     expect(worker).not.toContain("if (heights.length >= 3 && Math.max(...heights) >= 720) break;");
   });
 
   it("keeps Piped playback exclusive to ordinary browsers", () => {
-    expect(platformHtml).toContain("_edLoadExternalScript('_edpiped', '/ed_piped_player.js'");
+    expect(platformHtml).toContain("_edLoadExternalScript('_edpiped', '/ed_piped_player.js?v=20261111-finalfix'");
     expect(platformHtml).toContain("window.EDPipedPlayer.open");
+    expect(platformHtml).toContain("mediaProxyUrl: 'https://edall-video-media-proxy.anasaglan2011.workers.dev'");
     expect(platformHtml).toContain("_edLoadLib({ nativeOnly: isDesktop || isAndroidApp });");
     expect(platformHtml).toContain("if (nativeOnly) return;");
     expect(platformHtml).toContain("if (!isAndroidApp && window.EDPipedPlayer && window.Plyr)");
@@ -292,6 +303,16 @@ describe("ED ALL Piped player", () => {
     expect(bundle.audioStreams).toHaveLength(1);
     expect(bundle.duration).toBe(180);
     expect(helpers.scoreBundle(bundle)).toBeGreaterThan(0);
+  });
+
+  it("falls back to official CORS-enabled Invidious APIs from the browser when the Worker egress is blocked", () => {
+    expect(playerSource).toContain("async function getTrustedInvidiousInstances()");
+    expect(playerSource).toContain("item.official === true && item.apiListed === true");
+    expect(playerSource).toContain("item.cors === true && item.status !== 'unhealthy'");
+    expect(playerSource).toContain("async function fetchDirectInvidiousBundle");
+    expect(playerSource).toContain("mode: 'cors'");
+    expect(playerSource).toContain("credentials: 'omit'");
+    expect(playerSource).toContain("normalizeInvidiousData(payload)");
   });
 
   it("waits for both providers before comparing available quality", () => {

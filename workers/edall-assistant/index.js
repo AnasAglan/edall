@@ -258,7 +258,7 @@ async function classifyExplicitWriteIntent(env, conversation) {
   }
 }
 
-const PLATFORM_CONTEXT_PATTERN = /(?:ed[\s-]?all|المنصة|منصة|الموقع|موقع المنصة|الموقع الإلكتروني|الموقع الالكتروني|التطبيق|برنامج المنصة|لوحة الإدارة|لوحة الادارة|الإدارة|الادارة|إدارة المنصة|ادارة المنصة|الدورة|الدورات|دورة|دورات|الكورس|الكورسات|كورسات|كورس|المحاضرة|المحاضرات|المحاضره|الدرس|الدروس|درس|فيديو|فيديوهات|الجودة|الجودات|مشغل الفيديو|المشغل|الاختبار|الاختبارات|الامتحان|الامتحانات|الأسئلة|الاسئلة|الطلاب|طالب|المعلمين|مدرس|مدرسين|المستخدمين|مستخدم|حسابات المستخدمين|الحساب|حسابات|صلاحيات|صلاحية|الحظر|المحفظة|رصيد|التسجيلات|التسجيل|الإشعارات|الاشعارات|إشعار|اشعار|الإعدادات|اعدادات|المساعد|المساعدة|الذكاء الاصطناعي|بيانات المنصة|قاعدة البيانات|حذف المستخدم|حذف حساب|تسجيل الدخول|رفع ملف|ملف pdf|pdf|youtube|piped|invidious|yt-dlp|newpipe|cloudflare|supabase|lovable|admin panel|dashboard|course|courses|lesson|lessons|video|videos|quality|qualities|exam|exams|student|students|teacher|teachers|user|users|assistant|platform|website|web app|playback)/i;
+const PLATFORM_CONTEXT_PATTERN = /(?:ed[\s-]?all|المنصة|منصة|موقع المنصة|الموقع الإلكتروني|الموقع الالكتروني|التطبيق فقط|برنامج المنصة|لوحة الإدارة|لوحة الادارة|الإدارة|الادارة|إدارة المنصة|ادارة المنصة|الدورة|الدورات|دورة|دورات|الكورس|الكورسات|كورسات|كورس|المحاضرة|المحاضرات|المحاضره|الدرس|الدروس|درس|فيديو|فيديوهات|الجودة|الجودات|مشغل الفيديو|المشغل|الاختبار|الاختبارات|الامتحان|الامتحانات|الأسئلة|الاسئلة|الطلاب|طالب|المعلمين|مدرس|مدرسين|المستخدمين|مستخدم|حسابات المستخدمين|الحساب|حسابات|صلاحيات|صلاحية|الحظر|المحفظة|رصيد|التسجيلات|التسجيل|الإشعارات|الاشعارات|إشعار|اشعار|الإعدادات|اعدادات|بيانات المنصة|قاعدة البيانات|حذف المستخدم|حذف حساب|تسجيل الدخول|رفع ملف|ملف pdf|pdf|youtube|piped|invidious|yt-dlp|newpipe|cloudflare|supabase|lovable|admin panel|dashboard|course|courses|lesson|lessons|video|videos|quality|qualities|exam|exams|student|students|teacher|teachers|user|users|platform|website|web app|playback)/i;
 const PLATFORM_FOLLOW_UP_PATTERN = /^(?:طيب|طب|تمام|حسنًا|حسنا|أيوه|ايوه|اه|أه|نعم|لا|يلا|كمل|اكمل|كمّل|اعمل|نفذ|نفّذ|صلح|اصلح|عدّل|عدل|جرّب|جرب|ليه|لماذا|ازاي|إزاي|كيف|ماذا بعد|ما التالي|هذه|هذا|دي|ده|دول|ديها|عليها|عليه|لها|له|هم|ها|نفسه|نفسها|نفس المشكلة|ما زال|لسه|لسة|لسه لا|تمام كده|كده|كدا|the same|that one|it|this|those|yes|no|okay|ok|continue|go ahead|fix it|try again)[.!؟?\s،,]*$/i;
 const FOLLOW_UP_REFERENCE_PATTERN = /(?:\b(?:it|this|that|those|same)\b|ها|هم|عليه|عليها|له|لها|ده|دي|دول|نفس|كمان|برضه|أيضًا)/i;
 
@@ -289,7 +289,7 @@ export function inferRequiredReadTools(conversation, roles = []) {
   const writeIntent = /(?:أنشئ|انشئ|اضف|أضف|أضيف|اضيف|ضيف|ضيفلي|إنشاء|انشاء|عدل|عدّل|تعديل|حدث|حدّث|تحديث|غير|غيّر|حذف|احذف|امسح|اشتري|اشتر|شراء|ارفع|رفع|ارسل|أرسل|ابعت|احظر|حظر|شحن|اشحن|نفذ|نفّذ|create|add|update|edit|change|delete|remove|buy|purchase|upload|send|ban|credit)/i;
   if (writeIntent.test(current)) return [];
 
-  const readIntent = /(?:إحصاء|احصاء|إحصائيات|احصائيات|إحصائية|احصائية|statistics|stats|ما|ماذا|ايه|إيه|اي|أي|اسم|أسماء|اسماء|عدد|كم|كام|مين|من هم|من هي|اعرض|اعرضلي|وريني|هات|قائمة|قولي|قول لي|اخبرني|خبرني|عايز اعرف|عاوز اعرف|ممكن اعرف|عندنا|الموجود|الموجودة|الموجودين|تفاصيل|ابحث|بحث|عرض|اظهر|أظهر|هل يوجد|هل عندنا|فيه|show|list|find|what|which|how many|tell me about)/i;
+  const readIntent = /(?:إحصاء|احصاء|إحصائيات|احصائيات|إحصائية|احصائية|statistics|stats|ما|ماذا|ايه|إيه|اي|أي|اسم|أسماء|اسماء|عدد|كم|كام|مين|من هم|من هي|اعرض|اعرضلي|وريني|هات|قائمة|قولي|قول لي|اخبرني|خبرني|عايز اعرف|عاوز اعرف|ممكن اعرف|اشرح|شرح|احكيلي|احكي|حدثني|معلومات عن|اشوف|شوف|عندنا|الموجود|الموجودة|الموجودين|تفاصيل|ابحث|بحث|عرض|اظهر|أظهر|هل يوجد|هل عندنا|فيه|show|list|find|what|which|how many|tell me about|من المستخدمين|من الطلاب|من المدرسين|من المعلمين|بيانات|الكورسات|كورسات|الدورات|دورات|المستخدمين|الطلاب|المدرسين|المعلمين|courses|users|students|teachers)/i;
   const currentIsRead = readIntent.test(current);
   const isGenericFollowUp = /(?:وريني|اعرض|هات|قولي|قول لي|اظهر|أظهر|اللي موجود|الموجود|الموجودة|الموجودين|what is there|show me what|list them)/i.test(current);
   if (!currentIsRead && !isGenericFollowUp) return [];
@@ -299,7 +299,7 @@ export function inferRequiredReadTools(conversation, roles = []) {
   const priorContext = userMessages.slice(-6, -1).join(" ");
   const focus = isGenericFollowUp ? current + " " + priorContext : current;
 
-  const courseOrLesson = /(?:كورس|كورسات|الكورس|الكورسات|دورة|دورات|الدورة|الدورات|محاضرة|محاضرات|المحاضرة|المحاضرات|محاضره|الدرس|درس|دروس|الدروس|اختبار|اختبارات|امتحان|امتحانات|course|courses|lesson|lessons|exam|exams)/i;
+  const courseOrLesson = /(?:كورس|كورسات|الكورس|الكورسات|دورة|دورات|الدورة|الدورات|محاضرة|محاضرات|المحاضرة|المحاضرات|محاضره|الدرس|الدروس|(?<!م)درس|دروس|اختبار|اختبارات|امتحان|امتحانات|course|courses|lesson|lessons|exam|exams)/i;
   const users = /(?:مستخدم|مستخدمين|المستخدم|المستخدمين|حساب|حسابات|طالب|طلاب|الطلاب|مدرس|مدرسين|المدرسين|المعلمين|معلم|معلمين|مدير|مديرين|المديرين|teacher|teachers|student|students|admin|admins|user|users)/i;
   const platformStats = /(?:إحصاء|احصاء|إحصائيات|احصائيات|إحصائية|احصائية|عدد|كم|كام|statistics|stats|count|how many)/i;
   const platformData = /(?:منصة|المنصة|مستخدم|طالب|مدرس|معلم|دورة|كورس|محاضرة|درس|فيديو|اختبار|تسجيل|محاولة|ملف|pdf|platform|course|lesson|teacher|student|user|exam)/i;
@@ -357,20 +357,62 @@ async function classifyRequestScope(env, conversation, hasImages) {
       chat_template_kwargs: { enable_thinking: false, clear_thinking: true },
       max_completion_tokens: 24
     });
-    const verdict = String(result?.choices?.[0]?.message?.content || "").trim().toUpperCase();
-    if (verdict.includes("OUT_OF_SCOPE") && !verdict.includes("IN_SCOPE")) return "OUT_OF_SCOPE";
-    return "IN_SCOPE";
+    return parseScopeVerdict(result?.choices?.[0]?.message?.content || "");
   } catch (error) {
     console.error("ED-ALL scope classifier unavailable:", error instanceof Error ? error.message : String(error));
     return "IN_SCOPE";
   }
 }
 
+export function parseScopeVerdict(value) {
+  const rawVerdict = String(value || "").trim();
+  const verdict = rawVerdict.toUpperCase().replace(/[\s-]+/g, "_");
+  if (verdict.includes("OUT_OF_SCOPE") || verdict.includes("OUTSIDE_SCOPE") ||
+      verdict.includes("NOT_IN_SCOPE") || /خارج\s+النطاق/.test(rawVerdict)) return "OUT_OF_SCOPE";
+  if (verdict.includes("IN_SCOPE") || /داخل\s+النطاق/.test(rawVerdict)) return "IN_SCOPE";
+  return "IN_SCOPE";
+}
+
+export function buildVerifiedReadReply(snapshots, conversation = []) {
+  const snapshot = Array.isArray(snapshots) ? snapshots.find(item => ["get_platform_stats", "list_courses", "search_platform_users"].includes(item?.tool)) : null;
+  if (!snapshot) return null;
+  if (snapshot.verified !== true) return "تعذر جلب البيانات الحقيقية من قاعدة البيانات، لذلك لن أخمّن أسماء أو أرقامًا. " + String(snapshot.error || "أعد المحاولة لاحقًا.").slice(0, 240);
+  const lastUser = (Array.isArray(conversation) ? conversation : []).filter(item => item?.role === "user").at(-1)?.content || "";
+  const wantsCount = /(?:كم|كام|عدد|count|how many)/i.test(lastUser);
+  const data = snapshot.data;
+  if (snapshot.tool === "get_platform_stats") {
+    if (!data || typeof data !== "object") return "تعذر قراءة إحصاءات المنصة من قاعدة البيانات.";
+    const labels = [["users","المستخدمون"],["students","الطلاب"],["teachers","المعلمون"],["admins","المديرون"],["courses","الدورات"],["lessons","المحاضرات"],["lesson_video_links","روابط الفيديو"],["lesson_pdf_links","روابط PDF"],["enrollments","التسجيلات"],["exams","الاختبارات"],["exam_attempts","محاولات الاختبار"]];
+    if (labels.some(([key]) => !Number.isFinite(Number(data[key])))) return "لم تكتمل قراءة بعض الإحصاءات من قاعدة البيانات؛ لن أعرض أرقامًا غير مؤكدة.";
+    return "إحصاءات ED-ALL التي قرأتها الآن من قاعدة البيانات:\n" + labels.map(([key,label]) => "• " + label + ": **" + Number(data[key]).toLocaleString("en-US") + "**").join("\n");
+  }
+  if (snapshot.tool === "list_courses") {
+    if (!Array.isArray(data)) return "تعذر قراءة قائمة الدورات من قاعدة البيانات.";
+    if (!data.length) return "لا توجد دورات متاحة للعرض ضمن صلاحيات حسابك.";
+    if (wantsCount) {
+      if (/(?:محاضرة|محاضرات|درس|دروس|lesson)/i.test(lastUser) && !/(?:كورس|كورسات|دورة|دورات|course)/i.test(lastUser)) {
+      const available = data.map(item => String(item?.title || "").trim()).filter(Boolean).slice(0, 20);
+      return "لا أريد أن أخلط بين عدد الدورات وعدد المحاضرات. حدّد الدورة التي تريد إحصاء محاضراتها. الدورات المتاحة ضمن صلاحياتك: " + (available.length ? available.join("، ") : "لا توجد أسماء متاحة") + ".";
+    }
+    return "عدد الدورات التي ظهرت في قاعدة البيانات ضمن صلاحيات حسابك: **" + (data.length >= 50 ? "50 على الأقل (أول 50 نتيجة)" : data.length) + "**.";
+    }
+    const lines = data.map((course,index) => { const title = String(course?.title || "").trim(); if (!title) return null; const price = Number(course.price); const priceText = Number.isFinite(price) ? " — " + (price === 0 ? "مجانية" : price.toLocaleString("en-US") + " جنيه") : ""; return (index+1) + ". **" + title.replace(/[\r\n]/g," ").slice(0,180) + "**" + priceText; }).filter(Boolean);
+    return lines.length ? "هذه أسماء الدورات الموجودة فعلًا في قاعدة البيانات (حتى 50 دورة):\n" + lines.join("\n") : "لم تُرجع قاعدة البيانات أسماء دورات قابلة للعرض.";
+  }
+  if (snapshot.tool === "search_platform_users") {
+    if (!Array.isArray(data)) return "تعذر قراءة حسابات المستخدمين من قاعدة البيانات.";
+    if (!data.length) return "لم أجد مستخدمين مطابقين ضمن صلاحيات البحث المتاحة.";
+    if (wantsCount) return "عدد المستخدمين في نتيجة البحث الحالية: **" + (data.length >= 50 ? "50 على الأقل (أول 50 نتيجة)" : data.length) + "**.";
+    const lines = data.map((user,index) => { const name = String(user?.name || "").trim(); if (!name) return null; const roles = Array.isArray(user.roles) ? user.roles.join("، ") : ""; return (index+1) + ". **" + name.replace(/[\r\n]/g," ").slice(0,140) + "**" + (roles ? " — " + roles : ""); }).filter(Boolean);
+    return lines.length ? "هذه أسماء المستخدمين التي أعادها البحث الفعلي:\n" + lines.join("\n") : "لم تُرجع قاعدة البيانات أسماء مستخدمين قابلة للعرض.";
+  }
+  return null;
+}
 export function buildScopeRouting(scope) {
   if (scope === "OUT_OF_SCOPE") {
     return {
       allowPlatformTools: false,
-      instruction: "السؤال الحالي مستقل عن ED-ALL. أجب عنه مباشرة بوصفك مساعدًا عامًا وباللغة المناسبة، دون رفض نمطي. لا تستخدم أدوات المنصة ولا تخمّن أي معلومات عن قاعدة بياناتها أو مستخدميها أو دوراتها."
+      instruction: "السؤال الحالي مستقل عن ED-ALL. أجب عنه مباشرة بوصفك مساعدًا عامًا وباللغة المناسبة. لا تذكر أن السؤال خارج نطاق ED-ALL، ولا تعرض قائمة المهام التي تدعمها المنصة، ولا تطلب من المستخدم تحويل السؤال إلى مهمة داخل المنصة. لا تستخدم أدوات المنصة ولا تخمّن أي معلومات عن قاعدة بياناتها أو مستخدميها أو دوراتها."
     };
   }
   return {
@@ -2341,6 +2383,8 @@ export default {
         });
       }
     }
+    const groundedReadReply = buildVerifiedReadReply(verifiedReadSnapshots, messages);
+    if (groundedReadReply !== null) return sseTextResponse(groundedReadReply, origin);
     const verifiedReadContext = verifiedReadSnapshots.length
       ? {
           role: "system",
