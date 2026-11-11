@@ -505,7 +505,7 @@ async function extract(videoId: string, excluded: string[], workerOrigin: string
     })),
     audioStreams: best.audioStreams.map((stream: any) => ({
       ...stream,
-      url: mediaProxyUrl(new URL(req.url).origin, stream.url),
+      url: mediaProxyUrl(workerOrigin, stream.url),
     })),
     qualities: best.heights,
     diagnostics: {
