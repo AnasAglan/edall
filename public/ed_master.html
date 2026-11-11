@@ -5470,11 +5470,13 @@ window.triggerModalClose = function() {
             }
         }
 
-        function startSignupResendCooldown(seconds) {
-            const until = Date.now() + Math.max(0, Number(seconds) || 0) * 1000;
-            try { sessionStorage.setItem(EDALL_SIGNUP_RESEND_UNTIL_KEY, String(until)); } catch (_) {}
+        function resumeSignupResendCooldown() {
             if (_signupResendTimer) clearInterval(_signupResendTimer);
             updateSignupResendButton();
+            if (getSignupResendSeconds() <= 0) {
+                _signupResendTimer = null;
+                return;
+            }
             _signupResendTimer = setInterval(() => {
                 updateSignupResendButton();
                 if (getSignupResendSeconds() <= 0) {
@@ -5482,6 +5484,12 @@ window.triggerModalClose = function() {
                     _signupResendTimer = null;
                 }
             }, 250);
+        }
+
+        function startSignupResendCooldown(seconds) {
+            const until = Date.now() + Math.max(0, Number(seconds) || 0) * 1000;
+            try { sessionStorage.setItem(EDALL_SIGNUP_RESEND_UNTIL_KEY, String(until)); } catch (_) {}
+            resumeSignupResendCooldown();
         }
 
         function renderSignupVerificationCopy() {
@@ -5519,6 +5527,7 @@ window.triggerModalClose = function() {
             if (codeInput) codeInput.value = '';
             renderSignupVerificationCopy();
             if (startCooldown) startSignupResendCooldown(60);
+            else resumeSignupResendCooldown();
             window.showPage('emailVerificationPage');
             window.setTimeout(() => {
                 const input = document.getElementById('signupVerificationCode');
