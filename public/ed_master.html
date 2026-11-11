@@ -1983,6 +1983,41 @@ word-spacing: normal !important;
         </div>
     </div>
 
+    <div id="emailVerificationPage" class="page">
+        <div class="header">
+            <div class="logo" onclick="showPage('mainPage')">ED</div>
+            <div class="header-title" id="signupVerificationTitle">تفعيل حسابك</div>
+            <div class="header-desc" id="signupVerificationHeaderDesc">تأكيد البريد الإلكتروني</div>
+        </div>
+        <div id="signupVerificationCard" style="background:var(--card);border-radius:var(--radius-lg);padding:32px 28px;margin:24px auto;max-width:430px;box-shadow:var(--shadow);text-align:center;">
+            <div style="font-size:1.1rem;font-weight:900;margin-bottom:12px;" id="signupVerificationInstruction">اكتب ما تم إرساله لبريدك أو اضغط زر التفعيل</div>
+            <div style="color:var(--text-muted);margin-bottom:8px;" id="signupVerificationEmailLabel">أرسلنا رسالة إلى:</div>
+            <div id="signupVerificationEmail" dir="ltr" style="font-weight:800;overflow-wrap:anywhere;margin-bottom:22px;"></div>
+            <form id="signupVerificationForm">
+                <label for="signupVerificationCode" id="signupVerificationCodeLabel" style="display:block;text-align:right;font-weight:700;margin-bottom:8px;">رمز التحقق المكوّن من 6 أرقام</label>
+                <input
+                    id="signupVerificationCode"
+                    name="signupVerificationCode"
+                    type="text"
+                    inputmode="numeric"
+                    autocomplete="one-time-code"
+                    pattern="[0-9]{6}"
+                    maxlength="6"
+                    minlength="6"
+                    dir="ltr"
+                    aria-label="Six-digit email verification code"
+                    placeholder="••••••"
+                    required
+                    style="width:100%;box-sizing:border-box;text-align:center;letter-spacing:.55em;font-size:1.45rem;font-weight:900;font-variant-numeric:tabular-nums;padding:14px 12px;margin-bottom:16px;"
+                >
+                <button type="submit" class="btn btn-accent" id="btnVerifySignupOtp" style="width:100%;margin-bottom:12px;">تأكيد الرمز</button>
+            </form>
+            <button type="button" class="btn btn-outline" id="btnResendSignupEmail" style="width:100%;margin-bottom:10px;">إعادة إرسال الرسالة</button>
+            <div id="signupResendCountdown" aria-live="polite" style="min-height:20px;color:var(--text-muted);font-size:.85rem;margin-bottom:14px;"></div>
+            <button type="button" class="btn btn-outline" id="btnBackToSignupLogin" style="width:100%;">العودة لتسجيل الدخول</button>
+        </div>
+    </div>
+
     <div id="adminPage" class="page">
         <div class="header">
             <div class="logo" onclick="showPage('mainPage')">ED</div>
@@ -3799,6 +3834,8 @@ cleanups.push(() => {
                     renderWalletPage();
                 } else if (pageId === 'walletAdminTopupPage') {
                     renderWalletAdminTopupPage();
+                } else if (pageId === 'emailVerificationPage') {
+                    renderSignupVerificationCopy();
                 } else if (pageId === 'releasesPage') {
                     renderReleasePlatforms();
                 } else if (pageId === 'releasesAdminPage') {
@@ -4071,6 +4108,10 @@ window.triggerModalClose = function() {
                 if (sessionError) throw sessionError;
 
                 if (session?.user) {
+                    const pendingSignupEmail = getPendingSignupEmail();
+                    if (pendingSignupEmail && pendingSignupEmail.toLowerCase() === String(session.user.email || '').toLowerCase()) {
+                        clearPendingSignupVerification();
+                    }
                     await ensureUserAccountRecord(session.user);
                     await loadCurrentUserFromSupabase(session.user);
                     if (currentUser?.banned) {
@@ -4113,6 +4154,12 @@ window.triggerModalClose = function() {
                 if (loadingOverlay) loadingOverlay.style.display = 'none';
                 _initDone = true;
                 flushPendingAuthState();
+
+                const pendingVerificationEmail = !session?.user ? getPendingSignupEmail() : '';
+                if (pendingVerificationEmail) {
+                    showEmailVerificationPage(pendingVerificationEmail, false);
+                    return;
+                }
 
                 const params = new URLSearchParams(window.location.search);
                 if (params.has('page') || params.has('id')) {
@@ -4711,6 +4758,22 @@ window.triggerModalClose = function() {
                 
                 document.getElementById('btnSignIn').addEventListener('click', handleSignIn);
                 document.getElementById('btnSignUp').addEventListener('click', handleSignUp);
+                document.getElementById('signupVerificationForm').addEventListener('submit', handleVerifySignupOtp);
+                document.getElementById('btnResendSignupEmail').addEventListener('click', handleResendSignupEmail);
+                document.getElementById('btnBackToSignupLogin').addEventListener('click', () => {
+                    const pendingEmail = getPendingSignupEmail();
+                    if (pendingEmail) document.getElementById('signInEmail').value = pendingEmail;
+                    window.showPage('loginPage');
+                });
+                document.getElementById('signupVerificationCode').addEventListener('input', (event) => {
+                    event.target.value = event.target.value.replace(/[^0-9]/g, '').slice(0, 6);
+                });
+                document.getElementById('signupVerificationCode').addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter') {
+                        event.preventDefault();
+                        handleVerifySignupOtp(event);
+                    }
+                });
                 
                 document.getElementById('adminUiBtn').addEventListener('click', showAdminPage);
                 document.getElementById('admCreate').addEventListener('click', createNewCourse);
@@ -4918,6 +4981,7 @@ window.triggerModalClose = function() {
             const pageNames = {
                 'mainPage': currentLanguage === 'ar' ? 'الرئيسية' : 'Home',
                 'loginPage': currentLanguage === 'ar' ? 'تسجيل الدخول' : 'Login',
+                'emailVerificationPage': currentLanguage === 'ar' ? 'تفعيل الحساب' : 'Verify email',
                 'adminPage': currentLanguage === 'ar' ? 'لوحة الإدارة' : 'Admin Panel',
                 'profilePage': currentLanguage === 'ar' ? 'الملف الشخصي' : 'Profile',
                 'notificationsPage': currentLanguage === 'ar' ? 'الإشعارات' : 'Notifications',
@@ -5358,6 +5422,196 @@ window.triggerModalClose = function() {
             }
         }
 
+        const EDALL_PENDING_SIGNUP_EMAIL_KEY = 'edall.pendingSignupEmail';
+        const EDALL_SIGNUP_RESEND_UNTIL_KEY = 'edall.signupResendUntil';
+        let _signupResendTimer = null;
+        let _signupResendBusy = false;
+
+        function getPendingSignupEmail() {
+            try { return (sessionStorage.getItem(EDALL_PENDING_SIGNUP_EMAIL_KEY) || '').trim(); }
+            catch (_) { return ''; }
+        }
+
+        function clearPendingSignupVerification() {
+            try {
+                sessionStorage.removeItem(EDALL_PENDING_SIGNUP_EMAIL_KEY);
+                sessionStorage.removeItem(EDALL_SIGNUP_RESEND_UNTIL_KEY);
+            } catch (_) {}
+            if (_signupResendTimer) {
+                clearInterval(_signupResendTimer);
+                _signupResendTimer = null;
+            }
+            _signupResendBusy = false;
+        }
+
+        function getSignupResendSeconds() {
+            let until = 0;
+            try { until = Number(sessionStorage.getItem(EDALL_SIGNUP_RESEND_UNTIL_KEY)) || 0; }
+            catch (_) {}
+            return window.EDAuthRules.signupResendSecondsRemaining(until, Date.now());
+        }
+
+        function updateSignupResendButton() {
+            const button = document.getElementById('btnResendSignupEmail');
+            const countdown = document.getElementById('signupResendCountdown');
+            if (!button) return;
+            const seconds = getSignupResendSeconds();
+            const ar = currentLanguage === 'ar';
+            button.disabled = _signupResendBusy || seconds > 0;
+            button.textContent = _signupResendBusy
+                ? (ar ? 'جارٍ إرسال الرسالة...' : 'Sending email...')
+                : seconds > 0
+                    ? (ar ? 'إعادة إرسال الرسالة (' + seconds + ' ث)' : 'Resend email (' + seconds + 's)')
+                    : (ar ? 'إعادة إرسال الرسالة' : 'Resend email');
+            if (countdown) {
+                countdown.textContent = seconds > 0
+                    ? (ar ? 'يمكنك طلب رسالة جديدة بعد انتهاء العد التنازلي.' : 'You can request another email when the countdown ends.')
+                    : '';
+            }
+        }
+
+        function startSignupResendCooldown(seconds) {
+            const until = Date.now() + Math.max(0, Number(seconds) || 0) * 1000;
+            try { sessionStorage.setItem(EDALL_SIGNUP_RESEND_UNTIL_KEY, String(until)); } catch (_) {}
+            if (_signupResendTimer) clearInterval(_signupResendTimer);
+            updateSignupResendButton();
+            _signupResendTimer = setInterval(() => {
+                updateSignupResendButton();
+                if (getSignupResendSeconds() <= 0) {
+                    clearInterval(_signupResendTimer);
+                    _signupResendTimer = null;
+                }
+            }, 250);
+        }
+
+        function renderSignupVerificationCopy() {
+            const ar = currentLanguage === 'ar';
+            const copy = {
+                signupVerificationTitle: ar ? 'تفعيل حسابك' : 'Activate your account',
+                signupVerificationHeaderDesc: ar ? 'تأكيد البريد الإلكتروني' : 'Email verification',
+                signupVerificationInstruction: ar ? 'اكتب ما تم إرساله لبريدك أو اضغط زر التفعيل' : 'Enter the code sent to your email or click the activation button',
+                signupVerificationEmailLabel: ar ? 'أرسلنا رسالة إلى:' : 'We sent an email to:',
+                signupVerificationCodeLabel: ar ? 'رمز التحقق المكوّن من 6 أرقام' : 'Six-digit verification code',
+                btnVerifySignupOtp: ar ? 'تأكيد الرمز' : 'Verify code',
+                btnBackToSignupLogin: ar ? 'العودة لتسجيل الدخول' : 'Back to sign in'
+            };
+            Object.keys(copy).forEach(id => {
+                const element = document.getElementById(id);
+                if (element) element.textContent = copy[id];
+            });
+            const input = document.getElementById('signupVerificationCode');
+            if (input) input.setAttribute('aria-label', ar ? 'رمز التحقق المكوّن من ستة أرقام' : 'Six-digit email verification code');
+            const label = document.getElementById('signupVerificationCodeLabel');
+            if (label) label.style.textAlign = ar ? 'right' : 'left';
+            updateSignupResendButton();
+        }
+
+        function showEmailVerificationPage(email, startCooldown) {
+            const normalizedEmail = String(email || '').trim().toLowerCase();
+            if (!normalizedEmail) {
+                showToast(currentLanguage === 'ar' ? 'أدخل البريد الإلكتروني أولاً.' : 'Enter your email address first.', 'warning');
+                return;
+            }
+            try { sessionStorage.setItem(EDALL_PENDING_SIGNUP_EMAIL_KEY, normalizedEmail); } catch (_) {}
+            const emailElement = document.getElementById('signupVerificationEmail');
+            if (emailElement) emailElement.textContent = normalizedEmail;
+            const codeInput = document.getElementById('signupVerificationCode');
+            if (codeInput) codeInput.value = '';
+            renderSignupVerificationCopy();
+            if (startCooldown) startSignupResendCooldown(60);
+            window.showPage('emailVerificationPage');
+            window.setTimeout(() => {
+                const input = document.getElementById('signupVerificationCode');
+                if (input) input.focus();
+            }, 100);
+        }
+
+        async function handleVerifySignupOtp(event) {
+            if (event && event.preventDefault) event.preventDefault();
+            const email = getPendingSignupEmail();
+            const input = document.getElementById('signupVerificationCode');
+            const token = input ? input.value.trim() : '';
+            const button = document.getElementById('btnVerifySignupOtp');
+            if (!email) {
+                showToast(currentLanguage === 'ar' ? 'لم نعثر على بريد قيد التفعيل. ابدأ إنشاء الحساب من جديد.' : 'No pending signup email was found. Please start signup again.', 'warning');
+                window.showPage('loginPage');
+                return;
+            }
+            if (!window.EDAuthRules.validateSignupOtp(token)) {
+                showToast(currentLanguage === 'ar' ? 'اكتب رمز التحقق المكوّن من 6 أرقام.' : 'Enter the six-digit verification code.', 'warning');
+                if (input) input.focus();
+                return;
+            }
+
+            showBtnLoading(button);
+            try {
+                const { data, error } = await sb.auth.verifyOtp({ email, token, type: 'signup' });
+                if (error) throw error;
+                if (!data || !data.user || !data.session) {
+                    throw new Error(currentLanguage === 'ar' ? 'لم يكتمل تفعيل البريد.' : 'Email verification did not complete.');
+                }
+
+                await ensureUserAccountRecord(data.user);
+                await loadCurrentUserFromSupabase(data.user);
+                if (currentUser && currentUser.banned) {
+                    await sb.auth.signOut();
+                    currentUser = null;
+                    _activeAuthUserId = null;
+                    _syncUser();
+                    hideBtnLoading(button);
+                    updateUI();
+                    showToast(currentLanguage === 'ar' ? 'تم حظر حسابك. تواصل مع الإدارة.' : 'Your account has been blocked.', 'error');
+                    return;
+                }
+
+                _dataLoaded = false;
+                await loadData();
+                updateUI();
+                clearPendingSignupVerification();
+                hideBtnLoading(button);
+                window.showPage('mainPage');
+                showToast(currentLanguage === 'ar' ? 'تم تفعيل بريدك وإنشاء حسابك بنجاح.' : 'Your email is verified and your account is ready.', 'success');
+            } catch (error) {
+                hideBtnLoading(button);
+                console.error('Signup email verification failed:', error);
+                showToast(window.EDAuthRules.describeAuthError(error, currentLanguage, 'signin'), 'error');
+            }
+        }
+
+        async function handleResendSignupEmail() {
+            const email = getPendingSignupEmail();
+            if (!email) {
+                showToast(currentLanguage === 'ar' ? 'ابدأ إنشاء الحساب أولاً.' : 'Please start signup first.', 'warning');
+                window.showPage('loginPage');
+                return;
+            }
+            if (getSignupResendSeconds() > 0 || _signupResendBusy) {
+                updateSignupResendButton();
+                return;
+            }
+
+            _signupResendBusy = true;
+            updateSignupResendButton();
+            try {
+                const { error } = await sb.auth.resend({
+                    type: 'signup',
+                    email,
+                    options: { emailRedirectTo: window.location.origin + window.location.pathname }
+                });
+                if (error) throw error;
+                startSignupResendCooldown(60);
+                showToast(currentLanguage === 'ar' ? 'تمت إعادة إرسال رسالة التفعيل إلى بريدك.' : 'The confirmation email has been resent.', 'success');
+            } catch (error) {
+                if (Number(error && error.status) === 429 || String(error && (error.code || error.message) || '').toLowerCase().includes('rate')) {
+                    startSignupResendCooldown(60);
+                }
+                showToast(window.EDAuthRules.describeAuthError(error, currentLanguage, 'signup'), 'error');
+            } finally {
+                _signupResendBusy = false;
+                updateSignupResendButton();
+            }
+        }
+
         async function handleSignIn() {
             const btn = document.getElementById('btnSignIn');
             try {
@@ -5374,6 +5628,14 @@ window.triggerModalClose = function() {
                 
                 if (error || !data || !data.session) {
                     hideBtnLoading(btn);
+                    if (error && (error.code === 'email_not_confirmed' || String(error.message || '').toLowerCase().includes('email not confirmed'))) {
+                        document.getElementById('signInEmail').value = email;
+                        showEmailVerificationPage(email, false);
+                        showToast(currentLanguage === 'ar'
+                            ? 'بريدك غير مفعّل بعد. أدخل رمز التفعيل أو أعد إرسال الرسالة.'
+                            : 'Your email is not confirmed yet. Enter the code or resend the confirmation email.', 'warning');
+                        return;
+                    }
                     showToast(window.EDAuthRules.describeAuthError(error || { message: 'No session returned' }, currentLanguage, 'signin'), 'error');
                     return;
                 }
@@ -5445,9 +5707,10 @@ window.triggerModalClose = function() {
                     } else if (outcome === 'confirm_email') {
                         document.getElementById('signInEmail').value = email;
                         document.getElementById('signUpPass').value = '';
+                        showEmailVerificationPage(email, true);
                         showToast(currentLanguage === 'ar'
-                            ? 'تم إنشاء الحساب. أرسلنا رسالة تأكيد إلى ' + email + '، افتح الرابط فيها ثم سجّل الدخول بنفس البريد وكلمة المرور.'
-                            : 'Account created. We sent a confirmation link to ' + email + '. Open it, then sign in with the same email and password.', 'success');
+                            ? 'تم إنشاء الحساب. تحقق من بريدك لإدخال الرمز أو اضغط زر التفعيل في الرسالة.'
+                            : 'Account created. Check your email for the code or click the activation button in the message.', 'success');
                     } else {
                         showToast(currentLanguage === 'ar' ? 'تعذر إنشاء الحساب، حاول مرة أخرى.' : 'Could not create the account, please try again.', 'error');
                     }
@@ -11380,13 +11643,20 @@ exam.questions.forEach((question, index) => {
       : lesson.webPlaybackEnabled;
     return enabled !== false && enabled !== 'false' && enabled !== 0;
   }
+  function validateSignupOtp(token){
+    return typeof token === 'string' && /^\d{6}$/.test(token);
+  }
+  function signupResendSecondsRemaining(until, now){
+    var remaining = Number(until) - Number(now);
+    return Number.isFinite(remaining) && remaining > 0 ? Math.ceil(remaining / 1000) : 0;
+  }
   function signupOutcome(data){
     if (data && data.session && data.user) return 'signed_in';
     if (data && data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) return 'already_exists';
     if (data && data.user) return 'confirm_email';
     return 'failed';
   }
-  window.EDAuthRules = { MIN_PASSWORD_LENGTH: MIN_PASSWORD_LENGTH, validateSignupPassword: validateSignupPassword, describeAuthError: describeAuthError, signupOutcome: signupOutcome, authEventOutcome: authEventOutcome, canShowLessonVideoOnWeb: canShowLessonVideoOnWeb };
+  window.EDAuthRules = { MIN_PASSWORD_LENGTH: MIN_PASSWORD_LENGTH, validateSignupPassword: validateSignupPassword, validateSignupOtp: validateSignupOtp, signupResendSecondsRemaining: signupResendSecondsRemaining, describeAuthError: describeAuthError, signupOutcome: signupOutcome, authEventOutcome: authEventOutcome, canShowLessonVideoOnWeb: canShowLessonVideoOnWeb };
 })();
 </script>
 <script src="/ed_assistant.js" defer></script>
