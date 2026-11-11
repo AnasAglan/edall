@@ -237,3 +237,14 @@ test("teacher directory wording is not misclassified as lesson wording", () => {
 test("independent general assistant questions do not become platform requests just because they mention an assistant", () => {
   assert.equal(shouldForceInScope([{ role: "user", content: "ما أفضل مساعد ذكاء اصطناعي للبرمجة؟" }]), false);
 });
+
+test("verified read helper never invents course or user names", () => {
+  assert.match(buildVerifiedReadReply([{ tool: "list_courses", verified: true, data: [{ title: "Algebra 1", price: 0 }] }], [{ role: "user", content: "ما الكورسات الموجودة؟" }]), /Algebra 1/);
+  assert.doesNotMatch(buildVerifiedReadReply([{ tool: "list_courses", verified: true, data: [{ title: "Algebra 1", price: 0 }] }], [{ role: "user", content: "ما الكورسات الموجودة؟" }]), /Physics/);
+  assert.match(buildVerifiedReadReply([{ tool: "list_courses", verified: false, error: "database unavailable" }]), /لن أخمّن/);
+  assert.match(buildVerifiedReadReply([{ tool: "search_platform_users", verified: true, data: [{ name: "Test User", roles: ["student"] }] }]), /Test User/);
+});
+
+test("independent general assistant questions are not forced into ED-ALL", () => {
+  assert.equal(shouldForceInScope([{ role: "user", content: "ما أفضل مساعد ذكاء اصطناعي للبرمجة؟" }]), false);
+});
