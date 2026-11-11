@@ -56,7 +56,9 @@ describe("per-lesson video playback mode", () => {
     expect(html).toContain("Re-read the authoritative playback flag every time a lesson is opened.");
     expect(html).toContain(".select('web_playback_enabled')");
     expect(html).toContain("in('lesson_id', webVisibleLessonIds)");
-    expect(html).toContain(".filter(l => l.web_playback_enabled !== false && l.web_playback_enabled !== 'false' && l.web_playback_enabled !== 0)");
+    expect(html).toContain(".filter(l => isEdAllNativePlaybackApp() || (l.web_playback_enabled !== false && l.web_playback_enabled !== 'false' && l.web_playback_enabled !== 0))");
+    expect(html).toContain("function isEdAllNativePlaybackApp()");
+    expect(html).toContain("const canShowVideosOnWeb = isEdAllNativePlaybackApp() || window.EDAuthRules");
     expect(html).not.toContain("canPreviewAllLessonVideos || l.web_playback_enabled");
     expect(html).toContain("webPlaybackEnabled: l.web_playback_enabled !== false");
   });
