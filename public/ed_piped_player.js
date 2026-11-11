@@ -557,7 +557,25 @@
       if (!response.ok || !payload.success) {
         throw new Error('Invidious extractor HTTP ' + response.status + ': ' + readErrorMessage(payload.error || payload.message));
       }
-      const bundle = normalize(payload);
+      const mediaProxyBase = String(config.mediaProxyUrl || '').replace(/\/$/, '');
+      const proxyStream = stream => {
+        if (!stream || !mediaProxyBase) return stream;
+        try {
+          const source = new URL(safeHttps(stream.url));
+          const host = source.hostname.toLowerCase();
+          if (source.protocol === 'https:' && (host === 'googlevideo.com' || host.endsWith('.googlevideo.com'))) {
+            return { ...stream, url: mediaProxyBase + '/media?url=' + encodeURIComponent(source.toString()) };
+          }
+        } catch (_) {}
+        return stream;
+      };
+      const proxiedVideos = Array.isArray(payload.videoStreams) ? payload.videoStreams.map(proxyStream) : payload.videoStreams;
+      const proxiedAudios = Array.isArray(payload.audioStreams) ? payload.audioStreams.map(proxyStream) : payload.audioStreams;
+      const hasDirectStreamPath = Array.isArray(proxiedVideos) && proxiedVideos.length > 0;
+      const playablePayload = mediaProxyBase && hasDirectStreamPath
+        ? { ...payload, proxyUrl: mediaProxyBase, dash: null, hls: null, videoStreams: proxiedVideos, audioStreams: proxiedAudios }
+        : payload;
+      const bundle = normalize(playablePayload);
       if (!bundle) throw new Error('Invidious returned no browser-compatible streams.');
       if (!payload.instance) throw new Error('Invidious response omitted the selected instance.');
       return { ...bundle, instance: payload.instance, provider: 'invidious', requestElapsedMs: Date.now() - requestStartedAt };
