@@ -4039,6 +4039,7 @@ window.triggerModalClose = function() {
 
             await ensureUserAccountRecord(session.user);
             await loadCurrentUserFromSupabase(session.user);
+            clearPendingSignupVerification(session.user.email);
             if (currentUser?.banned) {
                 await sb.auth.signOut();
                 currentUser = null;
@@ -4105,6 +4106,7 @@ window.triggerModalClose = function() {
                 if (session?.user) {
                     await ensureUserAccountRecord(session.user);
                     await loadCurrentUserFromSupabase(session.user);
+                    clearPendingSignupVerification(session.user.email);
                     if (currentUser?.banned) {
                         await sb.auth.signOut();
                         currentUser = null;
@@ -4745,7 +4747,7 @@ window.triggerModalClose = function() {
                 document.getElementById('btnSignUp').addEventListener('click', handleSignUp);
                 document.getElementById('btnVerifySignupOtp').addEventListener('click', handleVerifySignupOtp);
                 document.getElementById('btnResendSignupOtp').addEventListener('click', resendSignupVerificationEmail);
-                document.getElementById('verifyEmailBackBtn').addEventListener('click', () => showPage('loginPage'));
+                document.getElementById('verifyEmailBackBtn').addEventListener('click', cancelSignupVerification);
                 const signupOtpInput = document.getElementById('signupOtpCode');
                 signupOtpInput.addEventListener('input', () => {
                     signupOtpInput.value = window.EDAuthRules.normalizeSignupOtp(signupOtpInput.value);
@@ -5442,6 +5444,24 @@ window.triggerModalClose = function() {
             catch (_) { return ''; }
         }
 
+        function clearPendingSignupVerification(expectedEmail) {
+            const pendingEmail = getPendingSignupEmail();
+            if (expectedEmail && pendingEmail && pendingEmail.toLowerCase() !== String(expectedEmail).trim().toLowerCase()) return false;
+            try {
+                sessionStorage.removeItem(PENDING_SIGNUP_EMAIL_KEY);
+                sessionStorage.removeItem(SIGNUP_RESEND_COOLDOWN_KEY);
+            } catch (_) {}
+            const input = document.getElementById('signupOtpCode');
+            if (input) input.value = '';
+            syncSignupResendButton();
+            return true;
+        }
+
+        function cancelSignupVerification() {
+            clearPendingSignupVerification();
+            showPage('loginPage');
+        }
+
         function setPendingSignupEmailLabel() {
             const label = document.getElementById('pendingSignupEmailLabel');
             if (!label) return;
@@ -5449,11 +5469,8 @@ window.triggerModalClose = function() {
             const t = i18n[currentLanguage] || i18n.ar;
             label.textContent = email ? t.verifyEmailSentTo + ' ' + email : t.verifyEmailMissing;
             const verifyButton = document.getElementById('btnVerifySignupOtp');
-            const resendButton = document.getElementById('btnResendSignupOtp');
-            if (!email) {
-                if (verifyButton) verifyButton.disabled = true;
-                if (resendButton) resendButton.disabled = true;
-            }
+            if (verifyButton) verifyButton.disabled = !email;
+            syncSignupResendButton();
         }
 
         function syncSignupResendButton() {
@@ -5462,7 +5479,8 @@ window.triggerModalClose = function() {
             if (!button || !label) return;
             const email = getPendingSignupEmail();
             if (!email) { button.disabled = true; return; }
-            const until = Number(sessionStorage.getItem(SIGNUP_RESEND_COOLDOWN_KEY) || 0);
+            let until = 0;
+            try { until = Number(sessionStorage.getItem(SIGNUP_RESEND_COOLDOWN_KEY) || 0); } catch (_) {}
             const remaining = Math.max(0, Math.ceil((until - Date.now()) / 1000));
             button.disabled = signupOtpResendInFlight || remaining > 0;
             const t = i18n[currentLanguage] || i18n.ar;
@@ -5502,9 +5520,7 @@ window.triggerModalClose = function() {
                     throw Object.assign(new Error('Signup verification did not return an authenticated session.'), { code: 'otp_expired' });
                 }
 
-                sessionStorage.removeItem(PENDING_SIGNUP_EMAIL_KEY);
-                sessionStorage.removeItem(SIGNUP_RESEND_COOLDOWN_KEY);
-                if (input) input.value = '';
+                clearPendingSignupVerification(email);
                 await ensureUserAccountRecord(data.user, normalizeRequestedRole(data.user.user_metadata?.requested_role || 'student'));
                 await loadCurrentUserFromSupabase(data.user);
 
@@ -5550,9 +5566,13 @@ window.triggerModalClose = function() {
             if (button) button.disabled = true;
             if (label) label.textContent = t.verifyEmailResending;
             try {
-                const { error } = await sb.auth.resend({ type: 'signup', email });
+                const { error } = await sb.auth.resend({
+                    type: 'signup',
+                    email,
+                    options: { emailRedirectTo: window.location.origin + window.location.pathname }
+                });
                 if (error) throw error;
-                startSignupResendCooldown(30);
+                startSignupResendCooldown(60);
                 showToast(t.verifyEmailResent, 'success');
             } catch (error) {
                 console.error('Signup verification resend failed:', error);
@@ -5582,6 +5602,21 @@ window.triggerModalClose = function() {
                 
                 if (error || !data || !data.session) {
                     hideBtnLoading(btn);
+                    if (error && window.EDAuthRules.isEmailNotConfirmedError(error)) {
+                        try {
+                            sessionStorage.setItem(PENDING_SIGNUP_EMAIL_KEY, email);
+                            sessionStorage.removeItem(SIGNUP_RESEND_COOLDOWN_KEY);
+                        } catch (_) {}
+                        const otpInput = document.getElementById('signupOtpCode');
+                        if (otpInput) otpInput.value = '';
+                        setPendingSignupEmailLabel();
+                        startSignupResendCooldown(60);
+                        showPage('verifyEmailPage');
+                        showToast(currentLanguage === 'ar'
+                            ? 'بريدك الإلكتروني لم يتم تأكيده بعد. أدخل رمز التفعيل أو أعد إرسال الرسالة.'
+                            : 'Your email is not confirmed yet. Enter the verification code or resend the email.', 'warning');
+                        return;
+                    }
                     showToast(window.EDAuthRules.describeAuthError(error || { message: 'No session returned' }, currentLanguage, 'signin'), 'error');
                     return;
                 }
@@ -5658,6 +5693,7 @@ window.triggerModalClose = function() {
                         const otpInput = document.getElementById('signupOtpCode');
                         if (otpInput) otpInput.value = '';
                         setPendingSignupEmailLabel();
+                        startSignupResendCooldown(60);
                         showPage('verifyEmailPage');
                         showToast(currentLanguage === 'ar'
                             ? 'تم إنشاء الحساب. أرسلنا رمز التفعيل ورابط التأكيد إلى ' + email + '.'
@@ -11606,7 +11642,12 @@ exam.questions.forEach((question, index) => {
   function isValidSignupOtp(value){
     return /^[0-9]{6}$/.test(String(value == null ? '' : value));
   }
-  window.EDAuthRules = { MIN_PASSWORD_LENGTH: MIN_PASSWORD_LENGTH, validateSignupPassword: validateSignupPassword, describeAuthError: describeAuthError, signupOutcome: signupOutcome, authEventOutcome: authEventOutcome, canShowLessonVideoOnWeb: canShowLessonVideoOnWeb, normalizeSignupOtp: normalizeSignupOtp, isValidSignupOtp: isValidSignupOtp };
+  function isEmailNotConfirmedError(error){
+    var code = String((error && (error.code || error.error_code)) || '').toLowerCase();
+    var message = String((error && error.message) || '').toLowerCase();
+    return code === 'email_not_confirmed' || message.indexOf('email not confirmed') > -1;
+  }
+  window.EDAuthRules = { MIN_PASSWORD_LENGTH: MIN_PASSWORD_LENGTH, validateSignupPassword: validateSignupPassword, describeAuthError: describeAuthError, signupOutcome: signupOutcome, authEventOutcome: authEventOutcome, canShowLessonVideoOnWeb: canShowLessonVideoOnWeb, normalizeSignupOtp: normalizeSignupOtp, isValidSignupOtp: isValidSignupOtp, isEmailNotConfirmedError: isEmailNotConfirmedError };
 })();
 </script>
 <script src="/ed_assistant.js" defer></script>

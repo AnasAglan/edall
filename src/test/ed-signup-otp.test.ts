@@ -34,17 +34,30 @@ describe("signup email OTP", () => {
     expect(signup).toContain("sessionStorage.setItem(PENDING_SIGNUP_EMAIL_KEY, email)");
   });
 
-  it("keeps normal sign-in password based without an OTP challenge", () => {
+  it("keeps normal sign-in password based and routes only unconfirmed accounts to verification", () => {
     const start = html.indexOf("async function handleSignIn()");
     const end = html.indexOf("async function handleSignUp()", start);
     const signIn = html.slice(start, end);
     expect(signIn).toContain("sb.auth.signInWithPassword({ email, password })");
     expect(signIn).not.toContain("verifyOtp");
+    expect(signIn).toContain("window.EDAuthRules.isEmailNotConfirmedError(error)");
+    expect(signIn).toContain("showPage('verifyEmailPage')");
+    expect(rules.isEmailNotConfirmedError({ code: "email_not_confirmed" })).toBe(true);
+    expect(rules.isEmailNotConfirmedError({ code: "invalid_credentials" })).toBe(false);
+  });
+
+  it("clears pending state when the user cancels or confirms through the email link", () => {
+    expect(html).toContain("function cancelSignupVerification()");
+    expect(html).toContain("clearPendingSignupVerification()");
+    expect(html).toContain("clearPendingSignupVerification(session.user.email)");
+    expect(html).toContain("addEventListener('click', cancelSignupVerification)");
   });
 
   it("verifies signup codes and supports resend", () => {
     expect(html).toContain("sb.auth.verifyOtp({ email, token, type: 'signup' })");
-    expect(html).toContain("sb.auth.resend({ type: 'signup', email })");
+    expect(html).toContain("type: 'signup'");
+    expect(html).toContain("options: { emailRedirectTo: window.location.origin + window.location.pathname }");
+    expect(html).toContain("startSignupResendCooldown(60)");
     expect(html).toContain("maxlength=\"6\"");
     expect(html).toContain("autocomplete=\"one-time-code\"");
     expect(html).toContain("id=\"verifyEmailPage\"");
