@@ -52,14 +52,14 @@ export default {
       } else if (requestUrl.pathname === "/videoplayback") {
         const host = requestUrl.searchParams.get("host") || "";
         if (!isGoogleVideoHost(host)) {
-          return new Response("Upstream host is not allowed", { status: 403, headers: corsHeaders });
+          return new Response("Upstream host is not allowed", { status: 403, headers: responseCorsHeaders });
         }
         upstreamUrl = getAllowedMediaUrl("https://" + host + "/videoplayback");
         for (const [key, value] of requestUrl.searchParams) {
           if (key !== "host" && key !== "range") upstreamUrl.searchParams.append(key, value);
         }
       } else {
-        return new Response("Not found", { status: 404, headers: corsHeaders });
+        return new Response("Not found", { status: 404, headers: responseCorsHeaders });
       }
     } catch (error) {
       return new Response(String(error && error.message || "Invalid media URL"), {
@@ -83,7 +83,7 @@ export default {
     } catch {
       return new Response("The upstream video server could not be reached.", {
         status: 502,
-        headers: corsHeaders,
+        headers: responseCorsHeaders,
       });
     }
 
@@ -91,12 +91,12 @@ export default {
     try {
       finalUrl = new URL(upstream.url || upstreamUrl.toString());
     } catch {
-      return new Response("Invalid upstream response.", { status: 502, headers: corsHeaders });
+      return new Response("Invalid upstream response.", { status: 502, headers: responseCorsHeaders });
     }
     if (!isGoogleVideoHost(finalUrl.hostname)) {
       return new Response("The upstream redirected to a non-GoogleVideo host.", {
         status: 502,
-        headers: corsHeaders,
+        headers: responseCorsHeaders,
       });
     }
 
