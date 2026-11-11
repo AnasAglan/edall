@@ -386,7 +386,9 @@ export function buildVerifiedReadReply(snapshots, conversation = []) {
     if (!data.length) return "لا توجد دورات متاحة للعرض ضمن صلاحيات حسابك.";
     if (wantsCount) if (/(?:محاضرة|محاضرات|درس|دروس|lesson)/i.test(lastUser) && !/(?:كورس|كورسات|دورة|دورات|course)/i.test(lastUser)) {
       const available = data.map(item => String(item?.title || "").trim()).filter(Boolean).slice(0, 20);
-      return "لا أريد أن أخلط بين عدد الدورات وعدد المحاضرات. حدّد الدورة التي تريد إحصاء محاضراتها. الدورات المتاحة ضمن صلاحياتك: " + (available.length ? available.join("، ") : "لا توجد أسماء متاحة") + ".";\n    }\n    return "عدد الدورات التي ظهرت في قاعدة البيانات ضمن صلاحيات حسابك: **" + (data.length >= 50 ? "50 على الأقل (أول 50 نتيجة)" : data.length) + "**.";
+      return "لا أريد أن أخلط بين عدد الدورات وعدد المحاضرات. حدّد الدورة التي تريد إحصاء محاضراتها. الدورات المتاحة ضمن صلاحياتك: " + (available.length ? available.join("، ") : "لا توجد أسماء متاحة") + ".";
+    }
+    return "عدد الدورات التي ظهرت في قاعدة البيانات ضمن صلاحيات حسابك: **" + (data.length >= 50 ? "50 على الأقل (أول 50 نتيجة)" : data.length) + "**.";
     const lines = data.map((course,index) => { const title = String(course?.title || "").trim(); if (!title) return null; const price = Number(course.price); const priceText = Number.isFinite(price) ? " — " + (price === 0 ? "مجانية" : price.toLocaleString("en-US") + " جنيه") : ""; return (index+1) + ". **" + title.replace(/[\r\n]/g," ").slice(0,180) + "**" + priceText; }).filter(Boolean);
     return lines.length ? "هذه أسماء الدورات الموجودة فعلًا في قاعدة البيانات (حتى 50 دورة):\n" + lines.join("\n") : "لم تُرجع قاعدة البيانات أسماء دورات قابلة للعرض.";
   }
