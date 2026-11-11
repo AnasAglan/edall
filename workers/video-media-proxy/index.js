@@ -28,10 +28,10 @@ export default {
   async fetch(request) {
     const requestUrl = new URL(request.url);
     const origin = request.headers.get("Origin") || "";
+    const responseCorsHeaders = new Headers(corsHeaders);
     if (origin && !ALLOWED_ORIGINS.has(origin)) {
       return new Response("Origin not allowed", { status: 403, headers: responseCorsHeaders });
     }
-    const responseCorsHeaders = new Headers(corsHeaders);
     if (origin) responseCorsHeaders.set("Access-Control-Allow-Origin", origin);
     if (requestUrl.pathname === "/health" && request.method === "GET") {
       return new Response(JSON.stringify({ status: "ok", service: "edall-video-media-proxy" }), {
@@ -42,7 +42,7 @@ export default {
       return new Response(null, { status: 204, headers: responseCorsHeaders });
     }
     if (request.method !== "GET" && request.method !== "HEAD") {
-      return new Response("Method not allowed", { status: 405, headers: corsHeaders });
+      return new Response("Method not allowed", { status: 405, headers: responseCorsHeaders });
     }
 
     let upstreamUrl;
@@ -100,7 +100,7 @@ export default {
       });
     }
 
-    const responseHeaders = new Headers(corsHeaders);
+    const responseHeaders = new Headers(responseCorsHeaders);
     for (const name of ["accept-ranges", "content-length", "content-range", "content-type", "etag", "last-modified"]) {
       const value = upstream.headers.get(name);
       if (value) responseHeaders.set(name, value);
