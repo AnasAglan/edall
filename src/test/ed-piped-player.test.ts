@@ -305,6 +305,16 @@ describe("ED ALL Piped player", () => {
     expect(helpers.scoreBundle(bundle)).toBeGreaterThan(0);
   });
 
+  it("falls back to official CORS-enabled Invidious APIs from the browser when the Worker egress is blocked", () => {
+    expect(playerSource).toContain("async function getTrustedInvidiousInstances()");
+    expect(playerSource).toContain("item.official === true && item.apiListed === true");
+    expect(playerSource).toContain("item.cors === true && item.status !== 'unhealthy'");
+    expect(playerSource).toContain("async function fetchDirectInvidiousBundle");
+    expect(playerSource).toContain("mode: 'cors'");
+    expect(playerSource).toContain("credentials: 'omit'");
+    expect(playerSource).toContain("normalizeInvidiousData(payload)");
+  });
+
   it("waits for both providers before comparing available quality", () => {
     expect(playerSource).toContain("Promise.allSettled([pipedPromise, invidiousPromise])");
     expect(playerSource).not.toContain("setTimeout(() => resolve(null), 7000)");
