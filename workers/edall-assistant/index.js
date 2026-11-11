@@ -299,7 +299,7 @@ export function inferRequiredReadTools(conversation, roles = []) {
   const priorContext = userMessages.slice(-6, -1).join(" ");
   const focus = isGenericFollowUp ? current + " " + priorContext : current;
 
-  const courseOrLesson = /(?:كورس|كورسات|الكورس|الكورسات|دورة|دورات|الدورة|الدورات|محاضرة|محاضرات|المحاضرة|المحاضرات|محاضره|الدرس|درس|دروس|الدروس|اختبار|اختبارات|امتحان|امتحانات|course|courses|lesson|lessons|exam|exams)/i;
+  const courseOrLesson = /(?:كورس|كورسات|الكورس|الكورسات|دورة|دورات|الدورة|الدورات|محاضرة|محاضرات|المحاضرة|المحاضرات|محاضره|الدرس|الدروس|درس|دروس|اختبار|اختبارات|امتحان|امتحانات|course|courses|lesson|lessons|exam|exams)/i;
   const users = /(?:مستخدم|مستخدمين|المستخدم|المستخدمين|حساب|حسابات|طالب|طلاب|الطلاب|مدرس|مدرسين|المدرسين|المعلمين|معلم|معلمين|مدير|مديرين|المديرين|teacher|teachers|student|students|admin|admins|user|users)/i;
   const platformStats = /(?:إحصاء|احصاء|إحصائيات|احصائيات|إحصائية|احصائية|عدد|كم|كام|statistics|stats|count|how many)/i;
   const platformData = /(?:منصة|المنصة|مستخدم|طالب|مدرس|معلم|دورة|كورس|محاضرة|درس|فيديو|اختبار|تسجيل|محاولة|ملف|pdf|platform|course|lesson|teacher|student|user|exam)/i;
@@ -357,8 +357,10 @@ async function classifyRequestScope(env, conversation, hasImages) {
       chat_template_kwargs: { enable_thinking: false, clear_thinking: true },
       max_completion_tokens: 24
     });
-    const verdict = String(result?.choices?.[0]?.message?.content || "").trim().toUpperCase();
-    if (verdict.includes("OUT_OF_SCOPE") && !verdict.includes("IN_SCOPE")) return "OUT_OF_SCOPE";
+    const rawVerdict = String(result?.choices?.[0]?.message?.content || "").trim();
+    const verdict = rawVerdict.toUpperCase().replace(/[\\s-]+/g, "_");
+    if (verdict.includes("OUT_OF_SCOPE") || /خارج\\s+النطاق/.test(rawVerdict)) return "OUT_OF_SCOPE";
+    if (verdict.includes("IN_SCOPE") || /داخل\\s+النطاق/.test(rawVerdict)) return "IN_SCOPE";
     return "IN_SCOPE";
   } catch (error) {
     console.error("ED-ALL scope classifier unavailable:", error instanceof Error ? error.message : String(error));
@@ -366,6 +368,35 @@ async function classifyRequestScope(env, conversation, hasImages) {
   }
 }
 
+export function buildVerifiedReadReply(snapshots, conversation = []) {
+  const snapshot = Array.isArray(snapshots) ? snapshots.find(item => ["get_platform_stats", "list_courses", "search_platform_users"].includes(item?.tool)) : null;
+  if (!snapshot) return null;
+  if (snapshot.verified !== true) return "تعذر جلب البيانات الحقيقية من قاعدة البيانات، لذلك لن أخمّن أسماء أو أرقامًا. " + String(snapshot.error || "أعد المحاولة لاحقًا.").slice(0, 240);
+  const lastUser = (Array.isArray(conversation) ? conversation : []).filter(item => item?.role === "user").at(-1)?.content || "";
+  const wantsCount = /(?:كم|كام|عدد|count|how many)/i.test(lastUser);
+  const data = snapshot.data;
+  if (snapshot.tool === "get_platform_stats") {
+    if (!data || typeof data !== "object") return "تعذر قراءة إحصاءات المنصة من قاعدة البيانات.";
+    const labels = [["users","المستخدمون"],["students","الطلاب"],["teachers","المعلمون"],["admins","المديرون"],["courses","الدورات"],["lessons","المحاضرات"],["lesson_video_links","روابط الفيديو"],["lesson_pdf_links","روابط PDF"],["enrollments","التسجيلات"],["exams","الاختبارات"],["exam_attempts","محاولات الاختبار"]];
+    if (labels.some(([key]) => !Number.isFinite(Number(data[key])))) return "لم تكتمل قراءة بعض الإحصاءات من قاعدة البيانات؛ لن أعرض أرقامًا غير مؤكدة.";
+    return "إحصاءات ED-ALL التي قرأتها الآن من قاعدة البيانات:\n" + labels.map(([key,label]) => "• " + label + ": **" + Number(data[key]).toLocaleString("en-US") + "**").join("\n");
+  }
+  if (snapshot.tool === "list_courses") {
+    if (!Array.isArray(data)) return "تعذر قراءة قائمة الدورات من قاعدة البيانات.";
+    if (!data.length) return "لا توجد دورات متاحة للعرض ضمن صلاحيات حسابك.";
+    if (wantsCount) return "عدد الدورات التي ظهرت في قاعدة البيانات ضمن صلاحيات حسابك: **" + data.length + "**.";
+    const lines = data.map((course,index) => { const title = String(course?.title || "").trim(); if (!title) return null; const price = Number(course.price); const priceText = Number.isFinite(price) ? " — " + (price === 0 ? "مجانية" : price.toLocaleString("en-US") + " جنيه") : ""; return (index+1) + ". **" + title.replace(/[\\r\\n]/g," ").slice(0,180) + "**" + priceText; }).filter(Boolean);
+    return lines.length ? "هذه أسماء الدورات الموجودة فعلًا في قاعدة البيانات (حتى 50 دورة):\n" + lines.join("\n") : "لم تُرجع قاعدة البيانات أسماء دورات قابلة للعرض.";
+  }
+  if (snapshot.tool === "search_platform_users") {
+    if (!Array.isArray(data)) return "تعذر قراءة حسابات المستخدمين من قاعدة البيانات.";
+    if (!data.length) return "لم أجد مستخدمين مطابقين ضمن صلاحيات البحث المتاحة.";
+    if (wantsCount) return "عدد المستخدمين في نتيجة البحث الحالية: **" + data.length + "**.";
+    const lines = data.map((user,index) => { const name = String(user?.name || "").trim(); if (!name) return null; const roles = Array.isArray(user.roles) ? user.roles.join("، ") : ""; return (index+1) + ". **" + name.replace(/[\\r\\n]/g," ").slice(0,140) + "**" + (roles ? " — " + roles : ""); }).filter(Boolean);
+    return lines.length ? "هذه أسماء المستخدمين التي أعادها البحث الفعلي:\n" + lines.join("\n") : "لم تُرجع قاعدة البيانات أسماء مستخدمين قابلة للعرض.";
+  }
+  return null;
+}
 export function buildScopeRouting(scope) {
   if (scope === "OUT_OF_SCOPE") {
     return {
@@ -2341,6 +2372,8 @@ export default {
         });
       }
     }
+    const groundedReadReply = buildVerifiedReadReply(verifiedReadSnapshots, messages);
+    if (groundedReadReply !== null) return sseTextResponse(groundedReadReply, origin);
     const verifiedReadContext = verifiedReadSnapshots.length
       ? {
           role: "system",
