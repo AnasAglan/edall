@@ -258,7 +258,7 @@ async function classifyExplicitWriteIntent(env, conversation) {
   }
 }
 
-const PLATFORM_CONTEXT_PATTERN = /(?:ed[\s-]?all|المنصة|منصة|موقع المنصة|الموقع الإلكتروني|الموقع الالكتروني|التطبيق فقط|برنامج المنصة|لوحة الإدارة|لوحة الادارة|الإدارة|الادارة|إدارة المنصة|ادارة المنصة|الدورة|الدورات|دورة|دورات|الكورس|الكورسات|كورسات|كورس|المحاضرة|المحاضرات|المحاضره|الدرس|الدروس|درس|فيديو|فيديوهات|الجودة|الجودات|مشغل الفيديو|المشغل|الاختبار|الاختبارات|الامتحان|الامتحانات|الأسئلة|الاسئلة|الطلاب|طالب|المعلمين|مدرس|مدرسين|المستخدمين|مستخدم|حسابات المستخدمين|الحساب|حسابات|صلاحيات|صلاحية|الحظر|المحفظة|رصيد|التسجيلات|التسجيل|الإشعارات|الاشعارات|إشعار|اشعار|الإعدادات|اعدادات|المساعدة|بيانات المنصة|قاعدة البيانات|حذف المستخدم|حذف حساب|تسجيل الدخول|رفع ملف|ملف pdf|pdf|youtube|piped|invidious|yt-dlp|newpipe|cloudflare|supabase|lovable|admin panel|dashboard|course|courses|lesson|lessons|video|videos|quality|qualities|exam|exams|student|students|teacher|teachers|user|users|platform|website|web app|playback)/i;
+const PLATFORM_CONTEXT_PATTERN = /(?:ed[\s-]?all|المنصة|منصة|موقع المنصة|الموقع الإلكتروني|الموقع الالكتروني|التطبيق فقط|برنامج المنصة|لوحة الإدارة|لوحة الادارة|الإدارة|الادارة|إدارة المنصة|ادارة المنصة|الدورة|الدورات|دورة|دورات|الكورس|الكورسات|كورسات|كورس|المحاضرة|المحاضرات|المحاضره|الدرس|الدروس|درس|فيديو|فيديوهات|الجودة|الجودات|مشغل الفيديو|المشغل|الاختبار|الاختبارات|الامتحان|الامتحانات|الأسئلة|الاسئلة|الطلاب|طالب|المعلمين|مدرس|مدرسين|المستخدمين|مستخدم|حسابات المستخدمين|الحساب|حسابات|صلاحيات|صلاحية|الحظر|المحفظة|رصيد|التسجيلات|التسجيل|الإشعارات|الاشعارات|إشعار|اشعار|الإعدادات|اعدادات|بيانات المنصة|قاعدة البيانات|حذف المستخدم|حذف حساب|تسجيل الدخول|رفع ملف|ملف pdf|pdf|youtube|piped|invidious|yt-dlp|newpipe|cloudflare|supabase|lovable|admin panel|dashboard|course|courses|lesson|lessons|video|videos|quality|qualities|exam|exams|student|students|teacher|teachers|user|users|platform|website|web app|playback)/i;
 const PLATFORM_FOLLOW_UP_PATTERN = /^(?:طيب|طب|تمام|حسنًا|حسنا|أيوه|ايوه|اه|أه|نعم|لا|يلا|كمل|اكمل|كمّل|اعمل|نفذ|نفّذ|صلح|اصلح|عدّل|عدل|جرّب|جرب|ليه|لماذا|ازاي|إزاي|كيف|ماذا بعد|ما التالي|هذه|هذا|دي|ده|دول|ديها|عليها|عليه|لها|له|هم|ها|نفسه|نفسها|نفس المشكلة|ما زال|لسه|لسة|لسه لا|تمام كده|كده|كدا|the same|that one|it|this|those|yes|no|okay|ok|continue|go ahead|fix it|try again)[.!؟?\s،,]*$/i;
 const FOLLOW_UP_REFERENCE_PATTERN = /(?:\b(?:it|this|that|those|same)\b|ها|هم|عليه|عليها|له|لها|ده|دي|دول|نفس|كمان|برضه|أيضًا)/i;
 
@@ -289,7 +289,7 @@ export function inferRequiredReadTools(conversation, roles = []) {
   const writeIntent = /(?:أنشئ|انشئ|اضف|أضف|أضيف|اضيف|ضيف|ضيفلي|إنشاء|انشاء|عدل|عدّل|تعديل|حدث|حدّث|تحديث|غير|غيّر|حذف|احذف|امسح|اشتري|اشتر|شراء|ارفع|رفع|ارسل|أرسل|ابعت|احظر|حظر|شحن|اشحن|نفذ|نفّذ|create|add|update|edit|change|delete|remove|buy|purchase|upload|send|ban|credit)/i;
   if (writeIntent.test(current)) return [];
 
-  const readIntent = /(?:إحصاء|احصاء|إحصائيات|احصائيات|إحصائية|احصائية|statistics|stats|ما|ماذا|ايه|إيه|اي|أي|اسم|أسماء|اسماء|عدد|كم|كام|مين|من هم|من هي|اعرض|اعرضلي|وريني|هات|قائمة|قولي|قول لي|اخبرني|خبرني|عايز اعرف|عاوز اعرف|ممكن اعرف|عندنا|الموجود|الموجودة|الموجودين|تفاصيل|ابحث|بحث|عرض|اظهر|أظهر|هل يوجد|هل عندنا|فيه|show|list|find|what|which|how many|tell me about)/i;
+  const readIntent = /(?:إحصاء|احصاء|إحصائيات|احصائيات|إحصائية|احصائية|statistics|stats|ما|ماذا|ايه|إيه|اي|أي|اسم|أسماء|اسماء|عدد|كم|كام|مين|من هم|من هي|اعرض|اعرضلي|وريني|هات|قائمة|قولي|قول لي|اخبرني|خبرني|عايز اعرف|عاوز اعرف|ممكن اعرف|اشرح|شرح|احكيلي|احكي|حدثني|معلومات عن|اشوف|شوف|عندنا|الموجود|الموجودة|الموجودين|تفاصيل|ابحث|بحث|عرض|اظهر|أظهر|هل يوجد|هل عندنا|فيه|show|list|find|what|which|how many|tell me about)/i;
   const currentIsRead = readIntent.test(current);
   const isGenericFollowUp = /(?:وريني|اعرض|هات|قولي|قول لي|اظهر|أظهر|اللي موجود|الموجود|الموجودة|الموجودين|what is there|show me what|list them)/i.test(current);
   if (!currentIsRead && !isGenericFollowUp) return [];
@@ -384,14 +384,14 @@ export function buildVerifiedReadReply(snapshots, conversation = []) {
   if (snapshot.tool === "list_courses") {
     if (!Array.isArray(data)) return "تعذر قراءة قائمة الدورات من قاعدة البيانات.";
     if (!data.length) return "لا توجد دورات متاحة للعرض ضمن صلاحيات حسابك.";
-    if (wantsCount) return "عدد الدورات التي ظهرت في قاعدة البيانات ضمن صلاحيات حسابك: **" + data.length + "**.";
+    if (wantsCount) if (/(?:محاضرة|محاضرات|درس|دروس|lesson)/i.test(lastUser) && !/(?:كورس|كورسات|دورة|دورات|course)/i.test(lastUser)) {\n      const available = data.map(item => String(item?.title || "").trim()).filter(Boolean).slice(0, 20);\n      return "لا أريد أن أخلط بين عدد الدورات وعدد المحاضرات. حدّد الدورة التي تريد إحصاء محاضراتها. الدورات المتاحة ضمن صلاحياتك: " + (available.length ? available.join("، ") : "لا توجد أسماء متاحة") + ".";\n    }\n    return "عدد الدورات التي ظهرت في قاعدة البيانات ضمن صلاحيات حسابك: **" + (data.length >= 50 ? "50 على الأقل (أول 50 نتيجة)" : data.length) + "**.";
     const lines = data.map((course,index) => { const title = String(course?.title || "").trim(); if (!title) return null; const price = Number(course.price); const priceText = Number.isFinite(price) ? " — " + (price === 0 ? "مجانية" : price.toLocaleString("en-US") + " جنيه") : ""; return (index+1) + ". **" + title.replace(/[\r\n]/g," ").slice(0,180) + "**" + priceText; }).filter(Boolean);
     return lines.length ? "هذه أسماء الدورات الموجودة فعلًا في قاعدة البيانات (حتى 50 دورة):\n" + lines.join("\n") : "لم تُرجع قاعدة البيانات أسماء دورات قابلة للعرض.";
   }
   if (snapshot.tool === "search_platform_users") {
     if (!Array.isArray(data)) return "تعذر قراءة حسابات المستخدمين من قاعدة البيانات.";
     if (!data.length) return "لم أجد مستخدمين مطابقين ضمن صلاحيات البحث المتاحة.";
-    if (wantsCount) return "عدد المستخدمين في نتيجة البحث الحالية: **" + data.length + "**.";
+    if (wantsCount) return "عدد المستخدمين في نتيجة البحث الحالية: **" + (data.length >= 50 ? "50 على الأقل (أول 50 نتيجة)" : data.length) + "**.";
     const lines = data.map((user,index) => { const name = String(user?.name || "").trim(); if (!name) return null; const roles = Array.isArray(user.roles) ? user.roles.join("، ") : ""; return (index+1) + ". **" + name.replace(/[\r\n]/g," ").slice(0,140) + "**" + (roles ? " — " + roles : ""); }).filter(Boolean);
     return lines.length ? "هذه أسماء المستخدمين التي أعادها البحث الفعلي:\n" + lines.join("\n") : "لم تُرجع قاعدة البيانات أسماء مستخدمين قابلة للعرض.";
   }
@@ -401,7 +401,7 @@ export function buildScopeRouting(scope) {
   if (scope === "OUT_OF_SCOPE") {
     return {
       allowPlatformTools: false,
-      instruction: "السؤال الحالي مستقل عن ED-ALL. أجب عنه مباشرة بوصفك مساعدًا عامًا وباللغة المناسبة، دون رفض نمطي. لا تستخدم أدوات المنصة ولا تخمّن أي معلومات عن قاعدة بياناتها أو مستخدميها أو دوراتها."
+      instruction: "السؤال الحالي مستقل عن ED-ALL. أجب عنه مباشرة بوصفك مساعدًا عامًا وباللغة المناسبة. لا تذكر أن السؤال خارج نطاق ED-ALL، ولا تعرض قائمة المهام التي تدعمها المنصة، ولا تطلب من المستخدم تحويل السؤال إلى مهمة داخل المنصة. لا تستخدم أدوات المنصة ولا تخمّن أي معلومات عن قاعدة بياناتها أو مستخدميها أو دوراتها."
     };
   }
   return {
