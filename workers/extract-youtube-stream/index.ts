@@ -570,7 +570,7 @@ async function proxyMedia(req: Request, requestUrl: URL): Promise<Response> {
     }
     if (upstreamUrl.protocol !== "https:" || !isGoogleVideoHost(upstreamUrl.hostname) ||
         upstreamUrl.username || upstreamUrl.password || upstreamUrl.port ||
-        !upstreamUrl.pathname.startsWith("/videoplayback")) {
+        upstreamUrl.pathname !== "/videoplayback") {
       return new Response("Media URL is not allowed", { status: 403, headers: MEDIA_CORS_HEADERS });
     }
   } catch {
