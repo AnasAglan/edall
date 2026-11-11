@@ -72,6 +72,7 @@ jobs:
           node --check scripts/sync-video-instances.mjs
           node --check workers/edall-assistant/index.js
           node --check workers/video-media-proxy/index.js
+          node --check scripts/video-providers-smoke-test.mjs
 
       - name: Test discovery and real media verification helpers
         run: node --test scripts/sync-video-instances.node-test.mjs
@@ -81,8 +82,8 @@ jobs:
           node --check scripts/supabase-extractor-smoke-test.mjs
           node --check scripts/invidious-worker-smoke-test.mjs
 
-      - name: Smoke test live Invidious extraction and media proxy
-        run: node scripts/invidious-worker-smoke-test.mjs
+      - name: Smoke test live Piped and Invidious playback paths
+        run: node scripts/video-providers-smoke-test.mjs
 
       - name: Check Deno Edge Function
         uses: denoland/setup-deno@v2
