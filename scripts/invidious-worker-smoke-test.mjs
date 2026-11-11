@@ -62,8 +62,10 @@ async function verifyProxiedRange(stream, label) {
   }
   await proxied.body?.cancel();
 }
-await verifyProxiedRange(videoStreams[0], "video");
-await verifyProxiedRange(audioStreams[0], "audio");
+const proxyVideoStream = videoStreams.find((stream) => String(stream.url || "").includes("googlevideo.com"));
+const proxyAudioStream = audioStreams.find((stream) => String(stream.url || "").includes("googlevideo.com"));
+await verifyProxiedRange(proxyVideoStream, "video");
+await verifyProxiedRange(proxyAudioStream, "audio");
 
 console.log(
   JSON.stringify({
