@@ -36,7 +36,7 @@ function loadHelpers(canPlayTypeResult = "probably", mseSupports = false) {
 
   new Script(playerSource, { filename: "ed_piped_player.js" });
   runInNewContext(playerSource, sandbox);
-  return sandbox.window.EDPipedPlayer.__test;
+  return (sandbox.window as any).EDPipedPlayer.__test;
 }
 
 const videoOnly1080 = {
