@@ -3143,7 +3143,7 @@ if (existingWatermark && !layerHost.contains(existingWatermark)) {
 
                 const optionalLoads = await Promise.allSettled([
                     loadShaka(),
-                    _edLoadExternalScript('_edpiped', '/ed_piped_player.js', () => !!window.EDPipedPlayer)
+                    _edLoadExternalScript('_edpiped', '/ed_piped_player.js?v=20261111-finalfix', () => !!window.EDPipedPlayer)
                 ]);
                 if (window.shaka && window.shaka.polyfill && window.shaka.polyfill.installAll) {
                     window.shaka.polyfill.installAll();
