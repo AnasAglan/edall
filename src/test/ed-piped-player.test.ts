@@ -156,7 +156,7 @@ describe("ED ALL Piped player", () => {
     expect(worker).toContain("bundle.audioStreams = verifiedDirectAudios");
     expect(worker).toContain("async function proxyMedia");
     expect(worker).toContain('Access-Control-Allow-Origin": "*"');
-    expect(worker).toContain("mediaProxyUrl(new URL(req.url).origin, stream.url)");
+    expect(worker).toContain("mediaProxyUrl(workerOrigin, stream.url)");
     expect(worker).toContain('requestUrl.pathname === "/media"');
 
     expect(worker).not.toContain("if (heights.length >= 3 && Math.max(...heights) >= 720) break;");
