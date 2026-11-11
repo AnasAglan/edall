@@ -67,6 +67,50 @@ describe("auth state listener rules", () => {
   });
 });
 
+
+describe("signup email OTP", () => {
+  const r = loadRules();
+
+  it("accepts exactly six numeric digits", () => {
+    expect(r.validateSignupOtp("123456")).toBe(true);
+    expect(r.validateSignupOtp("000001")).toBe(true);
+    expect(r.validateSignupOtp("12345")).toBe(false);
+    expect(r.validateSignupOtp("1234567")).toBe(false);
+    expect(r.validateSignupOtp("12a456")).toBe(false);
+    expect(r.validateSignupOtp(" 123456")).toBe(false);
+  });
+
+  it("calculates the resend cooldown without returning negative seconds", () => {
+    expect(r.signupResendSecondsRemaining(61000, 1000)).toBe(60);
+    expect(r.signupResendSecondsRemaining(59000, 1000)).toBe(58);
+    expect(r.signupResendSecondsRemaining(1000, 1000)).toBe(0);
+    expect(r.signupResendSecondsRemaining(0, 1000)).toBe(0);
+  });
+
+  it("keeps normal sign-in password-only and verifies only new signup confirmations", () => {
+    const signInStart = html.indexOf("async function handleSignIn()");
+    const signUpStart = html.indexOf("async function handleSignUp()", signInStart);
+    const signInSource = html.slice(signInStart, signUpStart);
+    expect(signInSource).toContain("sb.auth.signInWithPassword");
+    expect(signInSource).not.toContain("verifyOtp");
+    expect(signInSource).not.toContain("sb.auth.resend");
+
+    expect(html).toContain("sb.auth.verifyOtp({ email, token, type: 'signup' })");
+    expect(html).toContain("sb.auth.resend({");
+    expect(html).toContain("type: 'signup'");
+    expect(html).toContain("اكتب ما تم إرساله لبريدك أو اضغط زر التفعيل");
+  });
+
+  it("routes pending signups to the verification page without retaining the password", () => {
+    const signUpStart = html.indexOf("async function handleSignUp()");
+    const logoutStart = html.indexOf("async function handleLogout()", signUpStart);
+    const signUpSource = html.slice(signUpStart, logoutStart);
+    expect(signUpSource).toContain("showEmailVerificationPage(email, true)");
+    expect(signUpSource).toContain("document.getElementById('signUpPass').value = ''");
+    expect(html).toContain("sessionStorage.setItem(EDALL_PENDING_SIGNUP_EMAIL_KEY, normalizedEmail)");
+  });
+});
+
 describe("database account bootstrap security", () => {
   it("limits authenticated calls to the caller's own account", () => {
     expect(setupUserMigration).toContain("auth.uid() <> _user_id");
