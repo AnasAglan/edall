@@ -160,6 +160,9 @@ describe("ED ALL Piped player", () => {
     expect(mediaProxy).toContain("request.headers.get(\"Range\")");
     expect(playerSource).toContain("mediaProxyBase + '/media?url='");
     expect(playerSource).toContain("proxyUrl: mediaProxyBase");
+    expect(playerSource).toContain("normalize(withMediaProxy(data, extractorConfig))");
+    expect(playerSource).toContain("normalize(withMediaProxy(payload, config))");
+    expect(playerSource).toContain("fetchPipedBundle(videoId, excluded, extractorConfig)");
 
     expect(worker).not.toContain("if (heights.length >= 3 && Math.max(...heights) >= 720) break;");
   });
