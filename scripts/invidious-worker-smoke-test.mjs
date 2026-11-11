@@ -1,6 +1,13 @@
 const WORKER_URL = "https://edall-invidious-extractor.anasaglan2011.workers.dev";
 const VIDEO_ID = "dQw4w9WgXcQ";
 
+const MEDIA_PROXY_URL = "https://edall-video-media-proxy.anasaglan2011.workers.dev";
+const mediaProxyHealth = await fetch(MEDIA_PROXY_URL + "/health", { signal: AbortSignal.timeout(10000) });
+const mediaProxyStatus = await mediaProxyHealth.json().catch(() => null);
+if (!mediaProxyHealth.ok || mediaProxyStatus?.status !== "ok") {
+  throw new Error("ED-ALL media proxy Worker is not healthy.");
+}
+
 const response = await fetch(WORKER_URL, {
   method: "POST",
   headers: {
@@ -42,7 +49,6 @@ if (!payload.instance || !hasPlayablePath) {
   );
 }
 
-const MEDIA_PROXY_URL = "https://edall-video-media-proxy.anasaglan2011.workers.dev";
 async function verifyProxiedRange(stream, label) {
   if (!stream || !String(stream.url || "").includes("googlevideo.com")) {
     throw new Error("No GoogleVideo " + label + " stream was returned for the media proxy test.");
@@ -65,7 +71,11 @@ async function verifyProxiedRange(stream, label) {
 const proxyVideoStream = videoStreams.find((stream) => String(stream.url || "").includes("googlevideo.com"));
 const proxyAudioStream = audioStreams.find((stream) => String(stream.url || "").includes("googlevideo.com"));
 await verifyProxiedRange(proxyVideoStream, "video");
-await verifyProxiedRange(proxyAudioStream, "audio");
+if (proxyAudioStream) {
+  await verifyProxiedRange(proxyAudioStream, "audio");
+} else if (!videoStreams.some((stream) => stream.videoOnly !== true && stream.videoOnly !== "true")) {
+  throw new Error("No independently verified audio stream or muxed video+audio stream was returned.");
+}
 
 console.log(
   JSON.stringify({
