@@ -4358,6 +4358,18 @@ window.triggerModalClose = function() {
             }
         };
 
+        function isEdAllNativePlaybackApp() {
+            const isDesktop = !!(window.edallDesktop && window.edallDesktop.isDesktop);
+            let isAndroidApp = false;
+            try {
+                isAndroidApp = !!(
+                    (window.edallAndroid && typeof window.edallAndroid.isApp === 'function' && window.edallAndroid.isApp()) ||
+                    /EdAllAndroid/i.test(navigator.userAgent)
+                );
+            } catch (_) {}
+            return isDesktop || isAndroidApp;
+        }
+
         // Lazy load course details (lessons, videos, exams, files)
         async function loadCourseDetails(courseId) {
             const course = courses.find(c => c.id === courseId);
@@ -4381,7 +4393,7 @@ window.triggerModalClose = function() {
                     // The web platform must honor app-only mode for students, teachers, and admins.
                     // Desktop (yt-dlp) and Android (NewPipe) use their separate native app paths.
                     const webVisibleLessonIds = (lessonsData || [])
-                        .filter(l => l.web_playback_enabled !== false && l.web_playback_enabled !== 'false' && l.web_playback_enabled !== 0)
+                        .filter(l => isEdAllNativePlaybackApp() || (l.web_playback_enabled !== false && l.web_playback_enabled !== 'false' && l.web_playback_enabled !== 0))
                         .map(l => l.id);
                     let allVideos = [], allFiles = [], allExams = [];
 
@@ -6674,20 +6686,28 @@ window.triggerModalClose = function() {
                     return;
                 }
                 
-                // Re-read the authoritative playback flag every time a lesson is opened.
-                // This prevents stale course caches from exposing app-only video links on the web.
-                try {
-                    const playbackResult = await sb.from('lessons').select('web_playback_enabled').eq('id', lessonId).maybeSingle();
-                    if (playbackResult.error || !playbackResult.data) throw new Error(playbackResult.error?.message || 'لم يتم العثور على إعداد إتاحة الفيديو.');
-                    const playbackSetting = playbackResult.data.web_playback_enabled;
-                    lesson.webPlaybackEnabled = playbackSetting;
-                    lesson.videos = (playbackSetting === false || playbackSetting === 'false' || playbackSetting === 0) ? [] : (lesson.videos || []);
-                } catch (playbackError) {
-                    console.error('[ED-ALL] Could not verify lesson web playback setting:', playbackError);
-                    showToast(currentLanguage === 'ar' ? 'تعذر التحقق من إعداد إتاحة الفيديو. لم يتم عرض الفيديو على الموقع.' : 'Could not verify video availability. The website will not display this video.', 'error');
-                    lesson.webPlaybackEnabled = false;
-                    lesson.videos = [];
+                // App-only mode applies to ordinary browsers only. Native apps retain their
+                // isolated yt-dlp (desktop) and NewPipe (Android) playback paths.
+                if (!isEdAllNativePlaybackApp()) {
+                    // Re-read the authoritative playback flag to avoid stale browser caches.
+                    try {
+                        const playbackResult = await sb.from('lessons').select('web_playback_enabled').eq('id', lessonId).maybeSingle();
+                        if (playbackResult.error || !playbackResult.data) throw new Error(playbackResult.error?.message || 'لم يتم العثور على إعداد إتاحة الفيديو.');
+                        const playbackSetting = playbackResult.data.web_playback_enabled;
+                        lesson.webPlaybackEnabled = playbackSetting;
+                        lesson.videos = (playbackSetting === false || playbackSetting === 'false' || playbackSetting === 0)
+                            ? []
+                            : (lesson.videos || []);
+                    } catch (playbackError) {
+                        console.error('[ED-ALL] Could not verify lesson web playback setting:', playbackError);
+                        showToast(currentLanguage === 'ar'
+                            ? 'تعذر التحقق من إعداد إتاحة الفيديو. لم يتم عرض الفيديو على الموقع.'
+                            : 'Could not verify video availability. The website will not display this video.', 'error');
+                        lesson.webPlaybackEnabled = false;
+                        lesson.videos = [];
+                    }
                 }
+
                 trackLessonProgress(courseId, lessonId, 'opened', true);
                 
                 let modalContent = `
@@ -6698,7 +6718,7 @@ window.triggerModalClose = function() {
                     </div>
                 `;
                 
-                const canShowVideosOnWeb = window.EDAuthRules.canShowLessonVideoOnWeb(lesson, canEditThis);
+                const canShowVideosOnWeb = isEdAllNativePlaybackApp() || window.EDAuthRules.canShowLessonVideoOnWeb(lesson, canEditThis);
                 if (!canShowVideosOnWeb) {
                     modalContent += `
                         <div style="margin:12px 0;padding:14px;border:1px solid rgba(245,158,11,.45);border-radius:10px;background:rgba(245,158,11,.08);">
