@@ -304,11 +304,15 @@
     };
     const videoStreams = data.videoStreams.map(proxyStream);
     const audioStreams = Array.isArray(data.audioStreams) ? data.audioStreams.map(proxyStream) : data.audioStreams;
+    const hasMuxedVideo = videoStreams.some(stream => stream && stream.videoOnly !== true && stream.videoOnly !== 'true');
+    const hasSeparateAudio = videoStreams.some(stream => stream && (stream.videoOnly === true || stream.videoOnly === 'true')) &&
+      Array.isArray(audioStreams) && audioStreams.length > 0;
+    const hasCompleteDirectStreams = hasMuxedVideo || hasSeparateAudio;
     return {
       ...data,
       proxyUrl: mediaProxyBase,
-      dash: videoStreams.length ? null : data.dash,
-      hls: videoStreams.length ? null : data.hls,
+      dash: hasCompleteDirectStreams ? null : data.dash,
+      hls: hasCompleteDirectStreams ? null : data.hls,
       videoStreams,
       audioStreams
     };
