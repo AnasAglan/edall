@@ -6724,6 +6724,7 @@ window.triggerModalClose = function() {
                         <div style="margin:12px 0;padding:14px;border:1px solid rgba(245,158,11,.45);border-radius:10px;background:rgba(245,158,11,.08);">
                             <div style="font-weight:800;margin-bottom:6px;"><i class="fas fa-mobile-alt"></i> ${currentLanguage === 'ar' ? 'الفيديو متاح من التطبيق فقط' : 'Video available in the app only'}</div>
                             <div style="color:var(--text-muted);font-size:.9rem;">${currentLanguage === 'ar' ? 'يمكنك فتح فيديو هذه المحاضرة من تطبيق ED-ALL الرسمي. محتوى المحاضرة وملفاتها الأخرى تظل متاحة هنا وفق صلاحياتك.' : 'Open this lesson video from the official ED-ALL app. Lesson text and other files remain available here according to your access.'}</div>
+                            <button type="button" class="btn btn-primary" style="margin-top:12px;display:inline-flex;align-items:center;gap:8px;" onclick="openReleasesPage()"><i class="fas fa-download"></i> ${currentLanguage === 'ar' ? 'تنزيل برنامج ED-ALL' : 'Download ED-ALL'}</button>
                         </div>
                     `;
                 } else if (lesson.videos && lesson.videos.length > 0) {
