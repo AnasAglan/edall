@@ -289,7 +289,7 @@ export function inferRequiredReadTools(conversation, roles = []) {
   const writeIntent = /(?:أنشئ|انشئ|اضف|أضف|أضيف|اضيف|ضيف|ضيفلي|إنشاء|انشاء|عدل|عدّل|تعديل|حدث|حدّث|تحديث|غير|غيّر|حذف|احذف|امسح|اشتري|اشتر|شراء|ارفع|رفع|ارسل|أرسل|ابعت|احظر|حظر|شحن|اشحن|نفذ|نفّذ|create|add|update|edit|change|delete|remove|buy|purchase|upload|send|ban|credit)/i;
   if (writeIntent.test(current)) return [];
 
-  const readIntent = /(?:إحصاء|احصاء|إحصائيات|احصائيات|إحصائية|احصائية|statistics|stats|ما|ماذا|ايه|إيه|اي|أي|اسم|أسماء|اسماء|عدد|كم|كام|مين|من هم|من هي|اعرض|اعرضلي|وريني|هات|قائمة|قولي|قول لي|اخبرني|خبرني|عايز اعرف|عاوز اعرف|ممكن اعرف|اشرح|شرح|احكيلي|احكي|حدثني|معلومات عن|اشوف|شوف|عندنا|الموجود|الموجودة|الموجودين|تفاصيل|ابحث|بحث|عرض|اظهر|أظهر|هل يوجد|هل عندنا|فيه|show|list|find|what|which|how many|tell me about)/i;
+  const readIntent = /(?:إحصاء|احصاء|إحصائيات|احصائيات|إحصائية|احصائية|statistics|stats|ما|ماذا|ايه|إيه|اي|أي|اسم|أسماء|اسماء|عدد|كم|كام|مين|من هم|من هي|اعرض|اعرضلي|وريني|هات|قائمة|قولي|قول لي|اخبرني|خبرني|عايز اعرف|عاوز اعرف|ممكن اعرف|اشرح|شرح|احكيلي|احكي|حدثني|معلومات عن|اشوف|شوف|عندنا|الموجود|الموجودة|الموجودين|تفاصيل|ابحث|بحث|عرض|اظهر|أظهر|هل يوجد|هل عندنا|فيه|show|list|find|what|which|how many|tell me about|من المستخدمين|من الطلاب|من المدرسين|من المعلمين|بيانات)/i;
   const currentIsRead = readIntent.test(current);
   const isGenericFollowUp = /(?:وريني|اعرض|هات|قولي|قول لي|اظهر|أظهر|اللي موجود|الموجود|الموجودة|الموجودين|what is there|show me what|list them)/i.test(current);
   if (!currentIsRead && !isGenericFollowUp) return [];
@@ -357,15 +357,20 @@ async function classifyRequestScope(env, conversation, hasImages) {
       chat_template_kwargs: { enable_thinking: false, clear_thinking: true },
       max_completion_tokens: 24
     });
-    const rawVerdict = String(result?.choices?.[0]?.message?.content || "").trim();
-    const verdict = rawVerdict.toUpperCase().replace(/[\s-]+/g, "_");
-    if (verdict.includes("OUT_OF_SCOPE") || /خارج\s+النطاق/.test(rawVerdict)) return "OUT_OF_SCOPE";
-    if (verdict.includes("IN_SCOPE") || /داخل\s+النطاق/.test(rawVerdict)) return "IN_SCOPE";
-    return "IN_SCOPE";
+    return parseScopeVerdict(result?.choices?.[0]?.message?.content || "");
   } catch (error) {
     console.error("ED-ALL scope classifier unavailable:", error instanceof Error ? error.message : String(error));
     return "IN_SCOPE";
   }
+}
+
+export function parseScopeVerdict(value) {
+  const rawVerdict = String(value || "").trim();
+  const verdict = rawVerdict.toUpperCase().replace(/[\s-]+/g, "_");
+  if (verdict.includes("OUT_OF_SCOPE") || verdict.includes("OUTSIDE_SCOPE") ||
+      verdict.includes("NOT_IN_SCOPE") || /خارج\s+النطاق/.test(rawVerdict)) return "OUT_OF_SCOPE";
+  if (verdict.includes("IN_SCOPE") || /داخل\s+النطاق/.test(rawVerdict)) return "IN_SCOPE";
+  return "IN_SCOPE";
 }
 
 export function buildVerifiedReadReply(snapshots, conversation = []) {
