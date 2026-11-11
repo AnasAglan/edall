@@ -6,6 +6,7 @@ import worker, {
   shouldForceInScope,
   inferRequiredReadTools,
   buildVerifiedReadReply,
+  parseScopeVerdict,
   buildScopeRouting,
   attachUserRoles
 } from "./index.js";
@@ -247,4 +248,13 @@ test("verified read helper never invents course or user names", () => {
 
 test("independent general assistant questions are not forced into ED-ALL", () => {
   assert.equal(shouldForceInScope([{ role: "user", content: "ما أفضل مساعد ذكاء اصطناعي للبرمجة؟" }]), false);
+});
+
+test("scope classifier accepts common English and Arabic out-of-scope verdicts", () => {
+  assert.equal(parseScopeVerdict("OUT_OF_SCOPE"), "OUT_OF_SCOPE");
+  assert.equal(parseScopeVerdict("OUT OF SCOPE"), "OUT_OF_SCOPE");
+  assert.equal(parseScopeVerdict("not-in-scope"), "OUT_OF_SCOPE");
+  assert.equal(parseScopeVerdict("خارج النطاق"), "OUT_OF_SCOPE");
+  assert.equal(parseScopeVerdict("IN_SCOPE"), "IN_SCOPE");
+  assert.match(buildScopeRouting("OUT_OF_SCOPE").instruction, /لا تذكر أن السؤال خارج نطاق ED-ALL/);
 });
