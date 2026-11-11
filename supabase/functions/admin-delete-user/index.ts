@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isDefinitivelyMissingAuthUser } from "../_shared/delete-user-verification.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "https://edall.lovable.app",
@@ -141,14 +142,7 @@ Deno.serve(async (req: Request) => {
     if (profileCheck.error || rolesCheck.error) {
       return json({ error: "تم إرسال أمر الحذف، لكن تعذر إكمال التحقق من سجلات الحساب." }, 502);
     }
-    const authGoneCode =
-      authCheck.error && typeof (authCheck.error as { code?: unknown }).code === "string"
-        ? (authCheck.error as { code: string }).code
-        : undefined;
-    const authGoneStatus =
-      authCheck.error && (authCheck.error as { status?: unknown }).status === 404 ? 404 : undefined;
-    const authCheckAcceptedAsGone =
-      !authCheck.error || authGoneCode === "user_not_found" || (!authGoneCode && authGoneStatus === 404);
+    const authCheckAcceptedAsGone = isDefinitivelyMissingAuthUser(authCheck);
     if (!authCheckAcceptedAsGone) {
       return json({ error: "تم إرسال أمر الحذف، لكن لم يكتمل التحقق من اختفاء حساب المصادقة." }, 502);
     }
