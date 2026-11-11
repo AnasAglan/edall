@@ -26,6 +26,11 @@ const hasPlayablePath =
   diagnostics.audioAvailable === true &&
   (videoStreams.length > 0 || Boolean(payload.hls || payload.dash));
 
+const proxiedVideo = videoStreams.some((stream) => String(stream.url || "").startsWith(WORKER_URL + "/media?url="));
+const proxiedAudio = audioStreams.some((stream) => String(stream.url || "").startsWith(WORKER_URL + "/media?url="));
+if (!payload.proxyUrl || !proxiedVideo || !proxiedAudio) {
+  throw new Error("Invidious Worker did not return CORS-proxied video and audio stream URLs.");
+}
 if (!payload.instance || !hasPlayablePath) {
   throw new Error(
     "Invidious Worker returned data but did not prove a browser-playable video+audio path: " +
