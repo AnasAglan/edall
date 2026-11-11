@@ -71,6 +71,7 @@ jobs:
         run: |
           node --check scripts/sync-video-instances.mjs
           node --check workers/edall-assistant/index.js
+          node --check workers/video-media-proxy/index.js
 
       - name: Test discovery and real media verification helpers
         run: node --test scripts/sync-video-instances.node-test.mjs
