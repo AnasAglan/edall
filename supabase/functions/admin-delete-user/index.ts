@@ -24,7 +24,15 @@ Deno.serve(async (req: Request) => {
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const publishableKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY");
+    let publishableKey: string | undefined;
+    try {
+      const raw = Deno.env.get("SUPABASE_PUBLISHABLE_KEYS");
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (parsed && typeof parsed.default === "string" && parsed.default) publishableKey = parsed.default;
+    } catch {
+      publishableKey = undefined;
+    }
+    publishableKey = publishableKey || Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || Deno.env.get("SUPABASE_ANON_KEY");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     if (!supabaseUrl || !publishableKey || !serviceRoleKey) {
       return json({ error: "إعدادات خدمة حذف الحساب غير مكتملة." }, 500);
