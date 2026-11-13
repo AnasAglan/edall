@@ -15,16 +15,8 @@ function loadAuthRules() {
   return sandbox.window.EDAuthRules;
 }
 
-describe("signup email OTP", () => {
+describe("signup email verification page (link-only)", () => {
   const rules = loadAuthRules();
-
-  it("normalizes input to exactly six numeric characters", () => {
-    expect(rules.normalizeSignupOtp("12a-34 56 78")).toBe("123456");
-    expect(rules.normalizeSignupOtp("123")).toBe("123");
-    expect(rules.isValidSignupOtp("123456")).toBe(true);
-    expect(rules.isValidSignupOtp("12345")).toBe(false);
-    expect(rules.isValidSignupOtp("12a456")).toBe(false);
-  });
 
   it("routes only pending email confirmations to the verification page", () => {
     const start = html.indexOf("async function handleSignUp()");
@@ -53,23 +45,34 @@ describe("signup email OTP", () => {
     expect(html).toContain("addEventListener('click', cancelSignupVerification)");
   });
 
-  it("verifies signup codes and supports resend", () => {
-    expect(html).toContain("sb.auth.verifyOtp({ email, token, type: 'signup' })");
+  it("shows no OTP input or code-verify button on the verification page", () => {
+    const start = html.indexOf('id="verifyEmailPage"');
+    const end = html.indexOf('id="adminPage"', start);
+    const page = html.slice(start, end);
+    expect(page).not.toContain('id="signupOtpCode"');
+    expect(page).not.toContain('id="btnVerifySignupOtp"');
+    expect(html).not.toContain("handleVerifySignupOtp");
+    expect(html).not.toContain("sb.auth.verifyOtp");
+  });
+
+  it("keeps the resend button, cooldown, and back-to-login button", () => {
+    const start = html.indexOf('id="verifyEmailPage"');
+    const end = html.indexOf('id="adminPage"', start);
+    const page = html.slice(start, end);
+    expect(page).toContain('id="btnResendSignupOtp"');
+    expect(page).toContain('id="verifyEmailBackBtn"');
+    expect(page).toContain('id="pendingSignupEmailLabel"');
     expect(html).toContain("type: 'signup'");
     expect(html).toContain("options: { emailRedirectTo: window.location.origin + window.location.pathname }");
     expect(html).toContain("startSignupResendCooldown(60)");
-    expect(html).toContain("maxlength=\"6\"");
-    expect(html).toContain("autocomplete=\"one-time-code\"");
-    expect(html).toContain("id=\"verifyEmailPage\"");
-    expect(html).toContain("اكتب ما تم إرساله لبريدك أو اضغط زر التفعيل");
+    expect(html).toContain("addEventListener('click', resendSignupVerificationEmail)");
   });
 
-  it("keeps both the six-digit code and the direct confirmation link in the template", () => {
-    expect(template).toContain("{{ .Token }}");
-    expect(template).toContain("{{ .ConfirmationURL }}");
-    expect(template).toContain("https://edall.lovable.app/favicon.ico");
-    expect(config).toContain("[auth.email.template.confirmation]");
-    expect(config).toContain("./supabase/templates/confirmation.html");
+  it("tells the student to open the email and press the activation button, with no code entry", () => {
+    expect(html).toContain("تم إرسال رسالة تفعيل إلى بريدك الإلكتروني. افتح الرسالة واضغط على زر تفعيل الحساب لإكمال التسجيل.");
+    expect(html).toContain("لا تحتاج إلى إدخال أي رمز");
+    expect(html).toContain("أرسلنا رسالة التفعيل إلى:");
+    expect(html).not.toContain("أرسلنا الرمز إلى:");
   });
 });
 

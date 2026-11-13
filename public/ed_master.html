@@ -1987,25 +1987,11 @@ word-spacing: normal !important;
         <div class="header">
             <div class="logo" onclick="showPage('mainPage')">ED</div>
             <div class="header-title" id="verifyEmailTitle">تفعيل حسابك</div>
-            <div class="header-desc" id="verifyEmailDesc">اكتب ما تم إرساله لبريدك أو اضغط زر التفعيل</div>
+            <div class="header-desc" id="verifyEmailDesc">تم إرسال رسالة تفعيل إلى بريدك الإلكتروني. افتح الرسالة واضغط على زر تفعيل الحساب لإكمال التسجيل.</div>
         </div>
         <div style="background:var(--card);border-radius:var(--radius-lg);padding:32px 28px;margin:24px auto;max-width:420px;box-shadow:var(--shadow);">
-            <div style="font-size:1.05rem;font-weight:800;margin-bottom:12px;text-align:center;" id="verifyEmailHint">أدخل رمز التحقق المكوّن من 6 أرقام الذي أرسلناه إلى بريدك الإلكتروني.</div>
+            <div style="font-size:1.05rem;font-weight:800;margin-bottom:12px;text-align:center;" id="verifyEmailHint">لا تحتاج إلى إدخال أي رمز. افتح رسالة البريد الإلكتروني واضغط على زر «تفعيل الحساب» الموجود فيها.</div>
             <div id="pendingSignupEmailLabel" style="color:var(--text-muted);font-size:.9rem;text-align:center;margin-bottom:18px;direction:ltr;word-break:break-word;"></div>
-            <input
-                id="signupOtpCode"
-                type="text"
-                inputmode="numeric"
-                pattern="[0-9]{6}"
-                maxlength="6"
-                autocomplete="one-time-code"
-                spellcheck="false"
-                dir="ltr"
-                placeholder="••••••"
-                aria-label="رمز التحقق المكوّن من ستة أرقام"
-                style="width:100%;max-width:280px;margin:0 auto 18px;display:block;text-align:center;letter-spacing:.55em;font-size:1.65rem;font-weight:900;direction:ltr;"
-            >
-            <button class="btn" id="btnVerifySignupOtp" type="button" style="width:100%;margin-bottom:10px;"><span id="btnVerifySignupOtpText">تأكيد التفعيل</span></button>
             <button class="btn btn-outline" id="btnResendSignupOtp" type="button" style="width:100%;margin-bottom:10px;"><span id="btnResendSignupOtpText">إعادة إرسال الرسالة</span></button>
             <button class="btn btn-outline" id="verifyEmailBackBtn" type="button" style="width:100%;"><span id="verifyEmailBackText">العودة إلى تسجيل الدخول</span></button>
         </div>
@@ -4745,16 +4731,8 @@ window.triggerModalClose = function() {
                 
                 document.getElementById('btnSignIn').addEventListener('click', handleSignIn);
                 document.getElementById('btnSignUp').addEventListener('click', handleSignUp);
-                document.getElementById('btnVerifySignupOtp').addEventListener('click', handleVerifySignupOtp);
                 document.getElementById('btnResendSignupOtp').addEventListener('click', resendSignupVerificationEmail);
                 document.getElementById('verifyEmailBackBtn').addEventListener('click', cancelSignupVerification);
-                const signupOtpInput = document.getElementById('signupOtpCode');
-                signupOtpInput.addEventListener('input', () => {
-                    signupOtpInput.value = window.EDAuthRules.normalizeSignupOtp(signupOtpInput.value);
-                });
-                signupOtpInput.addEventListener('keydown', (event) => {
-                    if (event.key === 'Enter') handleVerifySignupOtp();
-                });
 
                 document.getElementById('adminUiBtn').addEventListener('click', showAdminPage);
                 document.getElementById('admCreate').addEventListener('click', createNewCourse);
@@ -5016,17 +4994,13 @@ window.triggerModalClose = function() {
                 loginPageTitle: 'تسجيل الدخول أو إنشاء حساب',
                 loginPageDesc: 'مرحبا بك في ED ALL، سجل الدخول أو أنشئ حسابًا للبدء',
                 verifyEmailTitle: 'تفعيل حسابك',
-                verifyEmailDesc: 'اكتب ما تم إرساله لبريدك أو اضغط زر التفعيل',
-                verifyEmailHint: 'أدخل رمز التحقق المكوّن من 6 أرقام الذي أرسلناه إلى بريدك الإلكتروني.',
-                verifyEmailSentTo: 'أرسلنا الرمز إلى:',
+                verifyEmailDesc: 'تم إرسال رسالة تفعيل إلى بريدك الإلكتروني. افتح الرسالة واضغط على زر تفعيل الحساب لإكمال التسجيل.',
+                verifyEmailHint: 'لا تحتاج إلى إدخال أي رمز. افتح رسالة البريد الإلكتروني واضغط على زر «تفعيل الحساب» الموجود فيها.',
+                verifyEmailSentTo: 'أرسلنا رسالة التفعيل إلى:',
                 verifyEmailMissing: 'تعذر استعادة البريد الإلكتروني. ارجع إلى التسجيل واستخدم رابط التفعيل في الرسالة أو أعد إنشاء الحساب.',
-                verifyEmailCodeRequired: 'أدخل رمز التحقق المكوّن من 6 أرقام.',
-                verifyEmailInvalidCode: 'رمز التفعيل غير صحيح أو انتهت صلاحيته. تحقق منه وحاول مرة أخرى.',
-                verifyEmailSuccess: 'تم تفعيل بريدك الإلكتروني بنجاح.',
                 verifyEmailResent: 'تم إرسال رسالة تفعيل جديدة إلى بريدك.',
                 verifyEmailResendWait: 'إعادة إرسال الرسالة',
                 verifyEmailResending: 'جارٍ إعادة الإرسال...',
-                verifyEmailVerifyButton: 'تأكيد التفعيل',
                 verifyEmailBack: 'العودة إلى تسجيل الدخول',
                 adminPageTitle: 'لوحة الإدارة',
                 adminPageDesc: 'إدارة المستخدمين والكورسات',
@@ -5077,17 +5051,13 @@ window.triggerModalClose = function() {
                 loginPageTitle: 'Login or Create Account',
                 loginPageDesc: 'Welcome to ED ALL, login or create an account to get started',
                 verifyEmailTitle: 'Verify your account',
-                verifyEmailDesc: 'Enter the code sent to your email or use the activation button in the email.',
-                verifyEmailHint: 'Enter the 6-digit verification code sent to your email address.',
-                verifyEmailSentTo: 'We sent the code to:',
+                verifyEmailDesc: 'A verification email was sent to your email address. Open it and click the account activation button to finish signing up.',
+                verifyEmailHint: 'You do not need to enter any code. Open the email and click the "Activate account" button inside it.',
+                verifyEmailSentTo: 'We sent the verification email to:',
                 verifyEmailMissing: 'We could not restore the email address. Return to sign-up or use the activation link in your email.',
-                verifyEmailCodeRequired: 'Enter the 6-digit verification code.',
-                verifyEmailInvalidCode: 'The verification code is invalid or expired. Check it and try again.',
-                verifyEmailSuccess: 'Your email has been verified successfully.',
                 verifyEmailResent: 'A new verification email was sent.',
                 verifyEmailResendWait: 'Resend email',
                 verifyEmailResending: 'Resending...',
-                verifyEmailVerifyButton: 'Verify account',
                 verifyEmailBack: 'Back to sign in',
                 adminPageTitle: 'Admin Panel',
                 adminPageDesc: 'Manage users and courses',
@@ -5148,7 +5118,6 @@ window.triggerModalClose = function() {
                 'verifyEmailTitle': t.verifyEmailTitle,
                 'verifyEmailDesc': t.verifyEmailDesc,
                 'verifyEmailHint': t.verifyEmailHint,
-                'btnVerifySignupOtpText': t.verifyEmailVerifyButton,
                 'btnResendSignupOtpText': t.verifyEmailResendWait,
                 'verifyEmailBackText': t.verifyEmailBack,
                 'adminPageTitle': t.adminPageTitle,
@@ -5451,8 +5420,6 @@ window.triggerModalClose = function() {
                 sessionStorage.removeItem(PENDING_SIGNUP_EMAIL_KEY);
                 sessionStorage.removeItem(SIGNUP_RESEND_COOLDOWN_KEY);
             } catch (_) {}
-            const input = document.getElementById('signupOtpCode');
-            if (input) input.value = '';
             syncSignupResendButton();
             return true;
         }
@@ -5468,8 +5435,6 @@ window.triggerModalClose = function() {
             const email = getPendingSignupEmail();
             const t = i18n[currentLanguage] || i18n.ar;
             label.textContent = email ? t.verifyEmailSentTo + ' ' + email : t.verifyEmailMissing;
-            const verifyButton = document.getElementById('btnVerifySignupOtp');
-            if (verifyButton) verifyButton.disabled = !email;
             syncSignupResendButton();
         }
 
@@ -5493,66 +5458,6 @@ window.triggerModalClose = function() {
         function startSignupResendCooldown(seconds) {
             try { sessionStorage.setItem(SIGNUP_RESEND_COOLDOWN_KEY, String(Date.now() + seconds * 1000)); } catch (_) {}
             syncSignupResendButton();
-        }
-
-        async function handleVerifySignupOtp() {
-            const button = document.getElementById('btnVerifySignupOtp');
-            const input = document.getElementById('signupOtpCode');
-            const email = getPendingSignupEmail();
-            const token = window.EDAuthRules.normalizeSignupOtp(input && input.value);
-            const t = i18n[currentLanguage] || i18n.ar;
-
-            if (!email) {
-                showToast(t.verifyEmailMissing, 'error');
-                return;
-            }
-            if (!window.EDAuthRules.isValidSignupOtp(token)) {
-                showToast(t.verifyEmailCodeRequired, 'warning');
-                if (input) input.focus();
-                return;
-            }
-
-            showBtnLoading(button);
-            try {
-                const { data, error } = await sb.auth.verifyOtp({ email, token, type: 'signup' });
-                if (error) throw error;
-                if (!data || !data.user || !data.session) {
-                    throw Object.assign(new Error('Signup verification did not return an authenticated session.'), { code: 'otp_expired' });
-                }
-
-                clearPendingSignupVerification(email);
-                await ensureUserAccountRecord(data.user, normalizeRequestedRole(data.user.user_metadata?.requested_role || 'student'));
-                await loadCurrentUserFromSupabase(data.user);
-
-                if (currentUser && currentUser.banned) {
-                    await sb.auth.signOut();
-                    currentUser = null;
-                    _activeAuthUserId = null;
-                    _syncUser();
-                    updateUI();
-                    hideBtnLoading(button);
-                    showToast(currentLanguage === 'ar' ? 'تم حظر حسابك. تواصل مع الإدارة.' : 'Your account has been blocked.', 'error');
-                    return;
-                }
-
-                _activeAuthUserId = data.user.id;
-                _dataLoaded = false;
-                await loadData();
-                updateUI();
-                hideBtnLoading(button);
-                showPage('mainPage');
-                showToast(t.verifyEmailSuccess, 'success');
-            } catch (error) {
-                hideBtnLoading(button);
-                console.error('Signup email verification failed:', error);
-                const code = String(error && (error.code || error.error_code) || '');
-                const message = String(error && error.message || '').toLowerCase();
-                if (code === 'otp_expired' || code === 'otp_disabled' || message.includes('invalid token') || message.includes('token has expired') || message.includes('invalid otp')) {
-                    showToast(t.verifyEmailInvalidCode, 'error');
-                } else {
-                    showToast(window.EDAuthRules.describeAuthError(error, currentLanguage, 'signup'), 'error');
-                }
-            }
         }
 
         async function resendSignupVerificationEmail() {
@@ -5607,14 +5512,12 @@ window.triggerModalClose = function() {
                             sessionStorage.setItem(PENDING_SIGNUP_EMAIL_KEY, email);
                             sessionStorage.removeItem(SIGNUP_RESEND_COOLDOWN_KEY);
                         } catch (_) {}
-                        const otpInput = document.getElementById('signupOtpCode');
-                        if (otpInput) otpInput.value = '';
                         setPendingSignupEmailLabel();
                         startSignupResendCooldown(60);
                         showPage('verifyEmailPage');
                         showToast(currentLanguage === 'ar'
-                            ? 'بريدك الإلكتروني لم يتم تأكيده بعد. أدخل رمز التفعيل أو أعد إرسال الرسالة.'
-                            : 'Your email is not confirmed yet. Enter the verification code or resend the email.', 'warning');
+                            ? 'بريدك الإلكتروني لم يتم تأكيده بعد. افتح رسالة التفعيل في بريدك واضغط زر تفعيل الحساب، أو أعد إرسال الرسالة.'
+                            : 'Your email is not confirmed yet. Open the verification email and click the account activation button, or resend the email.', 'warning');
                         return;
                     }
                     showToast(window.EDAuthRules.describeAuthError(error || { message: 'No session returned' }, currentLanguage, 'signin'), 'error');
@@ -5690,14 +5593,12 @@ window.triggerModalClose = function() {
                         document.getElementById('signUpPass').value = '';
                         try { sessionStorage.setItem(PENDING_SIGNUP_EMAIL_KEY, email); } catch (_) {}
                         try { sessionStorage.removeItem(SIGNUP_RESEND_COOLDOWN_KEY); } catch (_) {}
-                        const otpInput = document.getElementById('signupOtpCode');
-                        if (otpInput) otpInput.value = '';
                         setPendingSignupEmailLabel();
                         startSignupResendCooldown(60);
                         showPage('verifyEmailPage');
                         showToast(currentLanguage === 'ar'
-                            ? 'تم إنشاء الحساب. أرسلنا رمز التفعيل ورابط التأكيد إلى ' + email + '.'
-                            : 'Account created. We sent a verification code and confirmation link to ' + email + '.', 'success');
+                            ? 'تم إنشاء الحساب. أرسلنا رسالة تفعيل إلى ' + email + '. افتحها واضغط زر تفعيل الحساب.'
+                            : 'Account created. We sent a verification email to ' + email + '. Open it and click the account activation button.', 'success');
                     } else {
                         showToast(currentLanguage === 'ar' ? 'تعذر إنشاء الحساب، حاول مرة أخرى.' : 'Could not create the account, please try again.', 'error');
                     }
