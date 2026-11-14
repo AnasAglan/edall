@@ -1182,6 +1182,11 @@ DECLARE
   _admins integer;
   _courses integer;
   _lessons integer;
+  _lesson_videos integer;
+  _lesson_files integer;
+  _enrollments integer;
+  _exams integer;
+  _exam_attempts integer;
   _assignments integer;
   _submissions integer;
   _live_classes integer;
@@ -1199,6 +1204,11 @@ BEGIN
   SELECT count(DISTINCT user_id) INTO _admins FROM public.user_roles WHERE role='admin'::public.app_role;
   SELECT count(*) INTO _courses FROM public.courses;
   SELECT count(*) INTO _lessons FROM public.lessons;
+  SELECT count(*) INTO _lesson_videos FROM public.lesson_videos;
+  SELECT count(*) INTO _lesson_files FROM public.lesson_files;
+  SELECT count(*) INTO _enrollments FROM public.enrollments;
+  SELECT count(*) INTO _exams FROM public.exams;
+  SELECT count(*) INTO _exam_attempts FROM public.exam_attempts;
   SELECT count(*) INTO _assignments FROM public.assignments;
   SELECT count(*) INTO _submissions FROM public.assignment_submissions;
   SELECT count(*) INTO _live_classes FROM public.live_classes;
@@ -1206,9 +1216,12 @@ BEGIN
   SELECT count(*) INTO _payment_orders FROM public.payment_orders;
   RETURN jsonb_build_object(
     'users',_users,'students',_students,'teachers',_teachers,'admins',_admins,
-    'courses',_courses,'lessons',_lessons,'assignments',_assignments,
-    'submissions',_submissions,'live_classes',_live_classes,
-    'certificates',_certificates,'payment_orders',_payment_orders
+    'courses',_courses,'lessons',_lessons,'lesson_video_links',_lesson_videos,
+    'lesson_pdf_links',_lesson_files,'enrollments',_enrollments,
+    'exams',_exams,'exam_attempts',_exam_attempts,
+    'assignments',_assignments,'submissions',_submissions,
+    'live_classes',_live_classes,'certificates',_certificates,
+    'payment_orders',_payment_orders
   );
 END;
 $function$;
