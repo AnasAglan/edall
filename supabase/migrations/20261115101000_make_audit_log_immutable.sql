@@ -1,6 +1,13 @@
 -- Enforce append-only audit history at the database boundary, including service-role clients.
 BEGIN;
 
+-- Keep historical actor/course UUIDs as immutable snapshots. ON DELETE SET NULL
+-- would attempt to UPDATE audit rows and conflict with the immutability trigger.
+ALTER TABLE public.platform_audit_log
+  DROP CONSTRAINT IF EXISTS platform_audit_log_actor_user_id_fkey;
+ALTER TABLE public.platform_audit_log
+  DROP CONSTRAINT IF EXISTS platform_audit_log_course_id_fkey;
+
 CREATE OR REPLACE FUNCTION public.prevent_platform_audit_log_mutation()
 RETURNS trigger
 LANGUAGE plpgsql
