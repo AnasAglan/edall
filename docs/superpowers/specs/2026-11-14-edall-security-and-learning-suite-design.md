@@ -21,7 +21,6 @@ Harden ED-ALL's production authorization boundaries and expand the existing lear
 2. Make PDF access private and issue signed URLs only to users who are entitled to the lesson.
 3. Make course purchase idempotent under concurrency and validate every user-creation step before reporting success.
 4. Provide integrated, role-scoped systems for:
-   - Student AI tutor over only the student's enrolled/free lesson content.
    - Assignments and submissions with teacher grading and feedback.
    - Attendance sessions and attendance records.
    - Verifiable course-completion certificates.
@@ -53,7 +52,6 @@ Harden ED-ALL's production authorization boundaries and expand the existing lear
 
 - Database migrations define tables, indexes, constraints, triggers, SECURITY DEFINER RPCs, and explicit grants. Policies use `auth.uid()`, course ownership, enrollments, and the established `can_access_lesson` function.
 - UI additions are a focused feature module loaded from the existing `ed_master.html`; it consumes the existing global Supabase session and current-user event, and respects the current Arabic/English setting and CSS variables.
-- Student tutor is a distinct read-only tool path. It cannot call staff tools, mutate data, query arbitrary student data, or read lessons outside the student's access.
 - Payment orders use a strict state machine (created → pending → paid/failed/cancelled), unique provider references/idempotency keys, server-verified callbacks, and a single transactional fulfillment RPC. Manual/sandbox mode is not represented as a real card payment.
 - Certificates use an unguessable verification token and server-side issuance checks for enrollment and completion.
 - Audit records are append-only for authenticated application roles; write access is limited to trusted server-side functions/triggers.
@@ -73,7 +71,7 @@ Harden ED-ALL's production authorization boundaries and expand the existing lear
 
 ## UX and accessibility
 
-Use a dedicated “مساحة التعلم”/“Learning Hub” entry in the current platform. Show only features available to the signed-in role. Student screens focus on tutor, assignments, class schedule, certificates, discussions, and progress. Teacher screens focus on assignment review, attendance, live classes, discussion moderation, and course-scoped reports. Admin screens add payment review, global analytics, and audit history. All new screens must handle loading, empty, error, retry, and mobile layouts, and must not claim success until the server confirms it.
+Use a dedicated “مساحة التعلم”/“Learning Hub” entry in the current platform. Show only features available to the signed-in role. Student screens focus on assignments, submissions, attendance, class schedule, certificates, discussions, and progress. Teacher screens focus on assignment review, attendance, live classes, discussion moderation, and course-scoped reports. Admin screens add payment review, global analytics, and audit history. All new screens must handle loading, empty, error, retry, and mobile layouts, and must not claim success until the server confirms it.
 
 ## Delivery and verification
 
