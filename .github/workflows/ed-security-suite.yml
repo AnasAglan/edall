@@ -26,6 +26,24 @@ on:
       - "supabase/migrations/**"
       - "supabase/functions/**"
       - "workers/edall-assistant/**"
+      - "workers/video-media-proxy/**"
+      - "public/ed_master.html"
+      - "public/ed_features.js"
+      - "public/ed_features.css"
+      - "public/ed_assistant.js"
+      - "public/sw.js"
+      - "public/ed-pwa.js"
+      - "public/manifest.webmanifest"
+name: ED-ALL security and learning suite
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/functions/**"
+      - "workers/edall-assistant/**"
+      - "workers/video-media-proxy/**"
       - "public/ed_master.html"
       - "public/ed_features.js"
       - "public/ed_features.css"
@@ -34,6 +52,26 @@ on:
       - "public/ed-pwa.js"
       - "public/manifest.webmanifest"
       - "src/test/ed-security-hardening.test.ts"
+      - "src/test/ed-piped-player.test.ts"
+      - "src/test/ed-learning-suite.test.ts"
+      - "package.json"
+      - ".github/workflows/ed-security-suite.yml"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/functions/**"
+      - "workers/edall-assistant/**"
+      - "workers/video-media-proxy/**"
+      - "public/ed_master.html"
+      - "public/ed_features.js"
+      - "public/ed_features.css"
+      - "public/ed_assistant.js"
+      - "public/sw.js"
+      - "public/ed-pwa.js"
+      - "public/manifest.webmanifest"
+      - "src/test/ed-security-hardening.test.ts"
+      - "src/test/ed-piped-player.test.ts"
       - "src/test/ed-learning-suite.test.ts"
       - "package.json"
       - ".github/workflows/ed-security-suite.yml"
