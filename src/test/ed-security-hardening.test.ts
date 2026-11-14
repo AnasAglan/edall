@@ -232,6 +232,16 @@ describe("ED-ALL production authorization hardening", () => {
     expect(mfa).toContain("Students clean up unsubmitted assignment files");
   });
 
+  it("scopes student roster and progress reports to course capabilities and masks email", () => {
+    const reporting = read("supabase/migrations/20261115114000_scope_student_reports_to_course_capabilities.sql");
+    expect(reporting).toContain("public.has_course_capability(_course_id,'attendance')");
+    expect(reporting).toContain("public.has_course_capability(_course_id,'analytics')");
+    expect(reporting).toContain("WHEN public.has_role(auth.uid(),'admin'::public.app_role)");
+    expect(reporting).toContain("THEN p.email");
+    expect(reporting).toContain("ELSE NULL");
+    expect(reporting).toContain("STUDENT_NOT_ENROLLED");
+  });
+
   it("requires administrator AAL2 and audited RPC for all user role mutations", () => {
     const roleMigration = read("supabase/migrations/20261115112000_secure_user_role_management.sql");
     const worker = read("workers/edall-assistant/index.js");
