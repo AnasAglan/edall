@@ -326,7 +326,7 @@ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $function$
 BEGIN
   IF auth.uid() IS NULL
-     OR _capability NOT IN ('assignments','attendance','live_classes','discussions','analytics')
+     OR _capability NOT IN ('assignments','attendance','live_classes','discussions','analytics','certificates')
      OR NOT public.has_course_capability(_course_id,_capability) THEN
     RAISE EXCEPTION 'NOT_ALLOWED';
   END IF;
