@@ -96,4 +96,13 @@ describe("ED-ALL production authorization hardening", () => {
     expect(proxy).toContain("if (origin && !ALLOWED_ORIGINS.has(origin))");
     expect(proxy).toContain('responseCorsHeaders.set("Access-Control-Allow-Origin", origin)');
   });
+
+  it("makes the administrative audit log append-only even for service-role mutations", () => {
+    const migration = read("supabase/migrations/20261115101000_make_audit_log_immutable.sql");
+    expect(migration).toContain("CREATE OR REPLACE FUNCTION public.prevent_platform_audit_log_mutation()");
+    expect(migration).toContain("BEFORE UPDATE OR DELETE ON public.platform_audit_log");
+    expect(migration).toContain("RAISE EXCEPTION 'AUDIT_LOG_APPEND_ONLY'");
+    expect(migration).toContain("REVOKE UPDATE, DELETE, TRUNCATE ON TABLE public.platform_audit_log");
+    expect(migration).toContain("FROM PUBLIC, anon, authenticated, service_role");
+  });
 });
