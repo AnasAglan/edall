@@ -11,7 +11,7 @@ describe("ED-ALL production authorization hardening", () => {
     expect(migration).toContain('DROP POLICY IF EXISTS "Users can enroll themselves"');
     expect(migration).toContain('CREATE POLICY "Free courses allow self enrollment"');
     expect(migration).toContain("ON public.enrollments");
-    expect(migration).toContain("COALESCE(c.price, 0) <= 0");
+    expect(migration).toContain("COALESCE(c.price, 0) = 0");
     expect(migration).toContain("user_id = auth.uid()");
   });
 
@@ -25,7 +25,7 @@ describe("ED-ALL production authorization hardening", () => {
     expect(migration).toContain("REVOKE ALL ON FUNCTION public.grade_exam_submission(uuid, jsonb) FROM PUBLIC, anon, authenticated");
     expect(migration).toContain("CREATE OR REPLACE FUNCTION public.get_exam_questions_safe(_exam_id uuid)");
     expect(migration).toContain("auth.uid() IS NULL");
-    expect(migration).toContain("public.can_access_lesson(e.lesson_id)");
+    expect(migration).toContain("public.can_access_lesson(_lesson_id)");
     expect(read("public/ed_master.html")).not.toContain("grade_exam_submission");
   });
 
