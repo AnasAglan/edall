@@ -131,4 +131,14 @@ describe("ED-ALL production authorization hardening", () => {
     expect(migration).toContain("status IN ('created','pending')");
     expect(migration).toContain("FOR UPDATE");
   });
+
+  it("claims one Paymob intention at a time and reuses an existing checkout", () => {
+    const edge = read("supabase/functions/create-payment-intention/index.ts");
+    expect(edge).toContain("CHECKOUT_ALREADY_BEING_PREPARED");
+    expect(edge).toContain('.eq("status","created")');
+    expect(edge).toContain('.eq("status","pending")');
+    expect(edge).toContain(".is(\"checkout_url\",null)");
+    expect(edge).toContain("5*60*1000");
+    expect(edge).toContain("reused:true");
+  });
 });
