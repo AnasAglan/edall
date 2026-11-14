@@ -65,7 +65,7 @@ Deno.serve(async req=>{
       return json({error:"Payment amount or provider mismatch."},409);
     }
 
-    const payloadHash=await sha256(raw);
+    const payloadHash=await sha256Hex(raw);
     const succeeded=obj.success===true && obj.pending!==true &&
       obj.error_occured!==true && obj.is_refunded!==true && obj.is_voided!==true;
 
