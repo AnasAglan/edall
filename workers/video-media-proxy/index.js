@@ -72,13 +72,38 @@ export default {
     if (range && /^bytes=\d+-\d*$/.test(range)) headers.set("Range", range);
 
     let upstream;
+    let currentUrl = upstreamUrl;
     try {
-      upstream = await fetch(upstreamUrl.toString(), {
-        method: request.method,
-        headers,
-        redirect: "follow",
-        cache: "no-store",
-      });
+      // Never let fetch follow redirects before we validate the next destination.
+      // A trusted media host must not be able to redirect this proxy to localhost,
+      // cloud metadata endpoints, or arbitrary internet hosts.
+      for (let redirects = 0; redirects <= 3; redirects += 1) {
+        upstream = await fetch(currentUrl.toString(), {
+          method: request.method,
+          headers,
+          redirect: "manual",
+          cache: "no-store",
+        });
+
+        if (![301, 302, 303, 307, 308].includes(upstream.status)) break;
+
+        const location = upstream.headers.get("Location");
+        if (!location || redirects === 3) {
+          return new Response("The upstream returned an invalid or excessive redirect.", {
+            status: 502,
+            headers: responseCorsHeaders,
+          });
+        }
+
+        try {
+          currentUrl = getAllowedMediaUrl(new URL(location, currentUrl).toString());
+        } catch {
+          return new Response("The upstream redirect target is not allowed.", {
+            status: 502,
+            headers: responseCorsHeaders,
+          });
+        }
+      }
     } catch {
       return new Response("The upstream video server could not be reached.", {
         status: 502,
@@ -86,13 +111,16 @@ export default {
       });
     }
 
-    let finalUrl;
-    try {
-      finalUrl = new URL(upstream.url || upstreamUrl.toString());
-    } catch {
-      return new Response("Invalid upstream response.", { status: 502, headers: responseCorsHeaders });
+    if (!upstream || [301, 302, 303, 307, 308].includes(upstream.status)) {
+      return new Response("The upstream redirect limit was exceeded.", {
+        status: 502,
+        headers: responseCorsHeaders,
+      });
     }
-    if (!isGoogleVideoHost(finalUrl.hostname)) {
+
+    // Validate the actual URL we fetched, not a post-hoc response.url after
+    // automatic redirects have already happened.
+    if (!isGoogleVideoHost(currentUrl.hostname) || currentUrl.pathname !== "/videoplayback") {
       return new Response("The upstream redirected to a non-GoogleVideo host.", {
         status: 502,
         headers: responseCorsHeaders,
