@@ -7,6 +7,8 @@
     roles: [],
     courses: [],
     courseId: "",
+    courseStaffRoles: [],
+    ownedCourseIds: [],
     availablePaidCourses: [],
     tab: "",
     busy: false,
@@ -35,8 +37,20 @@
   const sb = () => window.sb;
   const currentUser = () => window.currentUser || state.user;
   const isAdmin = () => state.roles.includes("admin");
-  const isTeacher = () => state.roles.includes("teacher") || isAdmin();
-  const isStudent = () => state.roles.includes("student") || (!isAdmin() && !state.roles.includes("teacher"));
+  const hasTeacherAccount = () => state.roles.includes("teacher");
+  const isCourseOwner = () => !!state.courseId && state.ownedCourseIds.includes(state.courseId);
+  const currentStaffRole = () => (state.courseStaffRoles || []).find(r => r.course_id === state.courseId)?.role || "";
+  const isTeacher = () => isAdmin() || isCourseOwner() || !!currentStaffRole();
+  const isStudent = () => state.roles.includes("student") || (!isAdmin() && !hasTeacherAccount());
+  const hasCourseCapability = capability => {
+    if (isAdmin() || isCourseOwner()) return true;
+    const role = currentStaffRole();
+    if (role === "instructor") return true;
+    if (role === "assistant") return ["assignments","attendance","live_classes"].includes(capability);
+    if (role === "moderator") return capability === "discussions";
+    if (role === "analyst") return capability === "analytics";
+    return false;
+  };
   const notify = (msg, type) => {
     if (typeof window.showToast === "function") window.showToast(msg, type || "info");
     else console[(type === "error" ? "error" : "log")](msg);
@@ -87,14 +101,16 @@
       ["mfa", text("المصادقة الثنائية", "Admin MFA")],
       ["liveClasses", text("الفصول المباشرة", "Live classes")]
     ];
-    if (isTeacher()) return [
-      ["assignments", text("الواجبات والتصحيح", "Assignments & grading")],
-      ["attendance", text("الحضور", "Attendance")],
-      ["liveClasses", text("الفصول المباشرة", "Live classes")],
-      ["discussions", text("النقاشات", "Discussions")],
-      ["analytics", text("تقارير الدورة", "Course reports")],
-      ["certificates", text("الشهادات", "Certificates")]
-    ];
+    if (isTeacher()) {
+      const tabs = [];
+      if (hasCourseCapability("assignments")) tabs.push(["assignments", text("الواجبات والتصحيح", "Assignments & grading")]);
+      if (hasCourseCapability("attendance")) tabs.push(["attendance", text("الحضور", "Attendance")]);
+      if (hasCourseCapability("live_classes")) tabs.push(["liveClasses", text("الفصول المباشرة", "Live classes")]);
+      if (hasCourseCapability("discussions")) tabs.push(["discussions", text("النقاشات", "Discussions")]);
+      if (hasCourseCapability("analytics")) tabs.push(["analytics", text("تقارير الدورة", "Course reports")]);
+      if (hasCourseCapability("certificates")) tabs.push(["certificates", text("الشهادات", "Certificates")]);
+      return tabs;
+    }
     return [
       ["assignments", text("واجباتي", "My assignments")],
       ["attendance", text("الحضور", "My attendance")],
@@ -110,6 +126,9 @@
     const uid = u && u.id;
     if (!uid) { state.courses = []; state.courseId = ""; return; }
     let ids = [];
+    state.courses = [];
+    state.courseStaffRoles = [];
+    state.ownedCourseIds = [];
     if (isAdmin()) {
       const all = await rows("courses", q => q.order("title", { ascending: true }));
       state.courses = all.map(c => ({ id: c.id, title: c.title || c.id }));
@@ -120,10 +139,12 @@
       const enrollments = await rows("enrollments", q => q.select("course_id").eq("user_id", uid));
       ids.push(...enrollments.map(r => r.course_id));
     }
-    if (isTeacher()) {
+    if (hasTeacherAccount()) {
       const owned = await rows("courses", q => q.select("id,title").eq("created_by", uid).order("title", { ascending: true }));
       state.courses = owned.map(c => ({ id: c.id, title: c.title || c.id }));
-      const staffRows = await rows("course_staff_roles", q => q.select("course_id").eq("user_id", uid));
+      state.ownedCourseIds = owned.map(c => c.id);
+      const staffRows = await rows("course_staff_roles", q => q.select("course_id,role").eq("user_id", uid));
+      state.courseStaffRoles = staffRows;
       ids.push(...staffRows.map(r => r.course_id));
     }
     ids = [...new Set(ids.filter(Boolean))];
