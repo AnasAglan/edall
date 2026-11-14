@@ -28,7 +28,9 @@ BEGIN
     RAISE EXCEPTION 'ADMIN_MFA_REQUIRED';
   END IF;
   IF _user_id IS NULL
+     OR _role IS NULL
      OR _role::text NOT IN ('student','teacher','admin')
+     OR _operation IS NULL
      OR _operation NOT IN ('grant','revoke') THEN
     RAISE EXCEPTION 'INVALID_ROLE_CHANGE';
   END IF;
@@ -56,6 +58,11 @@ BEGIN
       IF _user_id=auth.uid() THEN
         RAISE EXCEPTION 'CANNOT_REVOKE_OWN_ADMIN_ROLE';
       END IF;
+      -- A single global lock makes the last-admin check safe even when two
+      -- different administrators are being revoked at the same time.
+      PERFORM pg_catalog.pg_advisory_xact_lock(
+        pg_catalog.hashtext('edall-last-admin-role-guard')
+      );
       SELECT count(*) INTO _admins
       FROM public.user_roles
       WHERE role='admin'::public.app_role;
@@ -72,16 +79,7 @@ BEGIN
     _changed := FOUND;
   END IF;
 
-  IF _changed THEN
-    PERFORM public.write_platform_audit_event(
-      CASE WHEN _operation='grant' THEN 'user_role_granted' ELSE 'user_role_revoked' END,
-      'user_roles',
-      _user_id,
-      NULL,
-      jsonb_build_object('role',_role::text,'operation',_operation)
-    );
-  END IF;
-
+  -- audit_user_role_changes trigger writes the immutable audit event once.
   RETURN true;
 END;
 $function$;
