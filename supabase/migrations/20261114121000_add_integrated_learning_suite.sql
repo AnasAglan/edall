@@ -607,7 +607,7 @@ BEGIN
 
   _number := 'ED-' || upper(substr(replace(gen_random_uuid()::text,'-',''),1,12));
   _token := encode(
-    sha256(convert_to(gen_random_uuid()::text || gen_random_uuid()::text,'UTF8')),
+    extensions.digest(convert_to(gen_random_uuid()::text || gen_random_uuid()::text,'UTF8'),'sha256'),
     'hex'
   );
   INSERT INTO public.course_certificates(course_id,student_id,certificate_number,verification_token,issued_by)
