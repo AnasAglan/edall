@@ -22,14 +22,7 @@ AS $function$
           SELECT 1 FROM public.enrollments e
           WHERE e.course_id=c.id AND e.user_id=auth.uid()
         )
-        OR (
-          public.has_role(auth.uid(),'admin'::public.app_role)
-          AND public.admin_mfa_verified()
-        )
-        OR (
-          NOT public.has_role(auth.uid(),'admin'::public.app_role)
-          AND c.created_by=auth.uid()
-        )
+        OR public.has_course_capability(c.id,'content')
       )
   );
 $function$;
