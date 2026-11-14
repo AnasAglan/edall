@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sha256Hex, verifyPaymobTransactionHmac } from "../_shared/paymob-hmac.ts";
 
 function json(body: Record<string,unknown>,status=200) {
   return new Response(JSON.stringify(body),{
@@ -11,63 +12,6 @@ function nested(obj: Record<string,any>,path: string[]): unknown {
   let current: any=obj;
   for(const key of path) current=current && typeof current==="object"?current[key]:undefined;
   return current;
-}
-
-function canonicalValue(value: unknown): string {
-  if(value===true) return "true";
-  if(value===false) return "false";
-  if(value===null || value===undefined) return "";
-  return String(value);
-}
-
-function hex(bytes: Uint8Array): string {
-  return Array.from(bytes,value=>value.toString(16).padStart(2,"0")).join("");
-}
-
-function equalConstantTime(left: string,right: string): boolean {
-  const a=new TextEncoder().encode(left.toLowerCase());
-  const b=new TextEncoder().encode(right.toLowerCase());
-  if(a.length!==b.length) return false;
-  let difference=0;
-  for(let i=0;i<a.length;i++) difference|=a[i]^b[i];
-  return difference===0;
-}
-
-async function verifyPaymobTransactionHmac(obj: Record<string,any>,received: string,secret: string): Promise<boolean> {
-  const values=[
-    obj.amount_cents,
-    obj.created_at,
-    obj.currency,
-    obj.error_occured,
-    obj.has_parent_transaction,
-    obj.id,
-    obj.integration_id,
-    obj.is_3d_secure,
-    obj.is_auth,
-    obj.is_capture,
-    obj.is_refunded,
-    obj.is_standalone_payment,
-    obj.is_voided,
-    nested(obj,["order","id"]),
-    obj.owner,
-    obj.pending,
-    nested(obj,["source_data","pan"]),
-    nested(obj,["source_data","sub_type"]),
-    nested(obj,["source_data","type"]),
-    obj.success
-  ];
-  if(values.some(value=>value===undefined)) return false;
-  const message=values.map(canonicalValue).join("");
-  const key=await crypto.subtle.importKey(
-    "raw",new TextEncoder().encode(secret),{name:"HMAC",hash:"SHA-512"},false,["sign"]
-  );
-  const signature=await crypto.subtle.sign("HMAC",key,new TextEncoder().encode(message));
-  return equalConstantTime(hex(new Uint8Array(signature)),received);
-}
-
-async function sha256(value: string): Promise<string> {
-  const digest=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value));
-  return hex(new Uint8Array(digest));
 }
 
 Deno.serve(async req=>{
@@ -125,11 +69,17 @@ Deno.serve(async req=>{
     const succeeded=obj.success===true && obj.pending!==true &&
       obj.error_occured!==true && obj.is_refunded!==true && obj.is_voided!==true;
 
+    if(obj.pending===true) {
+      // An authenticated pending callback is not a failed or paid transaction.
+      return json({ok:true,pending:true},200);
+    }
+
     if(!succeeded) {
-      // Record the verified failure without ever downgrading an already paid order.
+      // Use a distinct event key so a later successful transaction callback
+      // can still be processed with the real Paymob transaction ID.
       const {error:eventError}=await admin.from("payment_webhook_events").upsert({
         provider:"primary",
-        provider_event_id:transactionId,
+        provider_event_id:transactionId + ":failed",
         order_id:merchantReference,
         payload_sha256:payloadHash,
         signature_verified:true,
@@ -142,7 +92,6 @@ Deno.serve(async req=>{
       if(order.status!=="paid") {
         const {error:updateError}=await admin.from("payment_orders").update({
           status:"failed",
-          provider_reference:transactionId,
           updated_at:new Date().toISOString()
         }).eq("id",merchantReference).neq("status","paid");
         if(updateError) return json({error:"Could not update the failed order."},500);
