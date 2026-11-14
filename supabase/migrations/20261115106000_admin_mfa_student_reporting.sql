@@ -63,6 +63,11 @@ BEGIN
   FROM public.enrollments e
   WHERE e.course_id=_course_id AND e.user_id=_user_id;
 
+  -- Never disclose a profile or learning record for a user outside this course.
+  IF _enrolled_at IS NULL THEN
+    RAISE EXCEPTION 'STUDENT_NOT_ENROLLED';
+  END IF;
+
   SELECT to_jsonb(x) INTO _profile
   FROM (
     SELECT p.id,p.name,p.email,p.public_id,p.avatar_url
