@@ -136,4 +136,13 @@ describe("ED-ALL integrated learning suite", () => {
     expect(sw).toContain("CACHE_NAME");
     expect(sw).toContain("network-only");
   });
+
+  it("shows course-scoped staff tabs only for granted capabilities", () => {
+    const ui = read("public/ed_features.js");
+    expect(ui).toContain('if (role === "assistant") return ["assignments","attendance","live_classes"].includes(capability)');
+    expect(ui).toContain('if (role === "moderator") return capability === "discussions"');
+    expect(ui).toContain('if (role === "analyst") return capability === "analytics"');
+    expect(ui).toContain('state.courseStaffRoles = staffRows');
+    expect(ui).toContain('const isTeacher = () => isAdmin() || isCourseOwner() || !!currentStaffRole()');
+  });
 });
