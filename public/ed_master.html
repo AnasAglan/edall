@@ -2508,8 +2508,8 @@ word-spacing: normal !important;
                 
                 xhr.onload = function() {
                     if (xhr.status >= 200 && xhr.status < 300) {
-                        const { data: urlData } = sb.storage.from('lesson-pdfs').getPublicUrl(filePath);
-                        onComplete({ filePath, publicUrl: urlData.publicUrl, fileName: file.name });
+                        // Store the private object path, never a public URL.
+                        onComplete({ filePath, publicUrl: filePath, fileName: file.name });
                     } else {
                         let errMsg = 'Upload failed';
                         try { errMsg = JSON.parse(xhr.responseText).message || errMsg; } catch(e) {}
@@ -2543,8 +2543,8 @@ word-spacing: normal !important;
                 };
                 xhr.onload = function() {
                     if (xhr.status >= 200 && xhr.status < 300) {
-                        const { data: urlData } = sb.storage.from('lesson-pdfs').getPublicUrl(filePath);
-                        resolve({ publicUrl: urlData.publicUrl, xhr });
+                        // Store the private object path; the UI creates a short-lived signed URL when opened.
+                        resolve({ publicUrl: filePath, xhr });
                     } else {
                         let errMsg = currentLanguage === 'ar' ? 'فشل رفع ملف PDF' : 'PDF upload failed';
                         try {
@@ -2681,16 +2681,70 @@ word-spacing: normal !important;
 
         function getStoragePathFromPublicUrl(fileUrl) {
             try {
-                if (!fileUrl) return null;
-                const marker = '/storage/v1/object/public/lesson-pdfs/';
-                const idx = fileUrl.indexOf(marker);
-                if (idx === -1) return null;
-                return decodeURIComponent(fileUrl.slice(idx + marker.length));
+                if (typeof fileUrl !== 'string' || !fileUrl.trim()) return null;
+                let value = fileUrl.trim();
+                const markers = [
+                    '/storage/v1/object/public/lesson-pdfs/',
+                    '/storage/v1/object/sign/lesson-pdfs/',
+                    '/storage/v1/object/lesson-pdfs/'
+                ];
+                if (/^https?:\\/\\//i.test(value)) {
+                    const marker = markers.find(item => value.includes(item));
+                    if (!marker) return null;
+                    value = value.slice(value.indexOf(marker) + marker.length).split('?')[0];
+                }
+                value = decodeURIComponent(value).replace(/^\\/+|\\/+$/g, '');
+                const parts = value.split('/');
+                const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+                if (parts.length < 3 || !uuid.test(parts[0]) || !uuid.test(parts[1]) ||
+                    parts.some(part => !part || part === '.' || part === '..' || /[\\\\\\0]/.test(part))) return null;
+                return value;
             } catch (error) {
-                console.error('Error parsing storage path:', error);
+                console.error('Error parsing private PDF path:', error);
                 return null;
             }
         }
+
+        async function openLessonPdfFromElement(element) {
+            const value = element && element.dataset ? element.dataset.pdfUrl : '';
+            return openLessonPdf(value);
+        }
+
+        async function openLessonPdf(fileUrl) {
+            // Open synchronously during the click so mobile browsers do not block the new tab.
+            const popup = window.open('about:blank', '_blank');
+            if (!popup) {
+                showToast(currentLanguage === 'ar'
+                    ? 'اسمح بفتح نافذة جديدة لعرض ملف المحاضرة.'
+                    : 'Allow pop-ups to open this lesson file.', 'error');
+                return false;
+            }
+            try {
+                popup.opener = null;
+                const path = getStoragePathFromPublicUrl(fileUrl);
+                let destination = '';
+                if (path) {
+                    const { data, error } = await sb.storage.from('lesson-pdfs').createSignedUrl(path, 900);
+                    if (error || !data?.signedUrl) throw error || new Error('Could not create a private file link.');
+                    destination = data.signedUrl;
+                } else {
+                    const candidate = new URL(String(fileUrl || ''), window.location.origin);
+                    if (candidate.protocol !== 'https:' && candidate.origin !== window.location.origin) {
+                        throw new Error('Only secure lesson file links are allowed.');
+                    }
+                    destination = candidate.href;
+                }
+                popup.location.replace(destination);
+                return true;
+            } catch (error) {
+                try { popup.close(); } catch (_) {}
+                console.error('Could not open private lesson PDF:', error);
+                showToast((currentLanguage === 'ar' ? 'تعذر فتح ملف المحاضرة: ' : 'Could not open lesson file: ') +
+                    String(error?.message || error), 'error');
+                return false;
+            }
+        }
+        window.openLessonPdfFromElement = openLessonPdfFromElement;
 
         async function removeLessonFile(courseId, lessonId, fileId, fileUrl, fileIndex) {
             try {
@@ -6900,7 +6954,7 @@ window.triggerModalClose = function() {
                                         <i class="fas fa-file-pdf" style="color:var(--danger);"></i>
                                         <span>${edEsc(file.name) || (currentLanguage === 'ar' ? 'ملف' : 'File')}</span>
                                     </div>
-                                    <a href="${file.url}" target="_blank" class="btn btn-sm" onclick="trackLessonProgress('${courseId}', '${lessonId}', 'pdfOpened', true)">
+                                    <a href="#" data-pdf-url="${edEsc(file.url)}" class="btn btn-sm" onclick="trackLessonProgress('${courseId}', '${lessonId}', 'pdfOpened', true); openLessonPdfFromElement(this); return false;">
                                         <i class="fas fa-external-link-alt"></i> ${currentLanguage === 'ar' ? 'فتح' : 'Open'}
                                     </a>
                                 </div>
@@ -8318,32 +8372,7 @@ if (_attempt && _attempt.id &&
     }
 }
 
-if (
-    !gradeResult &&
-    exam.id &&
-    (!_attempt ||
-        String(_attempt.id || '').startsWith('local_'))
-) {
-    try {
-        const { data, error } = await sb.rpc(
-            'grade_exam_submission',
-            {
-                _exam_id: exam.id,
-                _answers: rawAnswers
-            }
-        );
-
-        if (!error && data) {
-            gradeResult = data;
-            attemptSubmissionConfirmed = true;
-        }
-    } catch (e) {
-        console.warn(
-            'grade_exam_submission fallback error:',
-            e
-        );
-    }
-}
+// Do not fall back to the legacy RPC: only a server-created attempt can be graded.
 
 if (
     !gradeResult ||
