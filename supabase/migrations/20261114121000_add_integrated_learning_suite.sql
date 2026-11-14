@@ -1240,7 +1240,9 @@ STABLE
 SECURITY DEFINER
 SET search_path = ''
 AS $function$
-  SELECT COALESCE(auth.jwt()->>'aal','')='aal2';
+  SELECT auth.uid() IS NOT NULL
+     AND public.has_role(auth.uid(),'admin'::public.app_role)
+     AND COALESCE(auth.jwt()->>'aal','')='aal2';
 $function$;
 
 CREATE OR REPLACE FUNCTION public.write_platform_audit_event(
