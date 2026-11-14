@@ -1419,9 +1419,12 @@ CREATE POLICY "Enrolled students and course staff read assignments"
 ON public.assignments FOR SELECT TO authenticated
 USING (
   public.has_course_capability(course_id,'assignments')
-  OR EXISTS (
-    SELECT 1 FROM public.enrollments e
-    WHERE e.course_id=assignments.course_id AND e.user_id=auth.uid()
+  OR (
+    is_published = true
+    AND EXISTS (
+      SELECT 1 FROM public.enrollments e
+      WHERE e.course_id=assignments.course_id AND e.user_id=auth.uid()
+    )
   )
 );
 
