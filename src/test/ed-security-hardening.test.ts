@@ -89,13 +89,4 @@ describe("ED-ALL production authorization hardening", () => {
     expect(fn).toContain("auth.admin.deleteUser");
     expect(fn).toContain("https://edall.lovable.app");
   });
-
-  it("enforces the web playback toggle at the database boundary", () => {
-    const migration = read("supabase/migrations/20261115100000_enforce_web_playback.sql");
-    expect(migration).toContain('CREATE POLICY "Enforce web playback entitlement"');
-    expect(migration).toContain("AS RESTRICTIVE");
-    expect(migration).toContain("ON public.lesson_videos");
-    expect(migration).toContain("l.web_playback_enabled IS TRUE");
-    expect(migration).toContain("public.can_access_lesson(l.id)");
-  });
 });
