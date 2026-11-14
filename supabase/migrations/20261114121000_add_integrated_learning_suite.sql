@@ -1208,7 +1208,14 @@ BEGIN
   SELECT count(*) INTO _lesson_files FROM public.lesson_files;
   SELECT count(*) INTO _enrollments FROM public.enrollments;
   SELECT count(*) INTO _exams FROM public.exams;
-  SELECT count(*) INTO _exam_attempts FROM public.exam_attempts;
+  -- Older production projects may contain a manually-created exam_attempts table
+  -- that is not part of the migration history. Prefer it when present; on clean
+  -- installs, exam_results is the canonical completed-attempt record.
+  IF pg_catalog.to_regclass('public.exam_attempts') IS NOT NULL THEN
+    EXECUTE 'SELECT count(*) FROM public.exam_attempts' INTO _exam_attempts;
+  ELSE
+    SELECT count(*) INTO _exam_attempts FROM public.exam_results;
+  END IF;
   SELECT count(*) INTO _assignments FROM public.assignments;
   SELECT count(*) INTO _submissions FROM public.assignment_submissions;
   SELECT count(*) INTO _live_classes FROM public.live_classes;
