@@ -220,6 +220,8 @@ describe("ED-ALL production authorization hardening", () => {
       expect(worker).toContain('"' + field + '"');
     }
     expect(learning).toContain("OR NOT public.admin_mfa_verified()");
+    expect(learning).toContain("pg_catalog.to_regclass('public.exam_attempts')");
+    expect(learning).toContain("SELECT count(*) INTO _exam_attempts FROM public.exam_results");
     expect(worker).toContain('/rest/v1/rpc/get_platform_analytics');
     expect(worker).toContain("Number.isSafeInteger(value)");
   });
