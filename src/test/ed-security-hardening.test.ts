@@ -202,6 +202,18 @@ describe("ED-ALL production authorization hardening", () => {
     expect(worker).toContain("}, 503, origin)");
   });
 
+  it("requires AAL2 for privileged course, exam, storage, wallet and settings operations", () => {
+    const mfa = read("supabase/migrations/20261115113000_enforce_course_and_admin_mfa.sql");
+    expect(mfa).toContain("public.has_course_capability(id,'content')");
+    expect(mfa).toContain("public.has_course_capability(l.course_id,'exams')");
+    expect(mfa).toContain("public.admin_mfa_verified()");
+    expect(mfa).toContain("REVOKE INSERT,UPDATE,DELETE,TRUNCATE ON public.wallets");
+    expect(mfa).toContain("REVOKE INSERT,UPDATE,DELETE,TRUNCATE ON public.wallet_transactions");
+    expect(mfa).toContain("MFA admins manage site settings update");
+    expect(mfa).toContain("Course capability upload lesson PDFs");
+    expect(mfa).toContain("metadata->>'mimetype'='application/pdf'");
+  });
+
   it("requires administrator AAL2 and audited RPC for all user role mutations", () => {
     const roleMigration = read("supabase/migrations/20261115112000_secure_user_role_management.sql");
     const worker = read("workers/edall-assistant/index.js");
