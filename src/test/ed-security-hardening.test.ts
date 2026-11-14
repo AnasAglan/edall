@@ -123,4 +123,12 @@ describe("ED-ALL production authorization hardening", () => {
     expect(webhook).not.toContain("nested(obj,[\"order\",\"merchant_order_id\"])");
     expect(webhook).not.toContain("obj.special_reference");
   });
+
+  it("prevents duplicate payable orders and serializes checkout creation", () => {
+    const migration = read("supabase/migrations/20261115102000_payment_order_idempotency.sql");
+    expect(migration).toContain("payment_orders_one_open_per_user_course_idx");
+    expect(migration).toContain("pg_advisory_xact_lock");
+    expect(migration).toContain("status IN ('created','pending')");
+    expect(migration).toContain("FOR UPDATE");
+  });
 });
