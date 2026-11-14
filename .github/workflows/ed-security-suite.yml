@@ -18,6 +18,7 @@ on:
       - "src/test/ed-security-hardening.test.ts"
       - "src/test/ed-piped-player.test.ts"
       - "src/test/ed-learning-suite.test.ts"
+      - "src/test/video-media-proxy-security.test.ts"
       - "package.json"
       - ".github/workflows/ed-security-suite.yml"
   push:
@@ -62,7 +63,7 @@ jobs:
           version: 2.122.0
       - name: Apply every migration to a clean local Supabase stack
         run: |
-          supabase start -x studio,mailpit,edge-runtime,logflare,vector,analytics
+          supabase start -x studio,mailpit,edge-runtime,logflare,vector,imgproxy
           supabase db reset --local
           supabase db lint --local --level error --fail-on error
       - name: Lint and build the platform
@@ -76,7 +77,6 @@ jobs:
           node --check workers/edall-assistant/index.js
           node --check workers/video-media-proxy/index.js
           node --check public/ed_features.js
-          node --check public/ed-pwa.js
           node --check public/ed-pwa.js
           deno check supabase/functions/admin-create-user/index.ts
           deno check supabase/functions/admin-delete-user/index.ts
