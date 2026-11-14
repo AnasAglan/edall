@@ -65,6 +65,11 @@ Deno.serve(async (req: Request) => {
       return json({ error: "إنشاء الحسابات متاح للمدير فقط." }, 403, cors);
     }
 
+    const { data: adminMfaVerified, error: mfaError } = await callerClient.rpc("admin_mfa_verified");
+    if (mfaError || adminMfaVerified !== true) {
+      return json({ error: "يجب تأكيد المصادقة الثنائية (AAL2) قبل إنشاء الحسابات." }, 403, cors);
+    }
+
     let body: Record<string, unknown>;
     try {
       const parsed = await req.json();
@@ -105,7 +110,6 @@ Deno.serve(async (req: Request) => {
     }
 
     const newUserId = created.user.id;
-    let setupComplete = false;
     try {
       // Check the bootstrap RPC rather than treating the Auth user alone as a complete account.
       const { error: setupError } = await adminClient.rpc("setup_new_user", {
@@ -143,7 +147,6 @@ Deno.serve(async (req: Request) => {
         throw new Error("لم تتطابق بيانات الملف الشخصي أو الدور أو المحفظة مع الحساب المطلوب.");
       }
 
-      setupComplete = true;
       return json({
         success: true,
         verified: true,
