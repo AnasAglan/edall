@@ -317,6 +317,54 @@ BEGIN
 END;
 $function$;
 
+CREATE OR REPLACE FUNCTION public.list_course_students(
+  _course_id uuid,
+  _capability text DEFAULT 'attendance'
+)
+RETURNS TABLE(user_id uuid,student_name text,public_id text,enrolled_at timestamptz)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
+AS $function$
+BEGIN
+  IF auth.uid() IS NULL
+     OR _capability NOT IN ('assignments','attendance','live_classes','discussions','analytics')
+     OR NOT public.has_course_capability(_course_id,_capability) THEN
+    RAISE EXCEPTION 'NOT_ALLOWED';
+  END IF;
+  RETURN QUERY
+  SELECT e.user_id,p.name,p.public_id,e.enrolled_at
+  FROM public.enrollments e
+  JOIN public.profiles p ON p.id=e.user_id
+  WHERE e.course_id=_course_id
+  ORDER BY p.name,e.enrolled_at;
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.list_assignment_submissions(_assignment_id uuid)
+RETURNS TABLE(
+  id uuid,student_id uuid,student_name text,student_public_id text,content text,
+  attachments jsonb,submitted_at timestamptz,is_late boolean,score numeric,
+  feedback text,graded_at timestamptz,max_score numeric
+)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
+AS $function$
+DECLARE _course_id uuid;
+BEGIN
+  SELECT a.course_id INTO _course_id FROM public.assignments a WHERE a.id=_assignment_id;
+  IF NOT FOUND OR auth.uid() IS NULL
+     OR NOT public.has_course_capability(_course_id,'assignments') THEN
+    RAISE EXCEPTION 'NOT_ALLOWED';
+  END IF;
+  RETURN QUERY
+  SELECT s.id,s.student_id,p.name,p.public_id,s.content,s.attachments,
+         s.submitted_at,s.is_late,s.score,s.feedback,s.graded_at,a.max_score
+  FROM public.assignment_submissions s
+  JOIN public.assignments a ON a.id=s.assignment_id
+  JOIN public.profiles p ON p.id=s.student_id
+  WHERE s.assignment_id=_assignment_id
+  ORDER BY s.submitted_at DESC;
+END;
+$function$;
+
 -- Private student file submissions, using path studentId/assignmentId/fileName.
 INSERT INTO storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
 VALUES (
@@ -853,6 +901,43 @@ BEGIN
     jsonb_build_object('hidden',_hidden,'locked',_locked,'pinned',_pinned)
   );
   RETURN true;
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.get_course_discussion_feed(_course_id uuid)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
+AS $function$
+DECLARE _feed jsonb;
+BEGIN
+  IF auth.uid() IS NULL OR NOT (
+    public.has_course_capability(_course_id,'discussions')
+    OR EXISTS (SELECT 1 FROM public.enrollments e
+               WHERE e.course_id=_course_id AND e.user_id=auth.uid())
+  ) THEN RAISE EXCEPTION 'NOT_ALLOWED'; END IF;
+
+  SELECT COALESCE(
+    jsonb_agg(jsonb_build_object(
+      'id',t.id,'course_id',t.course_id,'lesson_id',t.lesson_id,
+      'author_id',t.author_id,'author_name',p.name,'title',t.title,
+      'is_pinned',t.is_pinned,'is_locked',t.is_locked,'is_hidden',t.is_hidden,
+      'created_at',t.created_at,
+      'posts',COALESCE((
+        SELECT jsonb_agg(jsonb_build_object(
+          'id',post.id,'author_id',post.author_id,'author_name',author.name,
+          'content',post.content,'created_at',post.created_at,'is_hidden',post.is_hidden
+        ) ORDER BY post.created_at)
+        FROM public.discussion_posts post
+        JOIN public.profiles author ON author.id=post.author_id
+        WHERE post.topic_id=t.id
+          AND (NOT post.is_hidden OR public.has_course_capability(_course_id,'discussions'))
+      ),'[]'::jsonb)
+    ) ORDER BY t.is_pinned DESC,t.created_at DESC),'[]'::jsonb
+  ) INTO _feed
+  FROM public.discussion_topics t
+  JOIN public.profiles p ON p.id=t.author_id
+  WHERE t.course_id=_course_id
+    AND (NOT t.is_hidden OR public.has_course_capability(_course_id,'discussions'));
+  RETURN _feed;
 END;
 $function$;
 
@@ -1498,6 +1583,12 @@ REVOKE ALL ON FUNCTION public.issue_course_certificate(uuid,uuid) FROM PUBLIC,an
 GRANT EXECUTE ON FUNCTION public.issue_course_certificate(uuid,uuid) TO authenticated;
 REVOKE ALL ON FUNCTION public.revoke_course_certificate(uuid,text) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.revoke_course_certificate(uuid,text) TO authenticated;
+REVOKE ALL ON FUNCTION public.list_course_students(uuid,text) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.list_course_students(uuid,text) TO authenticated;
+REVOKE ALL ON FUNCTION public.list_assignment_submissions(uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.list_assignment_submissions(uuid) TO authenticated;
+REVOKE ALL ON FUNCTION public.get_course_discussion_feed(uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.get_course_discussion_feed(uuid) TO authenticated;
 REVOKE ALL ON FUNCTION public.create_discussion_topic(uuid,uuid,text,text) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.create_discussion_topic(uuid,uuid,text,text) TO authenticated;
 REVOKE ALL ON FUNCTION public.create_discussion_post(uuid,text) FROM PUBLIC,anon;
