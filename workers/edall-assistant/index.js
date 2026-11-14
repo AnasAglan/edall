@@ -2243,6 +2243,25 @@ export default {
       return json({ error: "مساعد ED-ALL متاح للمدرسين والإدارة فقط." }, 403, origin);
     }
 
+    // Per-account database rate limit: 20 requests per rolling minute bucket.
+    // Fail closed if the database limiter is unavailable; this protects model costs
+    // and prevents a temporary storage outage from silently disabling the limit.
+    try {
+      const withinLimit = await db(
+        env,
+        "/rest/v1/rpc/consume_edall_assistant_request",
+        authorization,
+        "POST",
+        {}
+      );
+      if (withinLimit !== true) {
+        return json({ error: "تجاوزت حد استخدام المساعد. انتظر دقيقة ثم حاول مجددًا." }, 429, origin);
+      }
+    } catch (error) {
+      console.error("Assistant rate-limit check failed", String(error?.message || error).slice(0, 160));
+      return json({ error: "تعذر التحقق من حد الاستخدام. حاول بعد قليل." }, 503, origin);
+    }
+
     let body;
     try { body = await request.json(); } catch { return json({ error: "بيانات غير صالحة." }, 400, origin); }
     if (!Array.isArray(body.messages) || body.messages.length < 1 || body.messages.length > 12) {
