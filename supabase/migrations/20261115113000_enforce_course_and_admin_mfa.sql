@@ -515,4 +515,77 @@ $function$;
 REVOKE ALL ON FUNCTION public.admin_credit_wallet(uuid,numeric,text) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.admin_credit_wallet(uuid,numeric,text) TO authenticated;
 
+-- Storage objects: enforce the same course ownership/role checks as database metadata.
+DROP POLICY IF EXISTS "Course owners upload lesson PDFs" ON storage.objects;
+CREATE POLICY "Course capability upload lesson PDFs"
+ON storage.objects FOR INSERT TO authenticated
+WITH CHECK (
+  bucket_id='lesson-pdfs'
+  AND metadata->>'mimetype'='application/pdf'
+  AND array_length(storage.foldername(name),1)=2
+  AND split_part(name,'/',1) ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}
+
+  AND (
+    split_part(name,'/',2) ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}
+
+    OR split_part(name,'/',2) ~ '^temp_[0-9]{10,}
+
+  )
+  AND public.has_course_capability(split_part(name,'/',1)::uuid,'content')
+);
+
+DROP POLICY IF EXISTS "Course owners replace lesson PDFs" ON storage.objects;
+CREATE POLICY "Course capability replace lesson PDFs"
+ON storage.objects FOR UPDATE TO authenticated
+USING (
+  bucket_id='lesson-pdfs'
+  AND public.has_course_capability(split_part(name,'/',1)::uuid,'content')
+)
+WITH CHECK (
+  bucket_id='lesson-pdfs'
+  AND metadata->>'mimetype'='application/pdf'
+  AND array_length(storage.foldername(name),1)=2
+  AND public.has_course_capability(split_part(name,'/',1)::uuid,'content')
+);
+
+DROP POLICY IF EXISTS "Course owners delete lesson PDFs" ON storage.objects;
+CREATE POLICY "Course capability delete lesson PDFs"
+ON storage.objects FOR DELETE TO authenticated
+USING (
+  bucket_id='lesson-pdfs'
+  AND public.has_course_capability(split_part(name,'/',1)::uuid,'content')
+);
+
+-- Course images retain their existing path contract, but administrators need AAL2.
+DROP POLICY IF EXISTS "Course owners can upload course images" ON storage.objects;
+CREATE POLICY "Course capability upload course images"
+ON storage.objects FOR INSERT TO authenticated
+WITH CHECK (
+  bucket_id='course-images'
+  AND array_length(storage.foldername(name),1)>=1
+  AND split_part(name,'/',1) ~* '^[0-9a-f-]{36}
+
+  AND public.has_course_capability(split_part(name,'/',1)::uuid,'content')
+);
+
+DROP POLICY IF EXISTS "Course owners can update course images" ON storage.objects;
+CREATE POLICY "Course capability update course images"
+ON storage.objects FOR UPDATE TO authenticated
+USING (
+  bucket_id='course-images'
+  AND public.has_course_capability(split_part(name,'/',1)::uuid,'content')
+)
+WITH CHECK (
+  bucket_id='course-images'
+  AND public.has_course_capability(split_part(name,'/',1)::uuid,'content')
+);
+
+DROP POLICY IF EXISTS "Course owners can delete course images" ON storage.objects;
+CREATE POLICY "Course capability delete course images"
+ON storage.objects FOR DELETE TO authenticated
+USING (
+  bucket_id='course-images'
+  AND public.has_course_capability(split_part(name,'/',1)::uuid,'content')
+);
+
 COMMIT;
