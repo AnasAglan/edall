@@ -68,6 +68,10 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'NOT_ALLOWED';
   END IF;
+  IF public.has_role(auth.uid(), 'admin'::public.app_role)
+     AND NOT public.admin_mfa_verified() THEN
+    RAISE EXCEPTION 'ADMIN_MFA_REQUIRED';
+  END IF;
   IF _role NOT IN ('instructor','assistant','moderator','analyst') THEN
     RAISE EXCEPTION 'INVALID_COURSE_ROLE';
   END IF;
@@ -113,6 +117,10 @@ BEGIN
     )
   ) THEN
     RAISE EXCEPTION 'NOT_ALLOWED';
+  END IF;
+  IF public.has_role(auth.uid(), 'admin'::public.app_role)
+     AND NOT public.admin_mfa_verified() THEN
+    RAISE EXCEPTION 'ADMIN_MFA_REQUIRED';
   END IF;
   DELETE FROM public.course_staff_roles
   WHERE course_id = _course_id AND user_id = _user_id
@@ -265,6 +273,10 @@ BEGIN
     graded_by = NULL,
     updated_at = now()
   RETURNING id INTO _id;
+  PERFORM public.write_platform_audit_event(
+    'assignment_submitted','assignment_submissions',_id,_course_id,
+    jsonb_build_object('assignment_id',_assignment_id,'attachment_count',jsonb_array_length(COALESCE(_attachments,'[]'::jsonb)))
+  );
 
   RETURN _id;
 END;
@@ -414,6 +426,10 @@ BEGIN
   INSERT INTO public.attendance_sessions(course_id,title,starts_at,created_by)
   VALUES (_course_id,btrim(_title),COALESCE(_starts_at,now()),auth.uid())
   RETURNING id INTO _id;
+  PERFORM public.write_platform_audit_event(
+    'attendance_session_created','attendance_sessions',_id,_course_id,
+    jsonb_build_object('title',btrim(_title),'starts_at',COALESCE(_starts_at,now()))
+  );
   RETURN _id;
 END;
 $function$;
@@ -574,8 +590,15 @@ DECLARE
   _number text;
   _token text;
 BEGIN
-  IF auth.uid() IS NULL OR NOT public.has_course_capability(_course_id,'certificates') THEN
+  IF auth.uid() IS NULL THEN RAISE EXCEPTION 'AUTH_REQUIRED'; END IF;
+  IF _student_id IS NULL THEN RAISE EXCEPTION 'STUDENT_REQUIRED'; END IF;
+  IF _student_id <> auth.uid()
+     AND NOT public.has_course_capability(_course_id,'certificates') THEN
     RAISE EXCEPTION 'NOT_ALLOWED';
+  END IF;
+  IF public.has_role(auth.uid(),'admin'::public.app_role)
+     AND NOT public.admin_mfa_verified() THEN
+    RAISE EXCEPTION 'ADMIN_MFA_REQUIRED';
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM public.enrollments e
@@ -583,7 +606,17 @@ BEGIN
   ) THEN RAISE EXCEPTION 'STUDENT_NOT_ENROLLED'; END IF;
 
   SELECT count(*),
-         count(*) FILTER (WHERE COALESCE(lp.video_watched,false) OR COALESCE(lp.exam_completed,false))
+         count(*) FILTER (
+           WHERE
+             (NOT EXISTS (SELECT 1 FROM public.lesson_videos v WHERE v.lesson_id=l.id)
+               OR COALESCE(lp.video_watched,false))
+             AND
+             (NOT EXISTS (SELECT 1 FROM public.lesson_files f WHERE f.lesson_id=l.id)
+               OR COALESCE(lp.pdf_opened,false))
+             AND
+             (NOT EXISTS (SELECT 1 FROM public.exams ex WHERE ex.lesson_id=l.id)
+               OR COALESCE(lp.exam_completed,false))
+         )
   INTO _total,_completed
   FROM public.lessons l
   LEFT JOIN public.lesson_progress lp
@@ -636,6 +669,10 @@ BEGIN
   IF NOT FOUND OR auth.uid() IS NULL
      OR NOT public.has_course_capability(_course_id,'certificates') THEN
     RAISE EXCEPTION 'NOT_ALLOWED';
+  END IF;
+  IF public.has_role(auth.uid(),'admin'::public.app_role)
+     AND NOT public.admin_mfa_verified() THEN
+    RAISE EXCEPTION 'ADMIN_MFA_REQUIRED';
   END IF;
   IF length(COALESCE(_reason,'')) > 1000 THEN RAISE EXCEPTION 'INVALID_REASON'; END IF;
   UPDATE public.course_certificates
@@ -729,6 +766,10 @@ BEGIN
   RETURNING id INTO _id;
   INSERT INTO public.discussion_posts(topic_id,author_id,content)
   VALUES (_id,auth.uid(),btrim(_content));
+  PERFORM public.write_platform_audit_event(
+    'discussion_topic_created','discussion_topics',_id,_course_id,
+    jsonb_build_object('lesson_id',_lesson_id,'title',btrim(_title))
+  );
   RETURN _id;
 END;
 $function$;
@@ -756,6 +797,10 @@ BEGIN
   INSERT INTO public.discussion_posts(topic_id,author_id,content)
   VALUES (_topic_id,auth.uid(),btrim(_content))
   RETURNING id INTO _id;
+  PERFORM public.write_platform_audit_event(
+    'discussion_post_created','discussion_posts',_id,_course_id,
+    jsonb_build_object('topic_id',_topic_id)
+  );
   RETURN _id;
 END;
 $function$;
@@ -1010,6 +1055,10 @@ BEGIN
   IF auth.uid() IS NULL OR NOT public.has_course_capability(_course_id,'analytics') THEN
     RAISE EXCEPTION 'NOT_ALLOWED';
   END IF;
+  IF public.has_role(auth.uid(),'admin'::public.app_role)
+     AND NOT public.admin_mfa_verified() THEN
+    RAISE EXCEPTION 'ADMIN_MFA_REQUIRED';
+  END IF;
   SELECT count(*) INTO _enrolled FROM public.enrollments WHERE course_id=_course_id;
   SELECT count(*) INTO _assignments FROM public.assignments WHERE course_id=_course_id;
   SELECT count(*),count(*) FILTER (WHERE s.graded_at IS NOT NULL)
@@ -1158,6 +1207,11 @@ BEGIN
     ELSE
       RETURN NEW;
     END IF;
+  ELSIF TG_TABLE_NAME='courses' THEN
+    _entity_id := NEW.id;
+    _course_id := NEW.id;
+    _event := 'course_' || lower(TG_OP);
+    _details := jsonb_build_object('title',COALESCE(to_jsonb(NEW)->>'title',to_jsonb(OLD)->>'title'));
   ELSIF TG_TABLE_NAME='user_roles' THEN
     IF TG_OP='DELETE' THEN
       _entity_id := OLD.user_id;
@@ -1216,6 +1270,10 @@ FOR EACH ROW EXECUTE FUNCTION public.audit_sensitive_row_change();
 DROP TRIGGER IF EXISTS audit_user_role_changes ON public.user_roles;
 CREATE TRIGGER audit_user_role_changes
 AFTER INSERT OR UPDATE OR DELETE ON public.user_roles
+FOR EACH ROW EXECUTE FUNCTION public.audit_sensitive_row_change();
+DROP TRIGGER IF EXISTS audit_course_changes ON public.courses;
+CREATE TRIGGER audit_course_changes
+AFTER INSERT OR UPDATE OR DELETE ON public.courses
 FOR EACH ROW EXECUTE FUNCTION public.audit_sensitive_row_change();
 
 DROP TRIGGER IF EXISTS audit_payment_order_changes ON public.payment_orders;
