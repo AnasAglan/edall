@@ -6,7 +6,7 @@
 
 **Architecture:** Keep the existing legacy HTML/JavaScript platform and add a modular feature client backed by additive Supabase migrations. All entitlements, role checks, payment fulfillment, grading, and certificate issuance are enforced by PostgreSQL RPCs/RLS or verified server functions.
 
-**Tech Stack:** Supabase PostgreSQL/RLS/Storage, existing Supabase JS v2 client, vanilla JavaScript loaded by `public/ed_master.html`, existing Vitest + Node Worker tests, Cloudflare Worker for the read-only student tutor.
+**Tech Stack:** Supabase PostgreSQL/RLS/Storage, existing Supabase JS v2 client, vanilla JavaScript loaded by `public/ed_master.html`, existing Vitest + Node Worker tests.
 
 **Spec:** `docs/superpowers/specs/2026-11-14-edall-security-and-learning-suite-design.md`
 
@@ -38,7 +38,7 @@
 - Modify: `.github/workflows/ed-piped-player-checks.yml` to run the new tests on PRs.
 
 - [ ] Write static regression tests for payment-only enrollments, entitled lesson reads, internal-only grading, safe question RPC, protected profile fields, teacher-scoped notifications, private PDF policies, and safe public teacher search.
-- [ ] Write feature-contract tests for all new tables, RLS enablement, append-only audit, payment state transitions/idempotency, tutor read-only scope, and PWA private-cache exclusions.
+- [ ] Write feature-contract tests for all new tables, RLS enablement, append-only audit, payment state transitions/idempotency, and PWA private-cache exclusions.
 - [ ] Run CI on the draft PR and confirm expected failures before implementation.
 
 ### Task 2: Database security migration
@@ -89,20 +89,7 @@
 - [ ] Add append-only audit events for role, ban, course, payment, grading, and certificate actions.
 - [ ] Test RLS, grants, ownership, idempotency, malformed input, and duplicate submissions.
 
-### Task 4: Student tutor and staff authorization
-
-**Files:**
-- Modify: `workers/edall-assistant/index.js`
-- Modify: `public/ed_assistant.js`
-- Test: `workers/edall-assistant/authorization.test.mjs`, `workers/edall-assistant/provider.test.mjs`
-
-- [ ] Keep the staff assistant tools unchanged and create a separate student-only read-only tool set.
-- [ ] Verify user via Supabase Auth and role from `user_roles`; student requests cannot invoke any staff/admin tool.
-- [ ] Restrict lesson retrieval to lessons for which `can_access_lesson` is true; never read exam answer keys, private student data, or arbitrary course IDs.
-- [ ] Add prompt and conversation guardrails, input-size limits, timeout, and provider-safe error handling.
-- [ ] Test students, teachers, admins, unknown roles, spoofed IDs, tool allowlists, and course entitlement boundaries.
-
-### Task 5: Feature hub UI
+### Task 4: Feature hub UI
 
 **Files:**
 - Create: `public/ed_features.js`
@@ -111,13 +98,13 @@
 - Test: `src/test/ed-learning-suite.test.ts`
 
 - [ ] Add a role-aware “Learning Hub” navigation entry without changing existing navigation behavior.
-- [ ] Implement student views: AI tutor, assignments, submissions/results, attendance, upcoming live classes, certificates, discussions, progress.
+- [ ] Implement student views: assignments and submissions, attendance, upcoming live classes, certificates, discussions, and progress.
 - [ ] Implement teacher views: create/review assignments, mark attendance, schedule live classes, moderate discussions, view scoped analytics.
 - [ ] Implement admin views: payment order review, global analytics, audit history, and system-level filters.
 - [ ] Ensure every operation uses RPCs/policies, checks returned errors, and confirms success only after server verification.
 - [ ] Add loading, empty, retry, and mobile states; use existing color variables and RTL/LTR language behavior.
 
-### Task 6: PWA and safe offline shell
+### Task 5: PWA and safe offline shell
 
 **Files:**
 - Create: `public/manifest.webmanifest`
@@ -132,7 +119,7 @@
 - [ ] Handle cache-version upgrade and offline fallback without showing stale private data.
 - [ ] Test cache allow/deny URL patterns and service-worker lifecycle.
 
-### Task 7: Final review and delivery
+### Task 6: Final review and delivery
 
 **Files:** all changed files.
 
