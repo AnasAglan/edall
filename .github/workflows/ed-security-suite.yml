@@ -61,3 +61,8 @@ jobs:
           node --check public/ed_features.js
           node --check public/ed-pwa.js
           deno check supabase/functions/admin-create-user/index.ts
+          deno check supabase/functions/create-payment-intention/index.ts
+          deno check supabase/functions/paymob-webhook/index.ts
+          deno check supabase/functions/_shared/paymob-hmac.ts
+      - name: Test Paymob webhook signature verification
+        run: deno test supabase/functions/_shared/paymob-hmac.test.ts
