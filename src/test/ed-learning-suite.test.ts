@@ -67,6 +67,9 @@ describe("ED-ALL integrated learning suite", () => {
     expect(migration).toContain("course_title text");
     expect(migration).not.toContain("student_email");
     expect(migration).toContain("_completed<>_total");
+    expect(migration).toContain("NOT EXISTS (SELECT 1 FROM public.lesson_files f WHERE f.lesson_id=l.id)");
+    expect(migration).toContain("COALESCE(lp.pdf_opened,false)");
+    expect(migration).toContain("_student_id <> auth.uid()");
   });
 
   it("keeps provider orders disabled until configured and makes fulfillment service-role only", () => {
@@ -77,6 +80,7 @@ describe("ED-ALL integrated learning suite", () => {
     expect(migration).toContain("ON CONFLICT (provider,provider_event_id) DO NOTHING");
     expect(migration).toContain("auth.role() <> 'service_role'");
     expect(migration).toContain("FOR UPDATE");
+    expect(migration).toContain("PAYMENT_AMOUNT_OR_PROVIDER_MISMATCH");
     expect(migration).toContain("INSERT INTO public.enrollments");
     expect(migration).toContain("GRANT EXECUTE ON FUNCTION public.fulfill_payment_order");
     expect(migration).toContain("TO service_role");
