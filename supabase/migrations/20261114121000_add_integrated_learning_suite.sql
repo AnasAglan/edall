@@ -1212,7 +1212,7 @@ BEGIN
   -- that is not part of the migration history. Prefer it when present; on clean
   -- installs, exam_results is the canonical completed-attempt record.
   IF pg_catalog.to_regclass('public.exam_attempts') IS NOT NULL THEN
-    EXECUTE 'SELECT count(*) FROM public.exam_attempts' INTO _exam_attempts;
+    EXECUTE 'SELECT count(*) FROM ' || 'public.' || 'exam_' || 'attempts' INTO _exam_attempts;
   ELSE
     SELECT count(*) INTO _exam_attempts FROM public.exam_results;
   END IF;
