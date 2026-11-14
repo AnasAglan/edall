@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#172337">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="stylesheet" href="/ed_features.css">
     <title>ED ALL — منصة تعليمية متطورة</title>
      <!-- أيقونة الموقع وهوية المنصة -->
  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=20261110" sizes="256x256" />
@@ -1913,6 +1917,10 @@ word-spacing: normal !important;
                     <i class="fas fa-pen"></i>
                 </button>
             </div>
+            <button type="button" id="edLearningHubEntry" class="btn" onclick="window.EDFeatures && window.EDFeatures.open()" style="display:none;margin-top:12px;padding:10px 24px;border-radius:9999px;">
+                <i class="fas fa-graduation-cap"></i>
+                <span>مساحة التعلم</span>
+            </button>
         </div>
 
 
@@ -1955,6 +1963,10 @@ word-spacing: normal !important;
         </div>
 
         <div class="cards-container" id="coursesGrid"></div>
+    </div>
+
+    <div id="edLearningHubPage" class="page">
+        <div id="edFeaturesRoot"></div>
     </div>
 
     <div id="loginPage" class="page">
@@ -2333,6 +2345,8 @@ word-spacing: normal !important;
                 detectSessionInUrl: true
             }
         });
+        // The modular Learning Hub reuses this exact authenticated client and session.
+        window.sb = sb;
                 // دالة تعقيم وحماية النصوص
         function edEsc(str) {
             if (str == null) return '';
@@ -11580,6 +11594,8 @@ exam.questions.forEach((question, index) => {
   window.EDAuthRules = { MIN_PASSWORD_LENGTH: MIN_PASSWORD_LENGTH, validateSignupPassword: validateSignupPassword, describeAuthError: describeAuthError, signupOutcome: signupOutcome, authEventOutcome: authEventOutcome, canShowLessonVideoOnWeb: canShowLessonVideoOnWeb, normalizeSignupOtp: normalizeSignupOtp, isValidSignupOtp: isValidSignupOtp, isEmailNotConfirmedError: isEmailNotConfirmedError };
 })();
 </script>
+<script src="/ed_features.js" defer></script>
+<script src="/ed-pwa.js" defer></script>
 <script src="/ed_assistant.js" defer></script>
 </body>
 </html>
