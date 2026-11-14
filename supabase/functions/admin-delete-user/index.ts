@@ -85,6 +85,13 @@ Deno.serve(async (req: Request) => {
       walletResult,
       userTransactionsResult,
       createdTransactionsResult,
+      paymentOrdersResult,
+      certificatesResult,
+      assignmentSubmissionsResult,
+      examResultsResult,
+      attendanceRecordsResult,
+      discussionTopicsResult,
+      discussionPostsResult,
       authUserResult,
     ] = await Promise.all([
       adminClient.from("profiles").select("id,name,email").eq("id", targetId).maybeSingle(),
@@ -93,6 +100,13 @@ Deno.serve(async (req: Request) => {
       adminClient.from("wallets").select("balance").eq("user_id", targetId).maybeSingle(),
       adminClient.from("wallet_transactions").select("id").eq("user_id", targetId).limit(1),
       adminClient.from("wallet_transactions").select("id").eq("created_by", targetId).limit(1),
+      adminClient.from("payment_orders").select("id").eq("user_id", targetId).limit(1),
+      adminClient.from("course_certificates").select("id").eq("student_id", targetId).limit(1),
+      adminClient.from("assignment_submissions").select("id").eq("student_id", targetId).limit(1),
+      adminClient.from("exam_results").select("exam_id").eq("user_id", targetId).limit(1),
+      adminClient.from("attendance_records").select("id").eq("student_id", targetId).limit(1),
+      adminClient.from("discussion_topics").select("id").eq("author_id", targetId).limit(1),
+      adminClient.from("discussion_posts").select("id").eq("author_id", targetId).limit(1),
       adminClient.auth.admin.getUserById(targetId),
     ]);
 
@@ -103,6 +117,13 @@ Deno.serve(async (req: Request) => {
       walletResult.error,
       userTransactionsResult.error,
       createdTransactionsResult.error,
+      paymentOrdersResult.error,
+      certificatesResult.error,
+      assignmentSubmissionsResult.error,
+      examResultsResult.error,
+      attendanceRecordsResult.error,
+      discussionTopicsResult.error,
+      discussionPostsResult.error,
       authUserResult.error,
     ].filter(Boolean);
     if (lookupErrors.length) {
@@ -132,6 +153,22 @@ Deno.serve(async (req: Request) => {
     }
     if ((userTransactionsResult.data || []).length || (createdTransactionsResult.data || []).length) {
       return json({ error: "لا يمكن حذف الحساب؛ لوجود سجل معاملات مالية مرتبط به. احتفظ بسجل التدقيق المالي." }, 409);
+    }
+
+    if ((paymentOrdersResult.data || []).length) {
+      return json({ error: "لا يمكن حذف الحساب؛ لأنه مرتبط بطلب دفع. يجب الاحتفاظ بسجل المدفوعات لأغراض المراجعة والمحاسبة." }, 409);
+    }
+    if ((certificatesResult.data || []).length) {
+      return json({ error: "لا يمكن حذف الحساب؛ لأنه يملك شهادات صادرة يجب أن تظل قابلة للتحقق." }, 409);
+    }
+    if (
+      (assignmentSubmissionsResult.data || []).length ||
+      (examResultsResult.data || []).length ||
+      (attendanceRecordsResult.data || []).length ||
+      (discussionTopicsResult.data || []).length ||
+      (discussionPostsResult.data || []).length
+    ) {
+      return json({ error: "لا يمكن حذف الحساب مباشرة؛ لأنه يحتوي على سجلات تعليمية. استخدم إيقاف الحساب أو اطلب معالجة تحفظ السجلات أولاً." }, 409);
     }
 
     const { error: deleteError } = await adminClient.auth.admin.deleteUser(targetId, false);
