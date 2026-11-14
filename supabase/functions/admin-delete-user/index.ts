@@ -55,6 +55,11 @@ Deno.serve(async (req: Request) => {
       return json({ error: "حذف حسابات المنصة متاح للمدير فقط." }, 403);
     }
 
+    const { data: adminMfaVerified, error: mfaError } = await callerClient.rpc("admin_mfa_verified");
+    if (mfaError || adminMfaVerified !== true) {
+      return json({ error: "يجب تأكيد المصادقة الثنائية (AAL2) قبل حذف الحسابات." }, 403);
+    }
+
     let body: { user_id?: unknown };
     try {
       body = await req.json();
