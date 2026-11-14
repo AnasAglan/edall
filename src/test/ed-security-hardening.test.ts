@@ -202,6 +202,19 @@ describe("ED-ALL production authorization hardening", () => {
     expect(worker).toContain("}, 503, origin)");
   });
 
+  it("requires administrator AAL2 and audited RPC for all user role mutations", () => {
+    const roleMigration = read("supabase/migrations/20261115112000_secure_user_role_management.sql");
+    const worker = read("workers/edall-assistant/index.js");
+    expect(roleMigration).toContain("REVOKE INSERT, UPDATE, DELETE, TRUNCATE");
+    expect(roleMigration).toContain("public.admin_mfa_verified()");
+    expect(roleMigration).toContain("CANNOT_REVOKE_LAST_ADMIN");
+    expect(roleMigration).toContain("write_platform_audit_event");
+    expect(roleMigration).toContain("GRANT EXECUTE ON FUNCTION public.manage_user_role");
+    expect(worker).toContain("/rest/v1/rpc/manage_user_role");
+    expect(worker).not.toContain('"/rest/v1/user_roles", token, "POST"');
+    expect(worker).not.toContain('"/rest/v1/user_roles?id=eq."');
+  });
+
   it("does not expose unpublished assignments to enrolled students", () => {
     const learning = read("supabase/migrations/20261114121000_add_integrated_learning_suite.sql");
     const policyStart = learning.indexOf('CREATE POLICY "Enrolled students and course staff read assignments"');
