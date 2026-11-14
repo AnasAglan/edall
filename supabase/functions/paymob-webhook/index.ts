@@ -8,12 +8,6 @@ function json(body: Record<string,unknown>,status=200) {
   });
 }
 
-function nested(obj: Record<string,any>,path: string[]): unknown {
-  let current: any=obj;
-  for(const key of path) current=current && typeof current==="object"?current[key]:undefined;
-  return current;
-}
-
 Deno.serve(async req=>{
   if(req.method!=="POST") return json({error:"Method not allowed."},405);
   const secret=Deno.env.get("PAYMOB_HMAC_SECRET") || "";
@@ -38,28 +32,31 @@ Deno.serve(async req=>{
       return json({error:"HMAC verification failed."},401);
     }
 
-    const merchantReference=
-      nested(obj,["order","merchant_order_id"]) ??
-      nested(obj,["order","special_reference"]) ??
-      obj.merchant_order_id ??
-      obj.special_reference;
-    if(typeof merchantReference!=="string" || !/^[0-9a-f-]{36}$/i.test(merchantReference)) {
-      return json({error:"Merchant order reference is invalid."},422);
-    }
-
+    // Paymob's signed HMAC fields include order.id. Correlate only through that
+    // signed provider order ID; do not trust unsigned special_reference fields.
+    const paymobOrderId=String(obj.order?.id ?? "");
     const transactionId=String(obj.id ?? "");
     const amountCents=Number(obj.amount_cents);
-    if(!/^\d+$/.test(transactionId) || !Number.isSafeInteger(amountCents) || amountCents<=0 || obj.currency!=="EGP") {
+    if(!/^\\d+$/.test(paymobOrderId) || !/^\\d+$/.test(transactionId) ||
+       !Number.isSafeInteger(amountCents) || amountCents<=0 || obj.currency!=="EGP") {
       return json({error:"Invalid transaction details."},422);
     }
 
     const admin=createClient(supabaseUrl,serviceKey,{auth:{autoRefreshToken:false,persistSession:false}});
-    const {data:order,error:orderError}=await admin.from("payment_orders")
-      .select("id,amount,currency,provider,status").eq("id",merchantReference).maybeSingle();
-    if(orderError || !order) {
+    const {data:matchedOrders,error:orderError}=await admin.from("payment_orders")
+      .select("id,amount,currency,provider,status")
+      .filter("metadata->>paymob_order_id","eq",paymobOrderId)
+      .limit(2);
+    if(orderError || !matchedOrders || matchedOrders.length===0) {
       console.warn("Paymob callback references unknown order",transactionId);
       return json({error:"Unknown merchant order."},404);
     }
+    if(matchedOrders.length!==1) {
+      console.error("Paymob order reference is not unique",paymobOrderId);
+      return json({error:"Ambiguous merchant order reference."},409);
+    }
+    const order=matchedOrders[0];
+    const merchantReference=order.id;
     if(order.provider!=="primary" || order.currency!=="EGP" ||
        Number(order.amount).toFixed(2)!==(amountCents/100).toFixed(2)) {
       return json({error:"Payment amount or provider mismatch."},409);
