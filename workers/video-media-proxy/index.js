@@ -1,7 +1,6 @@
 const ALLOWED_ORIGINS = new Set(["https://edall.lovable.app", "https://id-preview--41c4997e-3169-4ff8-bf15-3da064df3594.lovable.app"]);
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
   "Access-Control-Allow-Headers": "Range, Content-Type",
   "Access-Control-Expose-Headers": "Accept-Ranges, Content-Length, Content-Range, Content-Type",
