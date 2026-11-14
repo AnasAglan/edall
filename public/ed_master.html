@@ -2710,8 +2710,10 @@ word-spacing: normal !important;
                 value = decodeURIComponent(value).replace(/^\\/+|\\/+$/g, '');
                 const parts = value.split('/');
                 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-                if (parts.length < 3 || !uuid.test(parts[0]) || !uuid.test(parts[1]) ||
-                    parts.some(part => !part || part === '.' || part === '..' || /[\\\\\\0]/.test(part))) return null;
+                const stagedFolder = /^temp_[0-9]{10,}$/;
+                if (parts.length !== 3 || !uuid.test(parts[0]) ||
+                    (!uuid.test(parts[1]) && !stagedFolder.test(parts[1])) ||
+                    parts.some(part => !part || part === '.' || part === '..' || /[\\\0]/.test(part))) return null;
                 return value;
             } catch (error) {
                 console.error('Error parsing private PDF path:', error);
@@ -9529,11 +9531,11 @@ exam.questions.forEach((question, index) => {
                     continue;
                 }
 
-                if (file.size > 100 * 1024 * 1024) {
+                if (file.size > 25 * 1024 * 1024) {
                     uploadInfo.error = true;
                     const row = document.getElementById(`pdfProgress_${i}`);
-                    if (row) row.innerHTML = `<span style="color:var(--danger);font-size:0.85rem;"><i class="fas fa-times-circle"></i> ${currentLanguage === 'ar' ? 'الحجم أكبر من 100MB' : 'Over 100MB'}</span>`;
-                    showToast(currentLanguage === 'ar' ? `حجم الملف ${file.name} أكبر من 100MB` : `${file.name} exceeds 100MB`, 'error');
+                    if (row) row.innerHTML = `<span style="color:var(--danger);font-size:0.85rem;"><i class="fas fa-times-circle"></i> ${currentLanguage === 'ar' ? 'الحجم أكبر من 25MB' : 'Over 25MB'}</span>`;
+                    showToast(currentLanguage === 'ar' ? `حجم الملف ${file.name} أكبر من 25MB` : `${file.name} exceeds 25MB`, 'error');
                     continue;
                 }
                 
@@ -9567,8 +9569,8 @@ exam.questions.forEach((question, index) => {
                         xhr.onload = function() {
                             if (uploadInfo.cancelled) { resolve(); return; }
                             if (xhr.status >= 200 && xhr.status < 300) {
-                                const { data: urlData } = sb.storage.from('lesson-pdfs').getPublicUrl(filePath);
-                                uploadInfo.publicUrl = urlData.publicUrl;
+                                // Store the private object path; signed URLs are created only when a learner opens the file.
+                                uploadInfo.publicUrl = filePath;
                                 const bar = document.getElementById(`pdfProgressBar_${i}`);
                                 const text = document.getElementById(`pdfProgressText_${i}`);
                                 if (bar) { bar.style.width = '100%'; bar.style.background = 'var(--success)'; }
@@ -9593,7 +9595,7 @@ exam.questions.forEach((question, index) => {
                         xhr.open('POST', uploadUrl, true);
                         xhr.setRequestHeader('Authorization', `Bearer ${token}`);
                         xhr.setRequestHeader('apikey', SUPABASE_ANON_KEY);
-                        xhr.setRequestHeader('Content-Type', file.type || 'application/pdf');
+                        xhr.setRequestHeader('Content-Type', 'application/pdf');
                         xhr.setRequestHeader('x-upsert', 'false');
                         xhr.send(file);
                     });
