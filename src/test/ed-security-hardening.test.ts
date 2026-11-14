@@ -104,5 +104,7 @@ describe("ED-ALL production authorization hardening", () => {
     expect(migration).toContain("RAISE EXCEPTION 'AUDIT_LOG_APPEND_ONLY'");
     expect(migration).toContain("REVOKE UPDATE, DELETE, TRUNCATE ON TABLE public.platform_audit_log");
     expect(migration).toContain("FROM PUBLIC, anon, authenticated, service_role");
+    expect(migration).toContain("DROP CONSTRAINT IF EXISTS platform_audit_log_actor_user_id_fkey");
+    expect(migration).toContain("DROP CONSTRAINT IF EXISTS platform_audit_log_course_id_fkey");
   });
 });
