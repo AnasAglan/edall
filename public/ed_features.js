@@ -9,7 +9,6 @@
     courseId: "",
     courseStaffRoles: [],
     ownedCourseIds: [],
-    availablePaidCourses: [],
     tab: "",
     busy: false,
     data: {},
@@ -95,7 +94,6 @@
   const tabsForRole = () => {
     if (isAdmin()) return [
       ["analytics", text("التحليلات", "Analytics")],
-      ["payments", text("المدفوعات", "Payments")],
       ["staff", text("صلاحيات الدورات", "Course roles")],
       ["audit", text("سجل الإدارة", "Audit log")],
       ["mfa", text("المصادقة الثنائية", "Admin MFA")],
@@ -117,7 +115,6 @@
       ["liveClasses", text("مواعيد اللقاءات", "Class schedule")],
       ["certificates", text("شهاداتي", "My certificates")],
       ["discussions", text("النقاشات", "Discussions")],
-      ["payments", text("مدفوعاتي", "My payments")]
     ];
   };
 
@@ -162,23 +159,6 @@
     state.data = {};
     if (state.publicToken) return loadPublicCertificate();
     if (!state.user || !state.user.id) return;
-    if (state.tab === "payments") {
-      state.data.payments = await rows("payment_orders", q =>
-        isAdmin() ? q.order("created_at",{ascending:false}).limit(100) :
-          q.eq("user_id",state.user.id).order("created_at",{ascending:false}).limit(50)
-      );
-      if (!isAdmin()) {
-        const [allCourses,enrollments] = await Promise.all([
-          rows("courses", q => q.select("id,title,price").order("title",{ascending:true})),
-          rows("enrollments", q => q.select("course_id").eq("user_id",state.user.id))
-        ]);
-        const enrolled = new Set(enrollments.map(item=>item.course_id));
-        state.availablePaidCourses = allCourses
-          .filter(course=>Number(course.price)>0 && !enrolled.has(course.id))
-          .map(course=>({id:course.id,title:course.title || course.id,price:course.price}));
-      }
-      return;
-    }
     if (state.tab === "mfa" || state.tab === "audit" || state.tab === "staff" || (state.tab === "analytics" && isAdmin())) {
       if (state.tab === "mfa") return;
       if (state.tab === "audit") {
@@ -241,18 +221,13 @@
     } else if (state.tab === "discussions") {
       state.data.topics = await rpc("get_course_discussion_feed",{_course_id:courseId}) || [];
       state.data.posts = [];
-    } else if (state.tab === "payments") {
-      state.data.payments = await rows("payment_orders", q =>
-        isAdmin() ? q.order("created_at",{ascending:false}).limit(100) :
-          q.eq("user_id",state.user.id).order("created_at",{ascending:false}).limit(50)
-      );
     } else if (state.tab === "analytics") {
       state.data.analytics = await rpc("get_course_analytics", { _course_id: courseId });
     }
   }
 
   function courseSelector() {
-    if (state.tab === "payments" || (state.tab === "analytics" && isAdmin())) return "";
+    if (state.tab === "analytics" && isAdmin()) return "";
     if (!state.courses.length) return "";
     return '<label class="edf-course-select"><span>' + esc(text("الدورة", "Course")) + '</span><select data-field="course">' +
       state.courses.map(c => '<option value="' + esc(c.id) + '"' + (c.id === state.courseId ? " selected" : "") + '>' + esc(c.title) + '</option>').join("") +
@@ -415,29 +390,6 @@
     return body;
   }
 
-  function renderPaymentsTab() {
-    const list = state.data.payments || [];
-    let body = "";
-    if (!isAdmin()) {
-      const available = state.availablePaidCourses || [];
-      body += '<form class="edf-form" data-form="create-payment"><h3>' + esc(text("شراء دورة","Purchase a course")) + '</h3>' +
-        '<p class="edf-help">' + esc(text("السعر يُقرأ مباشرة من قاعدة البيانات. الدفع لن يبدأ حتى يكون حساب Paymob مضبوطاً ومفعّلاً من الخادم.","The price is read from the database. Checkout will start only after Paymob is securely configured and enabled on the server.")) + '</p>' +
-        (available.length
-          ? '<select name="course_id" required><option value="">' + esc(text("اختر دورة مدفوعة","Choose a paid course")) + '</option>' +
-              available.map(c=>'<option value="' + esc(c.id) + '">' + esc(c.title) + ' · ' + esc(formatAmount(c.price,"EGP")) + '</option>').join("") +
-            '</select><button class="edf-btn edf-primary" type="submit">' + esc(text("إنشاء طلب دفع","Create payment order")) + '</button>'
-          : empty(text("لا توجد دورات مدفوعة متاحة للشراء حالياً.","No paid courses are currently available to purchase."))) +
-        '</form>';
-    }
-    body += list.map(p => card(p.provider || "Payment",
-      '<div class="edf-meta">' + esc(fmtDate(p.created_at)) + '</div>' +
-      '<div class="edf-status">' + esc(formatAmount(p.amount,p.currency)) + ' · ' + esc(p.status) + '</div>' +
-      (p.checkout_url && p.status==="pending" ? '<a class="edf-link" href="' + esc(p.checkout_url) + '" target="_blank" rel="noopener noreferrer">' + esc(text("استكمال الدفع","Continue payment")) + '</a>' : "")
-    )).join("");
-    if (!list.length) body += empty(text("لا توجد طلبات دفع مسجلة.","No payment orders are recorded."));
-    return body;
-  }
-
   function renderAnalyticsTab() {
     const data = state.data.analytics;
     if (!data) return empty(text("لا توجد بيانات تحليلية متاحة.","Analytics are not available."));
@@ -534,7 +486,6 @@
     if (state.tab === "liveClasses") return renderLiveClassesTab();
     if (state.tab === "certificates") return renderCertificatesTab();
     if (state.tab === "discussions") return renderDiscussionsTab();
-    if (state.tab === "payments") return renderPaymentsTab();
     if (state.tab === "analytics") return renderAnalyticsTab();
     return empty(text("اختر أحد أقسام مساحة التعلم.","Choose a Learning Hub section."));
   }
@@ -609,16 +560,6 @@
     setBusy(true);
     try {
       switch (form.dataset.form) {
-        case "create-payment": {
-          const idempotencyKey=crypto.randomUUID();
-          const {data,error}=await sb().functions.invoke("create-payment-intention",{
-            body:{course_id:v.course_id,idempotency_key:idempotencyKey}
-          });
-          if(error) throw error;
-          if(!data || !data.checkout_url) throw new Error(data?.message || data?.error || text("لم يتم إنشاء رابط الدفع.","The checkout URL was not created."));
-          window.location.assign(data.checkout_url);
-          return;
-        }
         case "create-assignment":
           await rpc("create_assignment",{
             _course_id:course,_lesson_id:null,_title:v.title,_description:v.description || "",
