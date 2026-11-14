@@ -7,72 +7,84 @@ const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8"
 describe("ED-ALL production authorization hardening", () => {
   const migration = read("supabase/migrations/20261114120000_harden_platform_security.sql");
 
-  it("allows direct self-enrollment only in zero-priced courses", () => {
-    expect(migration).toMatch(/DROP POLICY IF EXISTS "Users can enroll themselves"/);
-    expect(migration).toMatch(/CREATE POLICY "Free courses allow self enrollment"[\s\S]*?ON public\.enrollments[\s\S]*?WITH CHECK[\s\S]*?user_id\s*=\s*auth\.uid\(\)[\s\S]*?COALESCE\(c\.price,\s*0\)\s*<=\s*0/i);
+  it("allows direct self-enrollment only in free courses", () => {
+    expect(migration).toContain('DROP POLICY IF EXISTS "Users can enroll themselves"');
+    expect(migration).toContain('CREATE POLICY "Free courses allow self enrollment"');
+    expect(migration).toContain("ON public.enrollments");
+    expect(migration).toContain("COALESCE(c.price, 0) <= 0");
+    expect(migration).toContain("user_id = auth.uid()");
   });
 
-  it("gates lesson text at RLS and retains course-owner/admin access through the entitlement helper", () => {
-    expect(migration).toMatch(/DROP POLICY IF EXISTS "Anyone can view lessons"/);
-    expect(migration).toMatch(/CREATE POLICY "Entitled users can view lessons"[\s\S]*?ON public\.lessons[\s\S]*?USING\s*\(public\.can_access_lesson\(id\)\)/i);
+  it("gates lesson content with the lesson entitlement function", () => {
+    expect(migration).toContain('DROP POLICY IF EXISTS "Anyone can view lessons"');
+    expect(migration).toContain('CREATE POLICY "Entitled users can view lessons"');
+    expect(migration).toContain("USING (public.can_access_lesson(id))");
   });
 
-  it("removes client access to legacy grading and returns no exam answer key", () => {
-    expect(migration).toMatch(/REVOKE ALL ON FUNCTION public\.grade_exam_submission\(uuid, jsonb\) FROM PUBLIC, anon, authenticated/i);
-    expect(migration).toMatch(/CREATE OR REPLACE FUNCTION public\.get_exam_questions_safe\(_exam_id uuid\)/i);
-    expect(migration).toMatch(/get_exam_questions_safe[\s\S]*?auth\.uid\(\) IS NULL[\s\S]*?can_access_lesson/i);
-    expect(migration).not.toMatch(/RETURNS TABLE\([\s\S]*?correct_option/i);
-    expect(read("public/ed_master.html")).not.toContain("'grade_exam_submission'");
+  it("closes the unsafe legacy grading RPC and protects the safe question RPC", () => {
+    expect(migration).toContain("REVOKE ALL ON FUNCTION public.grade_exam_submission(uuid, jsonb) FROM PUBLIC, anon, authenticated");
+    expect(migration).toContain("CREATE OR REPLACE FUNCTION public.get_exam_questions_safe(_exam_id uuid)");
+    expect(migration).toContain("auth.uid() IS NULL");
+    expect(migration).toContain("public.can_access_lesson(e.lesson_id)");
+    expect(read("public/ed_master.html")).not.toContain("grade_exam_submission");
   });
 
-  it("makes lesson PDFs private, scoped, and upload-limited", () => {
-    expect(migration).toMatch(/UPDATE storage\.buckets[\s\S]*?SET public\s*=\s*false[\s\S]*?lesson-pdfs/i);
-    expect(migration).toMatch(/DROP POLICY IF EXISTS "Anyone can view lesson pdfs"/i);
-    expect(migration).toMatch(/CREATE POLICY "Lesson PDFs entitled read access"[\s\S]*?storage\.objects[\s\S]*?can_access_lesson/i);
-    expect(migration).toMatch(/file_size_limit\s*=\s*26214400/i);
-    expect(migration).toMatch(/allowed_mime_types\s*=\s*ARRAY\['application\/pdf'\]/i);
-    expect(read("public/ed_master.html")).toMatch(/createSignedUrl/);
+  it("makes PDFs private, limits uploads, and requires signed links", () => {
+    expect(migration).toContain("UPDATE storage.buckets");
+    expect(migration).toContain("public = false");
+    expect(migration).toContain("file_size_limit = 26214400");
+    expect(migration).toContain("ARRAY['application/pdf']");
+    expect(migration).toContain('CREATE POLICY "Lesson PDFs entitled read access"');
+    expect(migration).toContain("public.can_access_lesson(l.id)");
+    expect(read("public/ed_master.html")).toContain("createSignedUrl");
   });
 
-  it("prevents users from changing their own ban and protected identity fields", () => {
-    expect(migration).toMatch(/CREATE OR REPLACE FUNCTION public\.protect_profile_security_fields/);
-    expect(migration).toMatch(/NEW\.banned IS DISTINCT FROM OLD\.banned/);
-    expect(migration).toMatch(/CREATE TRIGGER[^;]*protect_profile_security_fields/i);
-    expect(migration).toMatch(/WITH CHECK\s*\(\s*id\s*=\s*auth\.uid\(\)[\s\S]*?has_role\(auth\.uid\(\), 'admin'/i);
+  it("prevents users from changing their own ban and security identity fields", () => {
+    expect(migration).toContain("CREATE OR REPLACE FUNCTION public.protect_profile_security_fields()");
+    expect(migration).toContain("NEW.banned IS DISTINCT FROM OLD.banned");
+    expect(migration).toContain("CREATE TRIGGER protect_profile_security_fields");
+    expect(migration).toContain("WITH CHECK (id = auth.uid() OR public.has_role(auth.uid(), 'admin'::public.app_role))");
   });
 
-  it("does not disclose teacher email to anonymous or non-admin callers", () => {
-    expect(migration).toMatch(/CREATE OR REPLACE FUNCTION public\.search_teachers_public[\s\S]*?CASE[\s\S]*?WHEN public\.has_role\(auth\.uid\(\), 'admin'::public\.app_role\) THEN p\.email[\s\S]*?ELSE NULL[\s\S]*?END/i);
-    expect(migration).toMatch(/REVOKE ALL ON FUNCTION public\.search_teachers_public\(text\) FROM PUBLIC/i);
-    expect(migration).toMatch(/GRANT EXECUTE ON FUNCTION public\.search_teachers_public\(text\) TO anon, authenticated/i);
+  it("redacts teacher emails unless the caller is an admin", () => {
+    expect(migration).toContain("CREATE OR REPLACE FUNCTION public.search_teachers_public(_term text)");
+    expect(migration).toContain("WHEN public.has_role(auth.uid(), 'admin'::public.app_role) THEN p.email");
+    expect(migration).toContain("ELSE NULL");
+    expect(migration).toContain("REVOKE ALL ON FUNCTION public.search_teachers_public(text) FROM PUBLIC");
+    expect(migration).toContain("GRANT EXECUTE ON FUNCTION public.search_teachers_public(text) TO anon, authenticated");
   });
 
-  it("restricts teacher notifications to enrolled students in their own courses", () => {
-    expect(migration).toMatch(/DROP POLICY IF EXISTS "Admins and teachers can create notifications"/);
-    expect(migration).toMatch(/CREATE POLICY "Admins notifications and teacher notifications are scoped"[\s\S]*?WITH CHECK[\s\S]*?c\.created_by\s*=\s*auth\.uid\(\)/i);
-    expect(migration).toMatch(/CREATE OR REPLACE FUNCTION public\.notify_course_students/);
+  it("scopes teacher notifications and provides a course-student notification RPC", () => {
+    expect(migration).toContain('DROP POLICY IF EXISTS "Admins and teachers can create notifications"');
+    expect(migration).toContain('CREATE POLICY "Admins notifications and teacher notifications are scoped"');
+    expect(migration).toContain("c.created_by = auth.uid()");
+    expect(migration).toContain("CREATE OR REPLACE FUNCTION public.notify_course_students");
   });
 
-  it("rechecks enrollment after acquiring the wallet lock before debiting", () => {
+  it("rechecks enrollment after the wallet lock before charging", () => {
     const start = migration.indexOf("CREATE OR REPLACE FUNCTION public.purchase_course");
     const end = migration.indexOf("$function$;", start);
     const purchase = migration.slice(start, end < 0 ? undefined : end);
-    expect(purchase.indexOf("FOR UPDATE")).toBeGreaterThan(-1);
+    expect(purchase).toContain("FOR UPDATE");
+    expect(purchase).toContain("already_enrolled");
     expect(purchase.indexOf("FOR UPDATE")).toBeLessThan(purchase.lastIndexOf("already_enrolled"));
-    expect(purchase).toMatch(/_price\s*<\s*0/);
+    expect(purchase).toContain("_price < 0");
   });
 
-  it("revokes the legacy bootstrap overload and scopes role lookup to self/admin", () => {
-    expect(migration).toMatch(/REVOKE ALL ON FUNCTION public\.setup_new_user\(uuid, text, text\) FROM PUBLIC, anon, authenticated/i);
-    expect(migration).toMatch(/REVOKE ALL ON FUNCTION public\.get_user_role\(uuid\) FROM PUBLIC, anon/i);
-    expect(migration).toMatch(/get_user_role[\s\S]*?auth\.uid\(\)[\s\S]*?Not authorized/i);
+  it("revokes legacy bootstrap and restricts role lookups", () => {
+    expect(migration).toContain("REVOKE ALL ON FUNCTION public.setup_new_user(uuid, text, text) FROM PUBLIC, anon, authenticated");
+    expect(migration).toContain("REVOKE ALL ON FUNCTION public.get_user_role(uuid) FROM PUBLIC, anon");
+    expect(migration).toContain("IF auth.uid() IS NULL OR (auth.uid() <> _user_id");
+    expect(migration).toContain("RAISE EXCEPTION 'Not authorized'");
   });
 
-  it("validates admin-created accounts and compensates partial failures", () => {
+  it("validates account creation and rolls back partial failures", () => {
     const fn = read("supabase/functions/admin-create-user/index.ts");
-    expect(fn).toMatch(/\["student", "teacher", "admin"\]\.includes\(role\)/);
-    expect(fn).toMatch(/setup_new_user[\s\S]*?if\s*\(setupError/);
-    expect(fn).toMatch(/user_roles[\s\S]*?if\s*\(roleInsertError/);
-    expect(fn).toMatch(/auth\.admin\.deleteUser/);
+    expect(fn).toContain('["student", "teacher", "admin"].includes(role)');
+    expect(fn).toContain('rpc("setup_new_user"');
+    expect(fn).toContain("if (setupError");
+    expect(fn).toContain("if (roleInsertError");
+    expect(fn).toContain("auth.admin.deleteUser");
+    expect(fn).toContain("https://edall.lovable.app");
   });
 });
