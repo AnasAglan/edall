@@ -508,7 +508,8 @@ $function$;
 REVOKE ALL ON FUNCTION public.admin_credit_wallet(uuid,numeric,text) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.admin_credit_wallet(uuid,numeric,text) TO authenticated;
 
--- Storage objects: enforce the same course ownership/role checks as database metadata.
+-- Storage object writes follow the same course-scoped roles as lesson metadata.
+-- Lesson PDF keys are course-id/lesson-id/file-name.
 DROP POLICY IF EXISTS "Course owners upload lesson PDFs" ON storage.objects;
 CREATE POLICY "Course capability upload lesson PDFs"
 ON storage.objects FOR INSERT TO authenticated
@@ -516,15 +517,14 @@ WITH CHECK (
   bucket_id='lesson-pdfs'
   AND metadata->>'mimetype'='application/pdf'
   AND array_length(storage.foldername(name),1)=2
-  AND split_part(name,'/',1) ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}
-
-  AND (
-    split_part(name,'/',2) ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}
-
-    OR split_part(name,'/',2) ~ '^temp_[0-9]{10,}
-
+  AND EXISTS (
+    SELECT 1
+    FROM public.courses c
+    JOIN public.lessons l ON l.course_id=c.id
+    WHERE c.id::text=split_part(name,'/',1)
+      AND l.id::text=split_part(name,'/',2)
+      AND public.has_course_capability(c.id,'content')
   )
-  AND public.has_course_capability(split_part(name,'/',1)::uuid,'content')
 );
 
 DROP POLICY IF EXISTS "Course owners replace lesson PDFs" ON storage.objects;
@@ -532,13 +532,27 @@ CREATE POLICY "Course capability replace lesson PDFs"
 ON storage.objects FOR UPDATE TO authenticated
 USING (
   bucket_id='lesson-pdfs'
-  AND public.has_course_capability(split_part(name,'/',1)::uuid,'content')
+  AND EXISTS (
+    SELECT 1
+    FROM public.courses c
+    JOIN public.lessons l ON l.course_id=c.id
+    WHERE c.id::text=split_part(name,'/',1)
+      AND l.id::text=split_part(name,'/',2)
+      AND public.has_course_capability(c.id,'content')
+  )
 )
 WITH CHECK (
   bucket_id='lesson-pdfs'
   AND metadata->>'mimetype'='application/pdf'
   AND array_length(storage.foldername(name),1)=2
-  AND public.has_course_capability(split_part(name,'/',1)::uuid,'content')
+  AND EXISTS (
+    SELECT 1
+    FROM public.courses c
+    JOIN public.lessons l ON l.course_id=c.id
+    WHERE c.id::text=split_part(name,'/',1)
+      AND l.id::text=split_part(name,'/',2)
+      AND public.has_course_capability(c.id,'content')
+  )
 );
 
 DROP POLICY IF EXISTS "Course owners delete lesson PDFs" ON storage.objects;
@@ -546,19 +560,27 @@ CREATE POLICY "Course capability delete lesson PDFs"
 ON storage.objects FOR DELETE TO authenticated
 USING (
   bucket_id='lesson-pdfs'
-  AND public.has_course_capability(split_part(name,'/',1)::uuid,'content')
+  AND EXISTS (
+    SELECT 1
+    FROM public.courses c
+    JOIN public.lessons l ON l.course_id=c.id
+    WHERE c.id::text=split_part(name,'/',1)
+      AND l.id::text=split_part(name,'/',2)
+      AND public.has_course_capability(c.id,'content')
+  )
 );
 
--- Course images retain their existing path contract, but administrators need AAL2.
+-- Course images retain the course-id path contract and require the same role.
 DROP POLICY IF EXISTS "Course owners can upload course images" ON storage.objects;
 CREATE POLICY "Course capability upload course images"
 ON storage.objects FOR INSERT TO authenticated
 WITH CHECK (
   bucket_id='course-images'
-  AND array_length(storage.foldername(name),1)>=1
-  AND split_part(name,'/',1) ~* '^[0-9a-f-]{36}
-
-  AND public.has_course_capability(split_part(name,'/',1)::uuid,'content')
+  AND EXISTS (
+    SELECT 1 FROM public.courses c
+    WHERE c.id::text=split_part(name,'/',1)
+      AND public.has_course_capability(c.id,'content')
+  )
 );
 
 DROP POLICY IF EXISTS "Course owners can update course images" ON storage.objects;
@@ -566,11 +588,19 @@ CREATE POLICY "Course capability update course images"
 ON storage.objects FOR UPDATE TO authenticated
 USING (
   bucket_id='course-images'
-  AND public.has_course_capability(split_part(name,'/',1)::uuid,'content')
+  AND EXISTS (
+    SELECT 1 FROM public.courses c
+    WHERE c.id::text=split_part(name,'/',1)
+      AND public.has_course_capability(c.id,'content')
+  )
 )
 WITH CHECK (
   bucket_id='course-images'
-  AND public.has_course_capability(split_part(name,'/',1)::uuid,'content')
+  AND EXISTS (
+    SELECT 1 FROM public.courses c
+    WHERE c.id::text=split_part(name,'/',1)
+      AND public.has_course_capability(c.id,'content')
+  )
 );
 
 DROP POLICY IF EXISTS "Course owners can delete course images" ON storage.objects;
@@ -578,7 +608,25 @@ CREATE POLICY "Course capability delete course images"
 ON storage.objects FOR DELETE TO authenticated
 USING (
   bucket_id='course-images'
-  AND public.has_course_capability(split_part(name,'/',1)::uuid,'content')
+  AND EXISTS (
+    SELECT 1 FROM public.courses c
+    WHERE c.id::text=split_part(name,'/',1)
+      AND public.has_course_capability(c.id,'content')
+  )
+);
+
+-- Allow rollback of only the current student's newly uploaded, unattached files.
+CREATE POLICY "Students clean up unsubmitted assignment files"
+ON storage.objects FOR DELETE TO authenticated
+USING (
+  bucket_id='assignment-submissions'
+  AND split_part(name,'/',1)=auth.uid()::text
+  AND NOT EXISTS (
+    SELECT 1
+    FROM public.assignment_submissions s
+    WHERE s.student_id=auth.uid()
+      AND s.attachments @> jsonb_build_array(jsonb_build_object('path',name))
+  )
 );
 
 COMMIT;
