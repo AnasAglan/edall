@@ -2586,7 +2586,7 @@ word-spacing: normal !important;
         async function uploadLessonPdfFiles(courseId, lessonId, fileList, uploadedPaths = []) {
             const files = Array.from(fileList || []);
             const lessonFiles = [];
-            const maxPdfSizeBytes = 100 * 1024 * 1024;
+            const maxPdfSizeBytes = 25 * 1024 * 1024;
 
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
@@ -2599,8 +2599,8 @@ word-spacing: normal !important;
 
                 if (file.size > maxPdfSizeBytes) {
                     throw new Error(currentLanguage === 'ar'
-                        ? `حجم الملف ${file.name} أكبر من الحد المسموح 100MB`
-                        : `${file.name} exceeds the 100MB limit`
+                        ? `حجم الملف ${file.name} أكبر من الحد المسموح 25MB`
+                        : `${file.name} exceeds the 25MB limit`
                     );
                 }
 
