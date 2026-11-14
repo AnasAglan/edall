@@ -1,0 +1,22 @@
+{
+  "id": "/",
+  "name": "ED ALL - منصة تعليمية",
+  "short_name": "ED ALL",
+  "description": "منصة ED ALL التعليمية",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#101827",
+  "theme_color": "#172337",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "any",
+      "type": "image/x-icon",
+      "purpose": "any"
+    }
+  ]
+}
