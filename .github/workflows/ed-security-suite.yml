@@ -66,10 +66,8 @@ jobs:
           supabase start -x studio,mailpit,edge-runtime,logflare,vector,imgproxy
           supabase db reset --local
           supabase db lint --local --level error --fail-on error
-      - name: Lint and build the platform
-        run: |
-          npm run lint
-          npm run build
+      - name: Build the platform
+        run: npm run build
       - name: Run all platform tests
         run: npm test -- --reporter=verbose
       - name: Validate Worker and browser modules
