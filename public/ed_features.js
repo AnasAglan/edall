@@ -61,6 +61,7 @@
     const message = e && e.message ? e.message : String(e || "Unknown error");
     if (/ADMIN_MFA_REQUIRED|MFA_REQUIRED/i.test(message)) return text("يلزم تفعيل المصادقة الثنائية للمدير ثم تأكيد الرمز.", "Administrator MFA must be enabled and verified.");
     if (/PAYMENT_PROVIDER_NOT_CONFIGURED/i.test(message)) return text("الدفع الإلكتروني غير مفعّل بعد؛ لم يتم ضبط مفاتيح مزود الدفع.", "Online payments are not enabled yet; the payment provider keys are not configured.");
+    if (/CHECKOUT_ALREADY_BEING_PREPARED/i.test(message)) return text("يجري تجهيز رابط الدفع بالفعل. انتظر قليلاً ثم حدّث الصفحة.", "A checkout is already being prepared. Wait briefly, then refresh.");
     if (/ENROLLMENT_REQUIRED|NOT_ALLOWED|NOT_AUTHORIZED/i.test(message)) return text("ليست لديك صلاحية لتنفيذ هذه العملية.", "You are not authorized to perform this action.");
     return message;
   };
