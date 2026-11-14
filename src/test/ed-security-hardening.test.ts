@@ -232,6 +232,19 @@ describe("ED-ALL production authorization hardening", () => {
     expect(mfa).toContain("Students clean up unsubmitted assignment files");
   });
 
+  it("tracks exam attempts and prevents cross-user finalization and answer-key disclosure", () => {
+    const exam = read("supabase/migrations/20261115115000_harden_exam_attempt_lifecycle.sql");
+    expect(exam).toContain("CREATE TABLE IF NOT EXISTS public.exam_attempts");
+    expect(exam).toContain("public._finalize_exam_attempt(uuid,jsonb)");
+    expect(exam).toContain("IF _a.user_id<>auth.uid() THEN RAISE EXCEPTION 'NOT_ALLOWED'");
+    expect(exam).toContain("pg_advisory_xact_lock");
+    expect(exam).toContain("exam_attempts_one_open_per_user_exam_idx");
+    expect(exam).toContain("public.can_access_lesson(_lesson_id)");
+    expect(exam).toContain("REVOKE ALL ON FUNCTION public.grade_exam_submission(uuid,jsonb) FROM PUBLIC,anon,authenticated");
+    expect(exam).toContain("REVOKE ALL ON FUNCTION public._finalize_exam_attempt(uuid,jsonb) FROM PUBLIC,anon,authenticated");
+    expect(exam).not.toContain("'correctOption'");
+  });
+
   it("scopes student roster and progress reports to course capabilities and masks email", () => {
     const reporting = read("supabase/migrations/20261115114000_scope_student_reports_to_course_capabilities.sql");
     expect(reporting).toContain("public.has_course_capability(_course_id,'attendance')");
