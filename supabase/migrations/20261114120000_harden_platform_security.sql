@@ -459,6 +459,10 @@ GRANT EXECUTE ON FUNCTION public.purchase_course(uuid) TO authenticated;
 
 -- 9. Close legacy bootstrap/role lookup overloads which predate the secured RPC.
 REVOKE ALL ON FUNCTION public.setup_new_user(uuid, text, text) FROM PUBLIC, anon, authenticated;
+-- The four-argument bootstrap overload is reserved for trusted account provisioning.
+-- Signup triggers execute as their owner; only the service-role Edge Function may call it via RPC.
+REVOKE ALL ON FUNCTION public.setup_new_user(uuid, text, text, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.setup_new_user(uuid, text, text, text) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.get_user_role(_user_id uuid)
 RETURNS text
