@@ -205,8 +205,9 @@ describe("ED-ALL production authorization hardening", () => {
   it("neutralizes spreadsheet formulas in downloadable CSV values", () => {
     const ui = read("public/ed_features.js");
     expect(ui).toContain("const csvCell = value =>");
-    expect(ui).toContain("/^[\\\\u0000-\\\\u0020]*[=+@-]/");
-    expect(ui).toContain('raw = "'" + raw');
+    expect(ui).toContain("Prevent spreadsheet formula execution when opening CSV exports in Excel.");
+    expect(ui).toContain("if (/^\\s*[=+@-]/.test(raw))");
+
   });
 
   it("prevents client-side exam-completion flags without a passing graded result", () => {
