@@ -205,6 +205,7 @@ describe("ED-ALL production authorization hardening", () => {
   it("requires AAL2 for privileged course, exam, storage, wallet and settings operations", () => {
     const mfa = read("supabase/migrations/20261115113000_enforce_course_and_admin_mfa.sql");
     expect(mfa).toContain("public.has_course_capability(id,'content')");
+    expect(mfa).toContain("public.has_course_capability(c.id,'content')");
     expect(mfa).toContain("public.has_course_capability(l.course_id,'exams')");
     expect(mfa).toContain("public.admin_mfa_verified()");
     expect(mfa).toContain("REVOKE INSERT,UPDATE,DELETE,TRUNCATE ON public.wallets");
