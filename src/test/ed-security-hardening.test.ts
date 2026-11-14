@@ -168,4 +168,12 @@ describe("ED-ALL production authorization hardening", () => {
     expect(migration).toContain("ON public.notifications FOR UPDATE");
     expect(migration).toContain("ADMIN_MFA_REQUIRED");
   });
+
+  it("requires administrator MFA before returning student roster PII or progress", () => {
+    const migration = read("supabase/migrations/20261115106000_admin_mfa_student_reporting.sql");
+    expect(migration).toContain("public.course_enrollees");
+    expect(migration).toContain("public.course_student_progress");
+    expect(migration.match(/ADMIN_MFA_REQUIRED/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(migration).toContain("SET search_path = ''");
+  });
 });
