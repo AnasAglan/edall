@@ -141,4 +141,12 @@ describe("ED-ALL production authorization hardening", () => {
     expect(edge).toContain("5*60*1000");
     expect(edge).toContain("reused:true");
   });
+
+  it("requires verified AAL2 for administrator course capabilities", () => {
+    const migration = read("supabase/migrations/20261115103000_enforce_admin_mfa_course_scope.sql");
+    expect(migration).toContain("WHEN public.has_role(auth.uid(),'admin'::public.app_role)");
+    expect(migration).toContain("THEN public.admin_mfa_verified()");
+    expect(migration).toContain("ELSE");
+    expect(migration).toContain("public.course_staff_roles");
+  });
 });
