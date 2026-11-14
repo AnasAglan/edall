@@ -1023,32 +1023,22 @@ async function tool(name, args, env, token, user, roles, images = []) {
 
   if (name === "get_platform_stats") {
     if (!isAdmin) throw new Error("إحصاءات المنصة الشاملة متاحة للمدير فقط.");
-    const [users, students, teachers, admins, courses, lessons, videos, files, enrollments, exams, attempts] = await Promise.all([
-      countRows(env, "profiles", token),
-      countRows(env, "user_roles", token, "&role=eq.student"),
-      countRows(env, "user_roles", token, "&role=eq.teacher"),
-      countRows(env, "user_roles", token, "&role=eq.admin"),
-      countRows(env, "courses", token),
-      countRows(env, "lessons", token),
-      countRows(env, "lesson_videos", token),
-      countRows(env, "lesson_files", token),
-      countRows(env, "enrollments", token),
-      countRows(env, "exams", token),
-      countRows(env, "exam_attempts", token)
-    ]);
-    return {
-      users,
-      students,
-      teachers,
-      admins,
-      courses,
-      lessons,
-      lesson_video_links: videos,
-      lesson_pdf_links: files,
-      enrollments,
-      exams,
-      exam_attempts: attempts
-    };
+    // The RPC is a single, MFA-gated SECURITY DEFINER snapshot. Direct REST
+    // counts can silently return zero under admin AAL2 policies and appear blank.
+    const snapshot = await db(env, "/rest/v1/rpc/get_platform_analytics", token, "POST", {});
+    const keys = [
+      "users", "students", "teachers", "admins", "courses", "lessons",
+      "lesson_video_links", "lesson_pdf_links", "enrollments", "exams", "exam_attempts"
+    ];
+    const result = {};
+    for (const key of keys) {
+      const value = Number(snapshot?.[key]);
+      if (!Number.isSafeInteger(value) || value < 0) {
+        throw new Error("تعذر قراءة المؤشر الإحصائي: " + key);
+      }
+      result[key] = value;
+    }
+    return result;
   }
 
   if (name === "search_platform_users") {
