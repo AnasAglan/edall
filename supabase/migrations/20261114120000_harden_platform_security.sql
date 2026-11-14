@@ -71,110 +71,100 @@ $function$;
 REVOKE ALL ON FUNCTION public.get_exam_questions_safe(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.get_exam_questions_safe(uuid) TO authenticated;
 
--- 4. Make lesson PDFs private, enforce file constraints, and scope both reads and writes.
+-- 4. Make lesson PDFs private, preserving both staged and final object paths.
+-- Production objects use course-id/temp_<timestamp>/file-name. The authoritative
+-- lesson association is public.lesson_files.file_url, not folder segment 2.
 UPDATE storage.buckets
 SET public = false,
     file_size_limit = 26214400,
-    allowed_mime_types = ARRAY['application/pdf']
+    allowed_mime_types = ARRAY['application/pdf']::text[]
 WHERE id = 'lesson-pdfs';
 
 DO $storage_policy_cleanup$
-DECLARE
-  _policy record;
+DECLARE _policy record;
 BEGIN
   FOR _policy IN
-    SELECT policyname
-    FROM pg_policies
-    WHERE schemaname = 'storage'
-      AND tablename = 'objects'
+    SELECT policyname FROM pg_policies
+    WHERE schemaname='storage' AND tablename='objects'
       AND (
         policyname ILIKE '%lesson pdf%'
-        OR COALESCE(qual, '') ILIKE '%lesson-pdfs%'
-        OR COALESCE(with_check, '') ILIKE '%lesson-pdfs%'
+        OR COALESCE(qual,'') ILIKE '%lesson-pdfs%'
+        OR COALESCE(with_check,'') ILIKE '%lesson-pdfs%'
       )
   LOOP
-    EXECUTE format('DROP POLICY %I ON storage.objects', _policy.policyname);
+    EXECUTE format('DROP POLICY %I ON storage.objects',_policy.policyname);
   END LOOP;
 END;
 $storage_policy_cleanup$;
 
--- Object path is course UUID / lesson UUID / file name.
 CREATE POLICY "Lesson PDFs entitled read access"
-ON storage.objects
-FOR SELECT TO authenticated
+ON storage.objects FOR SELECT TO authenticated
 USING (
-  bucket_id = 'lesson-pdfs'
+  bucket_id='lesson-pdfs'
   AND EXISTS (
     SELECT 1
-    FROM public.lessons l
-    JOIN public.courses c ON c.id = l.course_id
-    WHERE l.id::text = (storage.foldername(name))[2]
-      AND c.id::text = (storage.foldername(name))[1]
+    FROM public.lesson_files lf
+    JOIN public.lessons l ON l.id=lf.lesson_id
+    JOIN public.courses c ON c.id=l.course_id
+    WHERE lf.file_url=storage.objects.name
+      AND c.id::text=split_part(storage.objects.name,'/',1)
       AND public.can_access_lesson(l.id)
   )
 );
 
+-- Both temporary paths from the lesson editor and final lesson UUID paths are allowed.
 CREATE POLICY "Course owners upload lesson PDFs"
-ON storage.objects
-FOR INSERT TO authenticated
+ON storage.objects FOR INSERT TO authenticated
 WITH CHECK (
-  bucket_id = 'lesson-pdfs'
-  AND metadata->>'mimetype' = 'application/pdf'
+  bucket_id='lesson-pdfs'
+  AND metadata->>'mimetype'='application/pdf'
+  AND array_length(storage.foldername(name),1)=2
+  AND split_part(name,'/',1) ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+  AND (
+    split_part(name,'/',2) ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+    OR split_part(name,'/',2) ~ '^temp_[0-9]{10,}$'
+  )
   AND EXISTS (
-    SELECT 1
-    FROM public.lessons l
-    JOIN public.courses c ON c.id = l.course_id
-    WHERE l.id::text = (storage.foldername(name))[2]
-      AND c.id::text = (storage.foldername(name))[1]
-      AND (c.created_by = auth.uid() OR public.has_role(auth.uid(), 'admin'::public.app_role))
+    SELECT 1 FROM public.courses c
+    WHERE c.id::text=split_part(name,'/',1)
+      AND (c.created_by=auth.uid() OR public.has_role(auth.uid(),'admin'::public.app_role))
   )
 );
 
 CREATE POLICY "Course owners replace lesson PDFs"
-ON storage.objects
-FOR UPDATE TO authenticated
+ON storage.objects FOR UPDATE TO authenticated
 USING (
-  bucket_id = 'lesson-pdfs'
+  bucket_id='lesson-pdfs'
   AND EXISTS (
-    SELECT 1
-    FROM public.lessons l
-    JOIN public.courses c ON c.id = l.course_id
-    WHERE l.id::text = (storage.foldername(name))[2]
-      AND c.id::text = (storage.foldername(name))[1]
-      AND (c.created_by = auth.uid() OR public.has_role(auth.uid(), 'admin'::public.app_role))
+    SELECT 1 FROM public.courses c
+    WHERE c.id::text=split_part(name,'/',1)
+      AND (c.created_by=auth.uid() OR public.has_role(auth.uid(),'admin'::public.app_role))
   )
 )
 WITH CHECK (
-  bucket_id = 'lesson-pdfs'
-  AND metadata->>'mimetype' = 'application/pdf'
+  bucket_id='lesson-pdfs'
+  AND metadata->>'mimetype'='application/pdf'
+  AND array_length(storage.foldername(name),1)=2
   AND EXISTS (
-    SELECT 1
-    FROM public.lessons l
-    JOIN public.courses c ON c.id = l.course_id
-    WHERE l.id::text = (storage.foldername(name))[2]
-      AND c.id::text = (storage.foldername(name))[1]
-      AND (c.created_by = auth.uid() OR public.has_role(auth.uid(), 'admin'::public.app_role))
+    SELECT 1 FROM public.courses c
+    WHERE c.id::text=split_part(name,'/',1)
+      AND (c.created_by=auth.uid() OR public.has_role(auth.uid(),'admin'::public.app_role))
   )
 );
 
 CREATE POLICY "Course owners delete lesson PDFs"
-ON storage.objects
-FOR DELETE TO authenticated
+ON storage.objects FOR DELETE TO authenticated
 USING (
-  bucket_id = 'lesson-pdfs'
+  bucket_id='lesson-pdfs'
   AND EXISTS (
-    SELECT 1
-    FROM public.lessons l
-    JOIN public.courses c ON c.id = l.course_id
-    WHERE l.id::text = (storage.foldername(name))[2]
-      AND c.id::text = (storage.foldername(name))[1]
-      AND (c.created_by = auth.uid() OR public.has_role(auth.uid(), 'admin'::public.app_role))
+    SELECT 1 FROM public.courses c
+    WHERE c.id::text=split_part(name,'/',1)
+      AND (c.created_by=auth.uid() OR public.has_role(auth.uid(),'admin'::public.app_role))
   )
 );
 
--- Convert legacy public URLs to private object paths before disabling public access.
 UPDATE public.lesson_files
-SET file_url = regexp_replace(
+SET file_url=regexp_replace(
   file_url,
   '^https?://[^/]+/storage/v1/object/public/lesson-pdfs/',
   ''
