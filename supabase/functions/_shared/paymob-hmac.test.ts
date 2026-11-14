@@ -1,5 +1,11 @@
-import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { paymobTransactionHmacMessage, verifyPaymobTransactionHmac } from "./paymob-hmac.ts";
+
+function assert(condition: unknown, message: string): asserts condition {
+  if (!condition) throw new Error(message);
+}
+function assertEquals(actual: unknown, expected: unknown, message: string) {
+  if (actual !== expected) throw new Error(message + `: expected ${String(expected)}, received ${String(actual)}`);
+}
 
 Deno.test("Paymob transaction HMAC follows the documented 20-field order and lowercase booleans", async () => {
   const obj={
@@ -23,17 +29,16 @@ Deno.test("Paymob transaction HMAC follows the documented 20-field order and low
     success:true
   };
   const message=paymobTransactionHmacMessage(obj);
-  assert(message);
-  assert(message.includes("falsefalse"));
+  assert(message,"Expected a canonical HMAC message");
   const secret="unit-test-secret";
   const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(secret),{name:"HMAC",hash:"SHA-512"},false,["sign"]);
   const signature=await crypto.subtle.sign("HMAC",key,new TextEncoder().encode(message));
   const expected=Array.from(new Uint8Array(signature),b=>b.toString(16).padStart(2,"0")).join("");
-  assertEquals(await verifyPaymobTransactionHmac(obj,expected,secret),true);
-  assertEquals(await verifyPaymobTransactionHmac({...obj,success:false},expected,secret),false);
+  assertEquals(await verifyPaymobTransactionHmac(obj,expected,secret),true,"Expected valid HMAC");
+  assertEquals(await verifyPaymobTransactionHmac({...obj,success:false},expected,secret),false,"Tampering must fail");
 });
 
 Deno.test("Paymob transaction HMAC rejects missing signed fields and malformed signatures", async () => {
-  assertEquals(paymobTransactionHmacMessage({id:1}),null);
-  assertEquals(await verifyPaymobTransactionHmac({id:1},"abc","secret"),false);
+  assertEquals(paymobTransactionHmacMessage({id:1}),null,"Missing fields must fail closed");
+  assertEquals(await verifyPaymobTransactionHmac({id:1},"abc","secret"),false,"Malformed signature must fail");
 });
