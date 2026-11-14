@@ -202,6 +202,13 @@ describe("ED-ALL production authorization hardening", () => {
     expect(worker).toContain("}, 503, origin)");
   });
 
+  it("prevents client-side exam-completion flags without a passing graded result", () => {
+    const migration = read("supabase/migrations/20261114121000_add_integrated_learning_suite.sql");
+    expect(migration).toContain("BEFORE INSERT OR UPDATE OF exam_completed ON public.lesson_progress");
+    expect(migration).toContain("er.user_id=NEW.user_id");
+    expect(migration).toContain("RAISE EXCEPTION 'EXAM_NOT_PASSED'");
+  });
+
   it("requires AAL2 for privileged course, exam, storage, wallet and settings operations", () => {
     const mfa = read("supabase/migrations/20261115113000_enforce_course_and_admin_mfa.sql");
     expect(mfa).toContain("public.has_course_capability(id,'content')");
