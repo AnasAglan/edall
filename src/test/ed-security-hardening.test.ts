@@ -149,4 +149,12 @@ describe("ED-ALL production authorization hardening", () => {
     expect(migration).toContain("ELSE");
     expect(migration).toContain("public.course_staff_roles");
   });
+
+  it("requires administrator AAL2 before exposing teacher emails or other users' roles", () => {
+    const migration = read("supabase/migrations/20261115104000_admin_mfa_sensitive_rpcs.sql");
+    expect(migration).toContain("AND public.admin_mfa_verified() THEN p.email");
+    expect(migration).toContain("AND public.admin_mfa_verified()");
+    expect(migration).toContain("auth.uid() <> _user_id");
+    expect(migration).toContain("OR NOT public.admin_mfa_verified()");
+  });
 });
