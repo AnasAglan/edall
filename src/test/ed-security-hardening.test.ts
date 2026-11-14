@@ -107,4 +107,11 @@ describe("ED-ALL production authorization hardening", () => {
     expect(migration).toContain("DROP CONSTRAINT IF EXISTS platform_audit_log_actor_user_id_fkey");
     expect(migration).toContain("DROP CONSTRAINT IF EXISTS platform_audit_log_course_id_fkey");
   });
+
+  it("keeps the lesson PDF uploader within the private bucket's 25 MiB limit", () => {
+    const html = read("public/ed_master.html");
+    expect(html).toContain("const maxPdfSizeBytes = 25 * 1024 * 1024");
+    expect(html).toContain("exceeds the 25MB limit");
+    expect(html).not.toContain("maxPdfSizeBytes = 100 * 1024 * 1024");
+  });
 });
