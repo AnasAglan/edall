@@ -114,4 +114,13 @@ describe("ED-ALL production authorization hardening", () => {
     expect(html).toContain("exceeds the 25MB limit");
     expect(html).not.toContain("maxPdfSizeBytes = 100 * 1024 * 1024");
   });
+
+  it("correlates Paymob webhooks using the HMAC-signed provider order ID", () => {
+    const webhook = read("supabase/functions/paymob-webhook/index.ts");
+    expect(webhook).toContain('String(obj.order?.id ?? "")');
+    expect(webhook).toContain('.filter("metadata->>paymob_order_id","eq",paymobOrderId)');
+    expect(webhook).toContain("obj.order?.id");
+    expect(webhook).not.toContain("nested(obj,[\"order\",\"merchant_order_id\"])");
+    expect(webhook).not.toContain("obj.special_reference");
+  });
 });
