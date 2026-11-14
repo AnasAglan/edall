@@ -36,6 +36,8 @@ describe("ED-ALL production authorization hardening", () => {
     expect(migration).toContain("ARRAY['application/pdf']");
     expect(migration).toContain('CREATE POLICY "Lesson PDFs entitled read access"');
     expect(migration).toContain("public.can_access_lesson(l.id)");
+    expect(migration).toContain("lf.file_url=storage.objects.name");
+    expect(migration).toContain("temp_[0-9]{10,}");
     expect(read("public/ed_master.html")).toContain("createSignedUrl");
   });
 
@@ -74,7 +76,7 @@ describe("ED-ALL production authorization hardening", () => {
   it("revokes legacy bootstrap and restricts role lookups", () => {
     expect(migration).toContain("REVOKE ALL ON FUNCTION public.setup_new_user(uuid, text, text) FROM PUBLIC, anon, authenticated");
     expect(migration).toContain("REVOKE ALL ON FUNCTION public.get_user_role(uuid) FROM PUBLIC, anon");
-    expect(migration).toContain("IF auth.uid() IS NULL OR (auth.uid() <> _user_id");
+    expect(migration).toMatch(/IF auth\.uid\(\) IS NULL OR \([\s\S]*?auth\.uid\(\) <> _user_id/);
     expect(migration).toContain("RAISE EXCEPTION 'Not authorized'");
   });
 
