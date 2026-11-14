@@ -202,6 +202,16 @@ describe("ED-ALL production authorization hardening", () => {
     expect(worker).toContain("}, 503, origin)");
   });
 
+  it("does not expose unpublished assignments to enrolled students", () => {
+    const learning = read("supabase/migrations/20261114121000_add_integrated_learning_suite.sql");
+    const policyStart = learning.indexOf('CREATE POLICY "Enrolled students and course staff read assignments"');
+    const policyEnd = learning.indexOf(");", policyStart);
+    const policy = learning.slice(policyStart, policyEnd + 2);
+    expect(policy).toContain("is_published = true");
+    expect(policy).toContain("public.has_course_capability(course_id,'assignments')");
+    expect(policy).toContain("e.user_id=auth.uid()");
+  });
+
   it("returns complete platform statistics through one MFA-gated database snapshot", () => {
     const learning = read("supabase/migrations/20261114121000_add_integrated_learning_suite.sql");
     const worker = read("workers/edall-assistant/index.js");
