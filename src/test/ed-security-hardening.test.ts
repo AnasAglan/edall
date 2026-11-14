@@ -202,6 +202,13 @@ describe("ED-ALL production authorization hardening", () => {
     expect(worker).toContain("}, 503, origin)");
   });
 
+  it("neutralizes spreadsheet formulas in downloadable CSV values", () => {
+    const ui = read("public/ed_features.js");
+    expect(ui).toContain("const csvCell = value =>");
+    expect(ui).toContain("/^[\\\\u0000-\\\\u0020]*[=+@-]/");
+    expect(ui).toContain('raw = "'" + raw');
+  });
+
   it("prevents client-side exam-completion flags without a passing graded result", () => {
     const migration = read("supabase/migrations/20261114121000_add_integrated_learning_suite.sql");
     expect(migration).toContain("BEFORE INSERT OR UPDATE OF exam_completed ON public.lesson_progress");
