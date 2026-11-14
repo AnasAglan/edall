@@ -219,7 +219,9 @@ describe("ED-ALL production authorization hardening", () => {
     expect(mfa).toContain("REVOKE INSERT,UPDATE,DELETE,TRUNCATE ON public.wallet_transactions");
     expect(mfa).toContain("MFA admins manage site settings update");
     expect(mfa).toContain("Course capability upload lesson PDFs");
+    expect(mfa).toContain("l.id::text=split_part(name,'/',2)");
     expect(mfa).toContain("metadata->>'mimetype'='application/pdf'");
+    expect(mfa).toContain("Students clean up unsubmitted assignment files");
   });
 
   it("requires administrator AAL2 and audited RPC for all user role mutations", () => {
