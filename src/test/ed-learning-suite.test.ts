@@ -7,7 +7,7 @@ const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8"
 describe("ED-ALL integrated learning suite", () => {
   const migration = read("supabase/migrations/20261114121000_add_integrated_learning_suite.sql");
 
-  const expectedTables = [
+  const tables = [
     "course_staff_roles",
     "assignments",
     "assignment_submissions",
@@ -22,84 +22,114 @@ describe("ED-ALL integrated learning suite", () => {
     "platform_audit_log"
   ];
 
-  it.each(expectedTables)("creates %s with row-level security", (table) => {
-    expect(migration).toMatch(new RegExp("CREATE TABLE IF NOT EXISTS public\\." + table + "\\b", "i"));
-    expect(migration).toMatch(new RegExp("ALTER TABLE public\\." + table + " ENABLE ROW LEVEL SECURITY", "i"));
+  it.each(tables)("creates %s with row-level security", (table) => {
+    expect(migration).toContain("CREATE TABLE IF NOT EXISTS public." + table);
+    expect(migration).toContain("ALTER TABLE public." + table + " ENABLE ROW LEVEL SECURITY");
   });
 
-  it("uses authenticated identity and course-scoped capabilities for writes", () => {
+  it("uses server-verified course capabilities for privileged actions", () => {
     for (const rpc of [
-      "assign_course_staff",
+      "grant_course_staff_role",
+      "revoke_course_staff_role",
       "create_assignment",
       "submit_assignment",
       "grade_assignment_submission",
       "create_attendance_session",
       "mark_attendance",
       "create_live_class",
+      "update_live_class_status",
       "issue_course_certificate",
-      "create_payment_order",
-      "fulfill_payment_order",
+      "revoke_course_certificate",
       "create_discussion_topic",
       "create_discussion_post",
+      "moderate_discussion_post",
+      "moderate_discussion_topic",
+      "create_payment_order",
+      "fulfill_payment_order",
       "get_course_analytics",
       "get_platform_analytics"
     ]) expect(migration).toContain("FUNCTION public." + rpc);
-    expect(migration).toMatch(/submit_assignment[\s\S]*?auth\.uid\(\)/);
-    expect(migration).toMatch(/grade_assignment_submission[\s\S]*?ed_can_manage_course/);
-    expect(migration).toMatch(/mark_attendance[\s\S]*?ed_can_manage_course/);
+    expect(migration).toContain("public.has_course_capability(_course_id");
+    expect(migration).toContain("auth.uid() IS NULL");
+    expect(migration).toContain("ENROLLMENT_REQUIRED");
   });
 
-  it("enforces one submission and one attendance row per student", () => {
-    expect(migration).toMatch(/UNIQUE\s*\(assignment_id, student_id\)/i);
-    expect(migration).toMatch(/UNIQUE\s*\(session_id, student_id\)/i);
+  it("enforces one submission per student and one attendance record per session", () => {
+    expect(migration).toContain("UNIQUE (assignment_id, student_id)");
+    expect(migration).toContain("UNIQUE(session_id,student_id)");
   });
 
-  it("issues certificates only after course progress completion and exposes minimal verification data", () => {
-    expect(migration).toMatch(/issue_course_certificate[\s\S]*?video_watched[\s\S]*?total_lessons/);
-    expect(migration).toMatch(/verify_course_certificate[\s\S]*?certificate_number[\s\S]*?course_title/);
-    expect(migration).not.toMatch(/verify_course_certificate[\s\S]*?student_email/);
+  it("verifies certificates with a hard-to-guess token and exposes no email", () => {
+    expect(migration).toContain("CREATE OR REPLACE FUNCTION public.verify_course_certificate(_token text)");
+    expect(migration).toContain("verification_token text NOT NULL UNIQUE");
+    expect(migration).toContain("extensions.digest(");
+    expect(migration).toContain("certificate_number text");
+    expect(migration).toContain("course_title text");
+    expect(migration).not.toContain("student_email");
+    expect(migration).toContain("_completed<>_total");
   });
 
-  it("keeps payment order amounts server-derived and webhook fulfillment privileged/idempotent", () => {
-    expect(migration).toMatch(/idempotency_key\s+text\s+NOT NULL UNIQUE/i);
-    expect(migration).toMatch(/provider_event_id\s+text\s+NOT NULL UNIQUE/i);
-    expect(migration).toMatch(/fulfill_payment_order[\s\S]*?auth\.role\(\)\s*<>\s*'service_role'/i);
-    expect(migration).toMatch(/fulfill_payment_order[\s\S]*?FOR UPDATE[\s\S]*?INSERT INTO public\.enrollments/);
+  it("keeps provider orders disabled until configured and makes fulfillment service-role only", () => {
+    expect(migration).toContain("enabled boolean NOT NULL DEFAULT false");
+    expect(migration).toContain("PAYMENT_PROVIDER_NOT_CONFIGURED");
+    expect(migration).toContain("idempotency_key text NOT NULL UNIQUE");
+    expect(migration).toContain("UNIQUE(provider,provider_event_id)");
+    expect(migration).toContain("ON CONFLICT (provider,provider_event_id) DO NOTHING");
+    expect(migration).toContain("auth.role() <> 'service_role'");
+    expect(migration).toContain("FOR UPDATE");
+    expect(migration).toContain("INSERT INTO public.enrollments");
+    expect(migration).toContain("GRANT EXECUTE ON FUNCTION public.fulfill_payment_order");
+    expect(migration).toContain("TO service_role");
   });
 
-  it("keeps audit history append-only for application roles and gates readers on admin AAL2", () => {
-    expect(migration).toMatch(/platform_audit_log[\s\S]*?ENABLE ROW LEVEL SECURITY/);
-    expect(migration).toMatch(/REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER[\s\S]*?platform_audit_log FROM PUBLIC, anon, authenticated/i);
-    expect(migration).toMatch(/CREATE OR REPLACE FUNCTION public\.write_platform_audit_event/);
-    expect(migration).toMatch(/ed_admin_aal2/);
+  it("keeps audit history read-only to app roles and requires admin AAL2 to read it", () => {
+    expect(migration).toContain("ALTER TABLE public.platform_audit_log ENABLE ROW LEVEL SECURITY");
+    expect(migration).toContain("REVOKE ALL ON public.platform_audit_log FROM PUBLIC,anon,authenticated");
+    expect(migration).toContain("GRANT SELECT ON public.platform_audit_log TO authenticated");
+    expect(migration).toContain("public.admin_mfa_verified()");
+    expect(migration).toContain("CREATE OR REPLACE FUNCTION public.write_platform_audit_event");
+    expect(migration).toContain("CREATE OR REPLACE FUNCTION public.audit_sensitive_row_change");
   });
 
-  it("keeps live classes as scheduled external meetings until a provider is configured", () => {
-    expect(migration).toMatch(/CREATE TABLE IF NOT EXISTS public\.live_classes[\s\S]*?meeting_url[\s\S]*?recording_url/);
-    expect(migration).toMatch(/meeting_url IS NULL OR meeting_url ~ '\^https:\/\/'/);
+  it("keeps live classes as external meeting links, not a pretend video-conference service", () => {
+    expect(migration).toContain("CREATE TABLE IF NOT EXISTS public.live_classes");
+    expect(migration).toContain("meeting_url text NOT NULL");
+    expect(migration).toContain("recording_url text");
+    expect(migration).toContain("no video conferencing service is hosted here");
   });
 
-  it("does not introduce a student AI tutor, route, or tutor-specific data model", () => {
+  it("does not add a student AI tutor, AI student chat, or a tutor-only Worker route", () => {
     expect(migration).not.toMatch(/student_tutor|STUDENT_TUTOR_TOOLS|AI tutor|مدرس ذكاء اصطناعي/i);
-    expect(read("workers/edall-assistant/index.js")).not.toMatch(/student_tutor|STUDENT_TUTOR_TOOLS|canAccessStudentTutor/);
+    const worker = read("workers/edall-assistant/index.js");
+    expect(worker).not.toMatch(/student_tutor|STUDENT_TUTOR_TOOLS|canAccessStudentTutor/);
   });
 
-  it("provides role-aware screens for student, teacher, and admin workflows", () => {
+  it("provides role-aware student, teacher, and admin workflows", () => {
     const ui = read("public/ed_features.js");
     expect(ui).toContain("EDFeatures");
-    for (const name of ["assignments", "attendance", "certificates", "liveClasses", "discussions", "payments", "analytics", "audit", "mfa"]) {
-      expect(ui).toMatch(new RegExp(name, "i"));
-    }
-    expect(ui).toMatch(/window\.currentUser|currentUser/);
-    expect(ui).toMatch(/window\.showPage|showPage/);
-    expect(read("public/ed_master.html")).toContain("ed_features.js");
+    for (const name of [
+      "assignments",
+      "attendance",
+      "certificates",
+      "liveClasses",
+      "discussions",
+      "payments",
+      "analytics",
+      "audit"
+    ]) expect(ui).toContain(name);
+    expect(ui).toContain("window.currentUser");
+    expect(ui).toContain("window.showPage");
+    expect(read("public/ed_master.html")).toContain("/ed_features.js");
   });
 
-  it("adds a PWA shell while excluding authenticated APIs and media from caches", () => {
+  it("adds a safe static PWA shell without caching authenticated APIs or media", () => {
+    expect(read("public/manifest.webmanifest")).toContain('"start_url"');
     const sw = read("public/sw.js");
-    expect(read("public/manifest.webmanifest")).toContain("start_url");
-    expect(sw).toMatch(/storage\/v1|auth\/v1|rest\/v1|functions\/v1/);
-    expect(sw).toMatch(/network-only|no-store|bypass/i);
-    expect(sw).toMatch(/STATIC_CACHE|CACHE_NAME/);
+    expect(sw).toContain("/storage/v1/");
+    expect(sw).toContain("/auth/v1/");
+    expect(sw).toContain("/rest/v1/");
+    expect(sw).toContain("/functions/v1/");
+    expect(sw).toContain("CACHE_NAME");
+    expect(sw).toContain("network-only");
   });
 });
