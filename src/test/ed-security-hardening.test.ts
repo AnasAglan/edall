@@ -176,4 +176,14 @@ describe("ED-ALL production authorization hardening", () => {
     expect(migration.match(/ADMIN_MFA_REQUIRED/g)?.length).toBeGreaterThanOrEqual(2);
     expect(migration).toContain("SET search_path = ''");
   });
+
+  it("blocks account deletion when financial, certificate or academic history would cascade", () => {
+    const edge = read("supabase/functions/admin-delete-user/index.ts");
+    expect(edge).toContain('from("payment_orders")');
+    expect(edge).toContain('from("course_certificates")');
+    expect(edge).toContain('from("assignment_submissions")');
+    expect(edge).toContain('from("exam_results")');
+    expect(edge).toContain('from("attendance_records")');
+    expect(edge).toContain("سجلات تعليمية");
+  });
 });
