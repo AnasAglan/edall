@@ -1727,26 +1727,21 @@ async function tool(name, args, env, token, user, roles, images = []) {
   if (name === "change_user_role") {
     if (!isAdmin) throw new Error("إدارة أدوار الطلاب والمدرسين والمديرين متاحة للمدير فقط.");
     if (!validId(args.user_id) || !["student", "teacher", "admin"].includes(args.role) ||
-        !["grant", "revoke"].includes(args.operation)) throw new Error("حدد المستخدم والدور والعملية grant أو revoke.");
-    if (args.operation === "revoke" && args.role === "admin") {
-      if (args.user_id === user.id) throw new Error("لا يمكن إزالة صلاحية المدير من حسابك أثناء استخدام المساعد.");
-      const currentRoles = await allUserRoles(env, token);
-      const adminCount = currentRoles.filter(item => item.role === "admin").length;
-      if (adminCount <= 1) throw new Error("لا يمكن إزالة آخر صلاحية مدير في المنصة.");
+        !["grant", "revoke"].includes(args.operation)) {
+      throw new Error("حدد المستخدم والدور والعملية grant أو revoke.");
     }
-    const existing = await db(env, "/rest/v1/user_roles?select=id,user_id,role&user_id=eq." +
-      encodeURIComponent(args.user_id) + "&role=eq." + encodeURIComponent(args.role) + "&limit=1", token);
-    const hasRole = Array.isArray(existing) && existing.length > 0;
-    if (args.operation === "grant" && !hasRole) {
-      await db(env, "/rest/v1/user_roles", token, "POST", { user_id: args.user_id, role: args.role });
-    } else if (args.operation === "revoke" && hasRole) {
-      await db(env, "/rest/v1/user_roles?id=eq." + encodeURIComponent(existing[0].id), token, "DELETE");
-    }
+    const changed = await db(
+      env,
+      "/rest/v1/rpc/manage_user_role",
+      token,
+      "POST",
+      { _user_id: args.user_id, _role: args.role, _operation: args.operation }
+    );
+    if (changed !== true) throw new Error("لم تؤكد قاعدة البيانات تغيير الدور.");
     const verify = await db(env, "/rest/v1/user_roles?select=id,user_id,role&user_id=eq." +
       encodeURIComponent(args.user_id) + "&role=eq." + encodeURIComponent(args.role) + "&limit=1", token);
-    const verified = args.operation === "grant"
-      ? Array.isArray(verify) && verify.length === 1
-      : Array.isArray(verify) && verify.length === 0;
+    const hasRole = Array.isArray(verify) && verify.length === 1;
+    const verified = args.operation === "grant" ? hasRole : !hasRole;
     if (!verified) throw new Error("تعذر التحقق من تغيير الدور.");
     return { updated: true, verified: true, user_id: args.user_id, role: args.role, operation: args.operation };
   }
