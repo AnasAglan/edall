@@ -228,7 +228,7 @@ GRANT EXECUTE ON FUNCTION public.search_teachers_public(text) TO anon, authentic
 
 -- 7. Restrict teacher notifications to students enrolled in courses they own.
 DROP POLICY IF EXISTS "Admins and teachers can create notifications" ON public.notifications;
-CREATE POLICY "Admins and teachers can notify permitted students"
+CREATE POLICY "Admins notifications and teacher notifications are scoped"
 ON public.notifications
 FOR INSERT TO authenticated
 WITH CHECK (
