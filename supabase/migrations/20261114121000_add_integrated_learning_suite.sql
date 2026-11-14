@@ -1208,8 +1208,8 @@ BEGIN
       RETURN NEW;
     END IF;
   ELSIF TG_TABLE_NAME='courses' THEN
-    _entity_id := NEW.id;
-    _course_id := NEW.id;
+    _entity_id := CASE WHEN TG_OP='DELETE' THEN OLD.id ELSE NEW.id END;
+    _course_id := _entity_id;
     _event := 'course_' || lower(TG_OP);
     _details := jsonb_build_object('title',COALESCE(to_jsonb(NEW)->>'title',to_jsonb(OLD)->>'title'));
   ELSIF TG_TABLE_NAME='user_roles' THEN
