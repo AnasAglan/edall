@@ -157,4 +157,15 @@ describe("ED-ALL production authorization hardening", () => {
     expect(migration).toContain("auth.uid() <> _user_id");
     expect(migration).toContain("OR NOT public.admin_mfa_verified()");
   });
+
+  it("requires administrator MFA for direct profile, role and notification access", () => {
+    const migration = read("supabase/migrations/20261115105000_admin_mfa_rls.sql");
+    expect(migration).toContain("public.admin_mfa_verified()");
+    expect(migration).toContain("ON public.profiles FOR SELECT");
+    expect(migration).toContain("ON public.profiles FOR UPDATE");
+    expect(migration).toContain("ON public.user_roles FOR SELECT");
+    expect(migration).toContain("ON public.notifications FOR INSERT");
+    expect(migration).toContain("ON public.notifications FOR UPDATE");
+    expect(migration).toContain("ADMIN_MFA_REQUIRED");
+  });
 });
