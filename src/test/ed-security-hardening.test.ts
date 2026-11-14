@@ -208,7 +208,9 @@ describe("ED-ALL production authorization hardening", () => {
     expect(roleMigration).toContain("REVOKE INSERT, UPDATE, DELETE, TRUNCATE");
     expect(roleMigration).toContain("public.admin_mfa_verified()");
     expect(roleMigration).toContain("CANNOT_REVOKE_LAST_ADMIN");
-    expect(roleMigration).toContain("write_platform_audit_event");
+    expect(roleMigration).toContain("edall-last-admin-role-guard");
+    expect(roleMigration).toContain("audit_user_role_changes trigger writes the immutable audit event once.");
+    expect(roleMigration).not.toContain("PERFORM public.write_platform_audit_event(");
     expect(roleMigration).toContain("GRANT EXECUTE ON FUNCTION public.manage_user_role");
     expect(worker).toContain("/rest/v1/rpc/manage_user_role");
     expect(worker).not.toContain('"/rest/v1/user_roles", token, "POST"');
