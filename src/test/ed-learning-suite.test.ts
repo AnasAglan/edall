@@ -117,13 +117,21 @@ describe("ED-ALL integrated learning suite", () => {
       "certificates",
       "liveClasses",
       "discussions",
-      "payments",
       "analytics",
       "audit"
     ]) expect(ui).toContain(name);
     expect(ui).toContain("window.currentUser");
     expect(ui).toContain("window.showPage");
     expect(read("public/ed_master.html")).toContain("/ed_features.js");
+  });
+
+  it("keeps Paymob entirely out of the current user interface", () => {
+    const ui = read("public/ed_features.js");
+    expect(ui).not.toContain('["payments",');
+    expect(ui).not.toContain('data-form="create-payment"');
+    expect(ui).not.toContain('case "create-payment"');
+    expect(ui).not.toContain("function renderPaymentsTab");
+    expect(migration).toContain("enabled boolean NOT NULL DEFAULT false");
   });
 
   it("adds a safe static PWA shell without caching authenticated APIs or media", () => {
