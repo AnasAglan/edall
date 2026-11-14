@@ -80,6 +80,18 @@ describe("ED-ALL production authorization hardening", () => {
     expect(migration).toContain("RAISE EXCEPTION 'Not authorized'");
   });
 
+  it("restricts both legacy account bootstrap overloads to trusted callers", () => {
+    expect(migration).toContain("REVOKE ALL ON FUNCTION public.setup_new_user(uuid, text, text) FROM PUBLIC, anon, authenticated");
+    expect(migration).toContain("REVOKE ALL ON FUNCTION public.setup_new_user(uuid, text, text, text) FROM PUBLIC, anon, authenticated");
+    expect(migration).toContain("GRANT EXECUTE ON FUNCTION public.setup_new_user(uuid, text, text, text) TO service_role");
+  });
+
+  it("does not reveal a profile or course progress for a non-enrolled user", () => {
+    const reporting = read("supabase/migrations/20261115106000_admin_mfa_student_reporting.sql");
+    expect(reporting).toContain("IF _enrolled_at IS NULL THEN");
+    expect(reporting).toContain("RAISE EXCEPTION 'STUDENT_NOT_ENROLLED'");
+  });
+
   it("validates account creation and rolls back partial failures", () => {
     const fn = read("supabase/functions/admin-create-user/index.ts");
     expect(fn).toContain('["student", "teacher", "admin"].includes(role)');
