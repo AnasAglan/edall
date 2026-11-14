@@ -189,6 +189,19 @@ describe("ED-ALL production authorization hardening", () => {
     expect(migration).toContain("SET search_path = ''");
   });
 
+  it("enforces an atomic per-account quota for the staff-only assistant", () => {
+    const rateLimit = read("supabase/migrations/20261115110000_assistant_rate_limiting.sql");
+    const worker = read("workers/edall-assistant/index.js");
+    expect(rateLimit).toContain("ALTER TABLE public.edall_assistant_rate_limits ENABLE ROW LEVEL SECURITY");
+    expect(rateLimit).toContain("FORCE ROW LEVEL SECURITY");
+    expect(rateLimit).toContain("pg_advisory_xact_lock");
+    expect(rateLimit).toContain("RETURN _request_count <= 20");
+    expect(rateLimit).toContain("TO authenticated");
+    expect(worker).toContain("/rest/v1/rpc/consume_edall_assistant_request");
+    expect(worker).toContain("}, 429, origin)");
+    expect(worker).toContain("}, 503, origin)");
+  });
+
   it("blocks account deletion when financial, certificate or academic history would cascade", () => {
     const edge = read("supabase/functions/admin-delete-user/index.ts");
     expect(edge).toContain('from("payment_orders")');
