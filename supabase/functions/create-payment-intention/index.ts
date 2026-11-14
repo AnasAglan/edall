@@ -136,11 +136,54 @@ Deno.serve(async req => {
     }
 
     const order=orderData as {
-      order_id?:string; amount?:number|string; currency?:string; status?:string; checkout_url?:string|null;
+      order_id?:string; amount?:number|string; currency?:string; status?:string; checkout_url?:string|null; updated_at?:string;
     };
     if(!order?.order_id || order.currency!=="EGP") return json({error:"Invalid payment order response."},502,cors);
     if(order.checkout_url && order.status==="pending") {
       return json({success:true,checkout_url:order.checkout_url,order_id:order.order_id,reused:true},200,cors);
+    }
+
+    // Claim a single checkout attempt for this active order. Concurrent clicks cannot
+    // create multiple Paymob intentions for the same student/course order.
+    if(order.status==="pending" && !order.checkout_url) {
+      const updatedAt=Date.parse(order.updated_at || "");
+      const staleBefore=new Date(Date.now()-5*60*1000).toISOString();
+      if(!Number.isFinite(updatedAt) || updatedAt>=Date.parse(staleBefore)) {
+        return json({error:"CHECKOUT_ALREADY_BEING_PREPARED",message:"A checkout attempt is already being prepared. Please wait a moment and refresh."},409,cors);
+      }
+      const {data:reopened,error:reopenError}=await admin.from("payment_orders")
+        .update({status:"created",updated_at:new Date().toISOString()})
+        .eq("id",order.order_id).eq("user_id",user.id).eq("status","pending")
+        .is("checkout_url",null).lt("updated_at",staleBefore)
+        .select("id").maybeSingle();
+      if(reopenError) return json({error:"Could not safely retry the previous checkout attempt."},503,cors);
+      if(!reopened) {
+        const {data:latest}=await admin.from("payment_orders")
+          .select("status,checkout_url").eq("id",order.order_id).maybeSingle();
+        if(latest?.status==="pending" && latest.checkout_url) {
+          return json({success:true,checkout_url:latest.checkout_url,order_id:order.order_id,reused:true},200,cors);
+        }
+        return json({error:"CHECKOUT_ALREADY_BEING_PREPARED"},409,cors);
+      }
+      order.status="created";
+    }
+
+    if(order.status!=="created") {
+      return json({error:"PAYMENT_ORDER_NOT_READY",message:"This payment order is no longer available. Refresh the page and try again."},409,cors);
+    }
+
+    const {data:claimed,error:claimError}=await admin.from("payment_orders")
+      .update({status:"pending",updated_at:new Date().toISOString()})
+      .eq("id",order.order_id).eq("user_id",user.id).eq("status","created")
+      .select("id").maybeSingle();
+    if(claimError) return json({error:"Could not safely reserve the checkout attempt."},503,cors);
+    if(!claimed) {
+      const {data:latest}=await admin.from("payment_orders")
+        .select("status,checkout_url").eq("id",order.order_id).maybeSingle();
+      if(latest?.status==="pending" && latest.checkout_url) {
+        return json({success:true,checkout_url:latest.checkout_url,order_id:order.order_id,reused:true},200,cors);
+      }
+      return json({error:"CHECKOUT_ALREADY_BEING_PREPARED"},409,cors);
     }
 
     const amount=Number(order.amount);
@@ -199,6 +242,8 @@ Deno.serve(async req => {
     const intention=await response.json().catch(()=>null);
     if(!response.ok || !intention?.client_secret || !intention?.id) {
       console.error("Paymob intention request failed",{status:response.status,code:intention?.detail || intention?.code || "provider_error"});
+      await admin.from("payment_orders").update({status:"failed",updated_at:new Date().toISOString()})
+        .eq("id",order.order_id).eq("status","pending").is("checkout_url",null);
       return json({error:"The payment provider could not create checkout. The order has not been marked as paid."},502,cors);
     }
 
