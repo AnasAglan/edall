@@ -154,6 +154,10 @@
         state.data.teacherSearch = [];
         return;
       }
+      if (state.tab === "payments" && isAdmin()) {
+        state.data.payments = await rows("payment_orders", q => q.order("created_at",{ascending:false}).limit(100));
+        return;
+      }
     }
     if (!state.courseId) return;
     const courseId = state.courseId;
@@ -223,6 +227,8 @@
           (mine.score == null ? "" : ' · ' + esc(text("درجتك: ","Your score: ")) + esc(mine.score)) + '</div>' : "";
         detail += '<form class="edf-form" data-form="submit-assignment" data-id="' + esc(a.id) + '">' +
           '<textarea name="content" maxlength="30000" required placeholder="' + esc(text("اكتب إجابتك هنا","Write your answer")) + '">' + esc(mine && mine.content || "") + '</textarea>' +
+          '<label class="edf-file-field">' + esc(text("مرفقات (PDF أو صورة أو Word، حتى 20MB للملف)","Attachments (PDF, image or Word, up to 20MB each)")) +
+          '<input name="attachments" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.docx,application/pdf,image/jpeg,image/png,image/webp,application/vnd.openxmlformats-officedocument.wordprocessingml.document"></label>' +
           '<button class="edf-btn edf-primary" type="submit">' + esc(text("حفظ التسليم","Submit answer")) + '</button></form>';
       } else {
         detail += '<div class="edf-submissions">' + (submitted.length ? submitted.map(s =>
@@ -400,12 +406,12 @@
 
   function renderAuditTab() {
     const list = state.data.audit || [];
-    return '<div class="edf-actions">' + makeBtn(text("تصدير CSV لبرنامج Excel","Export CSV for Excel"),"export") +
-      makeBtn(text("طباعة / حفظ PDF","Print / Save PDF"),"print") + '</div>' +
-      list.map(a => card(a.event_type,
-        '<div class="edf-meta">' + esc(fmtDate(a.created_at)) + ' · ' + esc(a.entity_type) + ' · ' + esc(a.entity_id || "") + '</div>' +
-        '<pre class="edf-json">' + esc(JSON.stringify(a.details || {},null,2)) + '</pre>'
-      )).join("") || empty(text("لا توجد أحداث مسجلة.","No audit events recorded."));
+    const actions = '<div class="edf-actions">' + makeBtn(text("تصدير CSV لبرنامج Excel","Export CSV for Excel"),"export") +
+      makeBtn(text("طباعة / حفظ PDF","Print / Save PDF"),"print") + '</div>';
+    return actions + (list.length ? list.map(a => card(a.event_type,
+      '<div class="edf-meta">' + esc(fmtDate(a.created_at)) + ' · ' + esc(a.entity_type) + ' · ' + esc(a.entity_id || "") + '</div>' +
+      '<pre class="edf-json">' + esc(JSON.stringify(a.details || {},null,2)) + '</pre>'
+    )).join("") : empty(text("لا توجد أحداث مسجلة.","No audit events recorded.")));
   }
 
   async function mfaState() {
@@ -545,9 +551,30 @@
             _due_at:v.due_at ? new Date(v.due_at).toISOString() : null,_max_score:Number(v.max_score || 100)
           });
           break;
-        case "submit-assignment":
-          await rpc("submit_assignment",{_assignment_id:id,_content:v.content || "",_attachments:[]});
+        case "submit-assignment": {
+          const files = Array.from(form.querySelector('input[name="attachments"]')?.files || []);
+          if (files.length > 5) throw new Error(text("الحد الأقصى خمسة مرفقات لكل تسليم.","A submission may contain up to five attachments."));
+          const accepted = new Set([
+            "application/pdf","image/jpeg","image/png","image/webp",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          ]);
+          const attachments = [];
+          for (const file of files) {
+            if (!accepted.has(file.type) || file.size > 20 * 1024 * 1024) {
+              throw new Error(text("نوع الملف غير مسموح أو حجمه أكبر من 20MB.","Unsupported file type or file larger than 20MB."));
+            }
+            const safeName = (file.name || "attachment")
+              .normalize("NFKD").replace(/[^A-Za-z0-9_. -]/g,"_").slice(-140) || "attachment";
+            const path = state.user.id + "/" + id + "/" + Date.now() + "_" + safeName;
+            const { error } = await sb().storage.from("assignment-submissions").upload(path,file,{
+              upsert:false,contentType:file.type
+            });
+            if (error) throw error;
+            attachments.push({path,name:safeName,mime_type:file.type,size:file.size});
+          }
+          await rpc("submit_assignment",{_assignment_id:id,_content:v.content || "",_attachments:attachments});
           break;
+        }
         case "grade-submission":
           await rpc("grade_assignment_submission",{_submission_id:id,_score:Number(v.score),_feedback:v.feedback || ""});
           break;
@@ -686,6 +713,10 @@
     const user=currentUser();
     state.user=user && user.id ? user : null;
     state.roles=state.user ? (Array.isArray(state.user.roles) ? state.user.roles : (state.user.role ? [state.user.role] : [])) : [];
+    if (state.roles.length === 0 && state.user) {
+      const cached = state.user.user_metadata && state.user.user_metadata.role;
+      if (cached) state.roles = [cached];
+    }
     state.publicToken=new URLSearchParams(location.search).get("verify-certificate") || "";
     const entry=document.getElementById("edLearningHubEntry");
     if(entry) entry.style.display=state.user ? "inline-flex" : "none";
