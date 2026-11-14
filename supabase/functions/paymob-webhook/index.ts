@@ -37,7 +37,7 @@ Deno.serve(async req=>{
     const paymobOrderId=String(obj.order?.id ?? "");
     const transactionId=String(obj.id ?? "");
     const amountCents=Number(obj.amount_cents);
-    if(!/^\\d+$/.test(paymobOrderId) || !/^\\d+$/.test(transactionId) ||
+    if(!/^\d+$/.test(paymobOrderId) || !/^\d+$/.test(transactionId) ||
        !Number.isSafeInteger(amountCents) || amountCents<=0 || obj.currency!=="EGP") {
       return json({error:"Invalid transaction details."},422);
     }
