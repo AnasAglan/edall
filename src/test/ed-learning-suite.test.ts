@@ -134,6 +134,15 @@ describe("ED-ALL integrated learning suite", () => {
     expect(migration).toContain("enabled boolean NOT NULL DEFAULT false");
   });
 
+  it("requires a passed and fully graded result for exam completion and certificates", () => {
+    const migration = read("supabase/migrations/20261114121000_add_integrated_learning_suite.sql");
+    expect(migration).toContain("validate_lesson_progress_exam_completion");
+    expect(migration).toContain("RAISE EXCEPTION 'EXAM_NOT_PASSED'");
+    expect(migration).toContain("er.user_id=_student_id");
+    expect(migration).toContain("er.passed=true");
+    expect(migration).toContain("(NOT er.has_essay OR er.essay_graded)");
+  });
+
   it("adds a safe static PWA shell without caching authenticated APIs or media", () => {
     expect(read("public/manifest.webmanifest")).toContain('"start_url"');
     const sw = read("public/sw.js");
