@@ -607,6 +607,39 @@ END;
 $function$;
 
 -- ---------------------------------------------------------------------------
+-- A client cannot mark an exam complete before a passed server-scored result exists.
+CREATE OR REPLACE FUNCTION public.validate_lesson_progress_exam_completion()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+BEGIN
+  IF NEW.exam_completed IS TRUE THEN
+    IF EXISTS (
+      SELECT 1 FROM public.exams ex
+      WHERE ex.lesson_id=NEW.lesson_id
+        AND NOT EXISTS (
+          SELECT 1 FROM public.exam_results er
+          WHERE er.user_id=NEW.user_id
+            AND er.exam_id=ex.id
+            AND er.passed=true
+            AND (NOT er.has_essay OR er.essay_graded)
+        )
+    ) THEN
+      RAISE EXCEPTION 'EXAM_NOT_PASSED';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+DROP TRIGGER IF EXISTS validate_lesson_progress_exam_completion ON public.lesson_progress;
+CREATE TRIGGER validate_lesson_progress_exam_completion
+BEFORE INSERT OR UPDATE OF exam_completed ON public.lesson_progress
+FOR EACH ROW
+EXECUTE FUNCTION public.validate_lesson_progress_exam_completion();
+
 -- 5. Course certificates with private verification tokens
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.course_certificates (
@@ -662,8 +695,18 @@ BEGIN
              (NOT EXISTS (SELECT 1 FROM public.lesson_files f WHERE f.lesson_id=l.id)
                OR COALESCE(lp.pdf_opened,false))
              AND
-             (NOT EXISTS (SELECT 1 FROM public.exams ex WHERE ex.lesson_id=l.id)
-               OR COALESCE(lp.exam_completed,false))
+             NOT EXISTS (
+               SELECT 1
+               FROM public.exams ex
+               WHERE ex.lesson_id=l.id
+                 AND NOT EXISTS (
+                   SELECT 1 FROM public.exam_results er
+                   WHERE er.user_id=_student_id
+                     AND er.exam_id=ex.id
+                     AND er.passed=true
+                     AND (NOT er.has_essay OR er.essay_graded)
+                 )
+             )
          )
   INTO _total,_completed
   FROM public.lessons l
