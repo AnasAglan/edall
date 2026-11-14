@@ -44,7 +44,7 @@ Deno.test("Paymob transaction HMAC rejects missing signed fields and malformed s
 });
 
 Deno.test("Paymob numeric identifier validation accepts decimal digits", () => {
-  const digits = /^\\d+$/;
+  const digits = /^\d+$/;
   assert(digits.test("265715202"), "Provider order IDs must accept decimal digits");
   assert(!digits.test("\\d123"), "Provider order IDs must reject literal slash-d sequences");
 });
