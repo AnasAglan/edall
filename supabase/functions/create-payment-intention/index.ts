@@ -143,6 +143,16 @@ Deno.serve(async req => {
       return json({success:true,checkout_url:order.checkout_url,order_id:order.order_id,reused:true},200,cors);
     }
 
+    const amount=Number(order.amount);
+    const amountCents=Math.round(amount*100);
+    if(!Number.isFinite(amount) || amount<=0 || amountCents<=0) return json({error:"Invalid server-side course price."},422,cors);
+
+    const {data:profile,error:profileError}=await admin.from("profiles")
+      .select("name,email,phone").eq("id",user.id).maybeSingle();
+    if(profileError || !profile?.phone || !profile?.email) {
+      return json({error:"Add a valid phone number and email to your ED-ALL profile before starting checkout."},422,cors);
+    }
+    const name=splitName(profile.name || user.user_metadata?.name || "ED ALL Student");
     // Claim a single checkout attempt for this active order. Concurrent clicks cannot
     // create multiple Paymob intentions for the same student/course order.
     if(order.status==="pending" && !order.checkout_url) {
@@ -186,16 +196,6 @@ Deno.serve(async req => {
       return json({error:"CHECKOUT_ALREADY_BEING_PREPARED"},409,cors);
     }
 
-    const amount=Number(order.amount);
-    const amountCents=Math.round(amount*100);
-    if(!Number.isFinite(amount) || amount<=0 || amountCents<=0) return json({error:"Invalid server-side course price."},422,cors);
-
-    const {data:profile,error:profileError}=await admin.from("profiles")
-      .select("name,email,phone").eq("id",user.id).maybeSingle();
-    if(profileError || !profile?.phone || !profile?.email) {
-      return json({error:"Add a valid phone number and email to your ED-ALL profile before starting checkout."},422,cors);
-    }
-    const name=splitName(profile.name || user.user_metadata?.name || "ED ALL Student");
     const notificationUrl=Deno.env.get("PAYMOB_NOTIFICATION_URL") ||
       `${url.replace(/\/$/,"")}/functions/v1/paymob-webhook`;
     const redirectUrl=Deno.env.get("PAYMOB_REDIRECTION_URL") ||
