@@ -42,7 +42,7 @@ permissions:
 jobs:
   security-and-features:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -53,11 +53,20 @@ jobs:
           deno-version: v2.x
       - name: Install dependencies
         run: npm install --no-audit --no-fund --no-package-lock
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Apply every migration to a clean local Supabase stack
+        run: |
+          supabase start -x studio,mailpit,edge-runtime,logflare,vector,analytics
+          supabase db reset --local
+          supabase db lint --local --level error --fail-on error
       - name: Run all platform tests
         run: npm test -- --reporter=verbose
       - name: Validate Worker and browser modules
         run: |
           node --check workers/edall-assistant/index.js
+          node --check workers/video-media-proxy/index.js
           node --check public/ed_features.js
           node --check public/ed-pwa.js
           deno check supabase/functions/admin-create-user/index.ts
