@@ -7,6 +7,7 @@
     roles: [],
     courses: [],
     courseId: "",
+    availablePaidCourses: [],
     tab: "",
     busy: false,
     data: {},
@@ -139,6 +140,23 @@
     state.data = {};
     if (state.publicToken) return loadPublicCertificate();
     if (!state.user || !state.user.id) return;
+    if (state.tab === "payments") {
+      state.data.payments = await rows("payment_orders", q =>
+        isAdmin() ? q.order("created_at",{ascending:false}).limit(100) :
+          q.eq("user_id",state.user.id).order("created_at",{ascending:false}).limit(50)
+      );
+      if (!isAdmin()) {
+        const [allCourses,enrollments] = await Promise.all([
+          rows("courses", q => q.select("id,title,price").order("title",{ascending:true})),
+          rows("enrollments", q => q.select("course_id").eq("user_id",state.user.id))
+        ]);
+        const enrolled = new Set(enrollments.map(item=>item.course_id));
+        state.availablePaidCourses = allCourses
+          .filter(course=>Number(course.price)>0 && !enrolled.has(course.id))
+          .map(course=>({id:course.id,title:course.title || course.id,price:course.price}));
+      }
+      return;
+    }
     if (state.tab === "mfa" || state.tab === "audit" || state.tab === "staff" || (state.tab === "analytics" && isAdmin())) {
       if (state.tab === "mfa") return;
       if (state.tab === "audit") {
@@ -154,11 +172,7 @@
         state.data.teacherSearch = [];
         return;
       }
-      if (state.tab === "payments" && isAdmin()) {
-        state.data.payments = await rows("payment_orders", q => q.order("created_at",{ascending:false}).limit(100));
-        return;
-      }
-    }
+     }
     if (!state.courseId) return;
     const courseId = state.courseId;
     if (state.tab === "assignments") {
@@ -197,7 +211,7 @@
   }
 
   function courseSelector() {
-    if (state.tab === "analytics" && isAdmin()) return "";
+    if (state.tab === "payments" || (state.tab === "analytics" && isAdmin())) return "";
     if (!state.courses.length) return "";
     return '<label class="edf-course-select"><span>' + esc(text("الدورة", "Course")) + '</span><select data-field="course">' +
       state.courses.map(c => '<option value="' + esc(c.id) + '"' + (c.id === state.courseId ? " selected" : "") + '>' + esc(c.title) + '</option>').join("") +
@@ -360,15 +374,21 @@
   function renderPaymentsTab() {
     const list = state.data.payments || [];
     let body = "";
-    if (!isAdmin() && state.courseId) {
-      body += '<div class="edf-form"><h3>' + esc(text("إنشاء طلب دفع آمن","Create a secure payment request")) + '</h3>' +
-        '<p class="edf-help">' + esc(text("سيُحدد السعر من قاعدة البيانات. مزود الدفع غير مفعل حالياً حتى تضاف مفاتيح التاجر بشكل آمن.","The amount is derived from the database. The payment provider remains disabled until merchant keys are configured securely.")) + '</p>' +
-        makeBtn(text("بدء الدفع","Start checkout"),"create-payment","edf-primary") + '</div>';
+    if (!isAdmin()) {
+      const available = state.availablePaidCourses || [];
+      body += '<form class="edf-form" data-form="create-payment"><h3>' + esc(text("شراء دورة","Purchase a course")) + '</h3>' +
+        '<p class="edf-help">' + esc(text("السعر يُقرأ مباشرة من قاعدة البيانات. الدفع لن يبدأ حتى يكون حساب Paymob مضبوطاً ومفعّلاً من الخادم.","The price is read from the database. Checkout will start only after Paymob is securely configured and enabled on the server.")) + '</p>' +
+        (available.length
+          ? '<select name="course_id" required><option value="">' + esc(text("اختر دورة مدفوعة","Choose a paid course")) + '</option>' +
+              available.map(c=>'<option value="' + esc(c.id) + '">' + esc(c.title) + ' · ' + esc(formatAmount(c.price,"EGP")) + '</option>').join("") +
+            '</select><button class="edf-btn edf-primary" type="submit">' + esc(text("إنشاء طلب دفع","Create payment order")) + '</button>'
+          : empty(text("لا توجد دورات مدفوعة متاحة للشراء حالياً.","No paid courses are currently available to purchase."))) +
+        '</form>';
     }
     body += list.map(p => card(p.provider || "Payment",
       '<div class="edf-meta">' + esc(fmtDate(p.created_at)) + '</div>' +
       '<div class="edf-status">' + esc(formatAmount(p.amount,p.currency)) + ' · ' + esc(p.status) + '</div>' +
-      (p.checkout_url ? '<a class="edf-link" href="' + esc(p.checkout_url) + '" target="_blank" rel="noopener">' + esc(text("استكمال الدفع","Continue payment")) + '</a>' : "")
+      (p.checkout_url && p.status==="pending" ? '<a class="edf-link" href="' + esc(p.checkout_url) + '" target="_blank" rel="noopener noreferrer">' + esc(text("استكمال الدفع","Continue payment")) + '</a>' : "")
     )).join("");
     if (!list.length) body += empty(text("لا توجد طلبات دفع مسجلة.","No payment orders are recorded."));
     return body;
@@ -545,6 +565,16 @@
     setBusy(true);
     try {
       switch (form.dataset.form) {
+        case "create-payment": {
+          const idempotencyKey=crypto.randomUUID();
+          const {data,error}=await sb().functions.invoke("create-payment-intention",{
+            body:{course_id:v.course_id,idempotency_key:idempotencyKey}
+          });
+          if(error) throw error;
+          if(!data || !data.checkout_url) throw new Error(data?.message || data?.error || text("لم يتم إنشاء رابط الدفع.","The checkout URL was not created."));
+          window.location.assign(data.checkout_url);
+          return;
+        }
         case "create-assignment":
           await rpc("create_assignment",{
             _course_id:course,_lesson_id:null,_title:v.title,_description:v.description || "",
@@ -644,13 +674,6 @@
         notify(text("تم إصدار الشهادة أو كانت موجودة مسبقاً.","Certificate issued or already exists."),"success");
         await refresh();
         return data;
-      }
-      if (action === "create-payment") {
-        const { data,error } = await sb().functions.invoke("create-payment-intention",{body:{course_id:state.courseId}});
-        if (error) throw error;
-        if (data && data.checkout_url) window.open(data.checkout_url,"_blank","noopener");
-        else notify(text("لم يرجع مزود الدفع رابطاً. تحقق من إعدادات الدفع.","The payment provider did not return a checkout URL. Check configuration."),"warning");
-        await refresh(); return;
       }
       if (action === "moderate-post") {
         await rpc("moderate_discussion_post",{_post_id:id,_hidden:button.dataset.hidden==="true"});
