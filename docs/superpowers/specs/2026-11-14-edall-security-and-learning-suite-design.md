@@ -5,74 +5,46 @@
 **Base commit:** `91f7bfeae2e511890b31af495a49b050f6f63713`
 
 ## Intent
+Harden ED-ALL's production authorization boundaries and add integrated learning workflows for students, teachers, and administrators. **A student AI tutor/AI teacher is out of scope and must not be added.** The existing ED-ALL operational assistant remains separate and unchanged.
 
-Harden ED-ALL's production authorization boundaries and expand the existing learning platform with coherent student, teacher, and administrator workflows. The browser must never be the authority for enrollment, lesson access, grading, roles, attendance, payments, or certificates.
+## Existing architecture
+- The active course UI is the legacy single-page `public/ed_master.html`; the root Vite React app is not the active course UI.
+- Supabase PostgreSQL RLS, SECURITY DEFINER RPCs, and Storage enforce access.
+- Browser modules reuse the existing authenticated Supabase client/session.
+- Video playback is separated: web uses Piped/Invidious + Plyr, Windows uses yt-dlp, Android uses NewPipe. Do not change these engines or their boundaries.
+- Live class schedules point to external meeting/recording providers; they do not themselves host or record media.
+- Payment intents are created on the server from the course's authoritative price; only a verified Paymob webhook can fulfill enrollment.
+- PWA caches only the public static shell. Private APIs, lessons, media, and signed URLs are never stored offline.
+- Admin-sensitive analytics and audit access require MFA/AAL2.
 
-## Current architecture and findings
+## Included systems
+1. Security hardening: free-only direct enrollment; transactional wallet purchase; lesson/question access; internal grading; private PDF storage; protected profiles/roles; teacher-scoped notifications; strict account bootstrap.
+2. Learning: assignments/submissions/grading, attendance, scheduled live classes, completion certificates, course discussions/Q&A, course-scoped staff roles.
+3. Payments: EGP Paymob intention adapter and idempotent HMAC-verified webhook flow, disabled until secrets/payment integration IDs are securely configured.
+4. Admin operations: scoped analytics, CSV/print reports, append-only audit log, MFA/AAL2.
+5. PWA and operations: public-shell caching only, upload constraints, backup/restore guidance, monitoring/rate-limit review.
 
-- The production web UI is the legacy single-page `public/ed_master.html`, with global Supabase client state and `public/ed_assistant.js`. The Vite React application at the repository root is not the active course-platform UI.
-- The primary database is Supabase/Lovable Cloud. Existing access control uses PostgreSQL RLS, SECURITY DEFINER RPCs, and Supabase Storage.
-- Existing exam attempts are already server-authoritative through `start_exam_attempt` and `submit_exam_attempt`; the old `grade_exam_submission` RPC is a separate exposed path and must no longer be callable by clients.
-- Desktop and Android playback are separate products (yt-dlp and NewPipe respectively). This work must not edit their source or alter their playback engines.
+## External prerequisites
+- No student AI tutor route, worker, prompt, tool set, data table, or UI.
+- Do not claim Paymob is live until the merchant Secret Key, Public Key, HMAC Secret, and payment method Integration IDs have been securely configured.
+- Do not claim automatic meeting-room creation/recording without an external meeting provider and credentials.
+- Do not cache private lessons, exam questions, auth responses, payment details, signed URLs, or media.
+- Backup instructions are not equivalent to an already configured backup job or proven restore.
 
-## Goals
+## Authorization invariants
+- Direct enrollment insertion is only for zero-priced courses. Paid enrollment comes through a server transaction or verified payment callback.
+- RLS and RPCs use `auth.uid()`, enrollment, course ownership, or explicit course-scoped staff capability.
+- Students never receive answer-key fields or internal grading permission.
+- Only admins can change roles and ban status; sensitive admin paths require AAL2.
+- Lesson PDFs are private; both reads and writes check ownership/entitlement and validated object path segments.
+- Teachers cannot operate on other teachers' courses or their students.
+- Payment amounts are derived from the database. Duplicate callbacks cannot duplicate enrollment or change a paid order.
+- Public certificate verification returns only certificate number, course title, student display name, and issue date.
+- Audit history is append-only for application roles; admin readers require AAL2.
+- The service worker caches only an allowlist of versioned, same-origin static resources.
 
-1. Close direct enrollment, lesson-content, answer-key, profile-ban, teacher-notification, and public-profile information leaks at the database boundary.
-2. Make PDF access private and issue signed URLs only to users who are entitled to the lesson.
-3. Make course purchase idempotent under concurrency and validate every user-creation step before reporting success.
-4. Provide integrated, role-scoped systems for:
-   - Assignments and submissions with teacher grading and feedback.
-   - Attendance sessions and attendance records.
-   - Verifiable course-completion certificates.
-   - Scheduled live classes with provider-neutral meeting links and attendance.
-   - Admin/teacher learning analytics with scoped aggregates.
-   - Payment orders with idempotent provider webhook handling.
-   - Course/lesson discussions with moderation rules.
-   - PWA install and a deliberately limited offline shell.
-   - Append-only administrative audit history.
-5. Keep the existing visual identity, language behavior, authentication, and navigation coherent; improve the UI where it supports these workflows.
-6. Add automated tests for policies, RPC contracts, role boundaries, UI modules, and regressions.
+## UX
+Add “مساحة التعلم” / “Learning Hub” within the existing platform. Students receive assignments/submissions, attendance, schedule, certificates, discussions, and progress. Teachers receive assignment creation/grading, attendance, schedule, moderation, and scoped reports. Admins receive payment status, global analytics, staff-role administration, MFA, and audit history. All screens require loading/empty/error/retry/mobile states and bilingual RTL/LTR support.
 
-## Non-goals and external prerequisites
-
-- Do not modify Electron/Windows or Android app code or their yt-dlp/NewPipe engines.
-- Do not claim secure app-only video delivery until native clients can prove device/app identity; a shared Supabase bearer token cannot distinguish a browser from a repackaged client.
-- Do not pretend a payment gateway is connected without merchant credentials, production webhook secrets, and provider account approval. Implement a provider-neutral order lifecycle and test adapter; keep live capture disabled until configured.
-- Do not claim live video hosting is included. Schedule and manage externally hosted meetings; a meeting provider requires an account and credentials.
-- Do not cache private lessons, exam questions, authentication responses, payment data, or signed file URLs for offline use.
-- Do not expose private student content to analytics or audit readers beyond their role and course scope.
-
-## Approaches considered
-
-1. **Extend the current platform with modular browser code and additive Supabase migrations (chosen).** Lowest regression risk; keeps existing sign-in, theme, routes, and database, while moving sensitive decisions into RLS and RPCs.
-2. Rebuild the platform in React. Rejected for this change because it would replace the active legacy UI and create migration risk across authentication, media, and app snapshots.
-3. Build a separate LMS subsystem/site. Rejected because it duplicates accounts, navigation, permissions, and course data, undermining the requested integrated experience.
-
-## Architecture
-
-- Database migrations define tables, indexes, constraints, triggers, SECURITY DEFINER RPCs, and explicit grants. Policies use `auth.uid()`, course ownership, enrollments, and the established `can_access_lesson` function.
-- UI additions are a focused feature module loaded from the existing `ed_master.html`; it consumes the existing global Supabase session and current-user event, and respects the current Arabic/English setting and CSS variables.
-- Payment orders use a strict state machine (created → pending → paid/failed/cancelled), unique provider references/idempotency keys, server-verified callbacks, and a single transactional fulfillment RPC. Manual/sandbox mode is not represented as a real card payment.
-- Certificates use an unguessable verification token and server-side issuance checks for enrollment and completion.
-- Audit records are append-only for authenticated application roles; write access is limited to trusted server-side functions/triggers.
-- PWA caches only the public application shell and versioned static resources.
-
-## Security invariants
-
-- Direct authenticated INSERT into `enrollments` is allowed only for free courses; paid enrollment is created only by the purchase RPC after a locked balance check.
-- Student lesson SELECT requires `can_access_lesson(id)`; course owner and admin access remains intact.
-- Client roles cannot call internal grading functions. A student may submit only their own active server-created attempt once. Correct answers remain available only to the authorized grader and are never part of the student response before submission.
-- Only administrators may change `profiles.banned` or user roles.
-- `lesson-pdfs` is private; Storage SELECT requires entitlement to the lesson whose ID is the second path segment.
-- Teacher-created notifications are scoped to students enrolled in courses owned by that teacher; broadcasts are administrator-only.
-- Public teacher search returns only public profile fields and never exposes email addresses.
-- All payment fulfillment is server-side, idempotent, and cannot trust browser-supplied amounts or status.
-- Every data-bearing new table has RLS enabled and grants restricted to the intended roles.
-
-## UX and accessibility
-
-Use a dedicated “مساحة التعلم”/“Learning Hub” entry in the current platform. Show only features available to the signed-in role. Student screens focus on assignments, submissions, attendance, class schedule, certificates, discussions, and progress. Teacher screens focus on assignment review, attendance, live classes, discussion moderation, and course-scoped reports. Admin screens add payment review, global analytics, and audit history. All new screens must handle loading, empty, error, retry, and mobile layouts, and must not claim success until the server confirms it.
-
-## Delivery and verification
-
-Implement in independently reviewable groups: (1) security migration and tests, (2) core learning schema and permission tests, (3) student/teacher/admin feature UI and server workflows, (4) PWA/offline shell, (5) final review. Run the existing Vitest suite, assistant Worker tests, syntax/type checks, and targeted static policy tests. Run CI on the PR. Do not merge or deploy a migration if its tests fail. Database changes are not live merely because the GitHub migration file exists; deploy through the authenticated Supabase/Lovable Cloud path and verify the live schema before reporting completion.
+## Delivery
+Implement security first, then database workflows, role-aware UI, payment adapter/webhook, and PWA. Run full tests and CI on the exact branch head. Do not merge or apply production migrations while required checks or live schema verification remain incomplete.
