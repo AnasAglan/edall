@@ -178,17 +178,37 @@
     if (state.tab === "assignments") {
       state.data.assignments = await rows("assignments", q => q.eq("course_id",courseId).order("due_at",{ascending:true}));
       const ids = state.data.assignments.map(a => a.id);
-      state.data.submissions = ids.length ? await rows("assignment_submissions", q =>
-        (isTeacher() ? q.in("assignment_id",ids) : q.eq("student_id",state.user.id).in("assignment_id",ids))
-          .order("submitted_at",{ascending:false})
-      ) : [];
+      if (isTeacher()) {
+        const batches = await Promise.all(state.data.assignments.map(async assignment => {
+          const items = await rpc("list_assignment_submissions",{_assignment_id:assignment.id});
+          return (Array.isArray(items) ? items : []).map(item=>({...item,assignment_id:assignment.id}));
+        }));
+        state.data.submissions = batches.flat();
+      } else {
+        state.data.submissions = ids.length ? await rows("assignment_submissions", q =>
+          q.eq("student_id",state.user.id).in("assignment_id",ids).order("submitted_at",{ascending:false})
+        ) : [];
+      }
+      state.data.submissions = await Promise.all(state.data.submissions.map(async submission => {
+        const items = Array.isArray(submission.attachments) ? submission.attachments : [];
+        const signed = await Promise.all(items.map(async item => {
+          if (!item || !item.path) return item;
+          try {
+            const {data,error}=await sb().storage.from("assignment-submissions").createSignedUrl(item.path,900);
+            return error ? item : {...item,signedUrl:data?.signedUrl || null};
+          } catch (_) { return item; }
+        }));
+        return {...submission,attachments:signed};
+      }));
     } else if (state.tab === "attendance") {
       state.data.sessions = await rows("attendance_sessions", q => q.eq("course_id",courseId).order("starts_at",{ascending:false}));
       const ids = state.data.sessions.map(a => a.id);
       state.data.attendance = ids.length ? await rows("attendance_records", q =>
         (isTeacher() ? q.in("session_id",ids) : q.eq("student_id",state.user.id).in("session_id",ids))
       ) : [];
-      state.data.roster = isTeacher() ? await rows("enrollments", q => q.select("user_id").eq("course_id",courseId)) : [];
+      state.data.roster = isTeacher() ? await rpc("list_course_students",{
+        _course_id:courseId,_capability:"attendance"
+      }) : [];
     } else if (state.tab === "liveClasses") {
       state.data.liveClasses = await rows("live_classes", q => q.eq("course_id",courseId).order("starts_at",{ascending:true}));
     } else if (state.tab === "certificates") {
@@ -197,9 +217,8 @@
           q.eq("course_id",courseId).eq("student_id",state.user.id).order("issued_at",{ascending:false})
       );
     } else if (state.tab === "discussions") {
-      state.data.topics = await rows("discussion_topics", q => q.eq("course_id",courseId).order("created_at",{ascending:false}));
-      const ids = state.data.topics.map(t => t.id);
-      state.data.posts = ids.length ? await rows("discussion_posts", q => q.in("topic_id",ids).order("created_at",{ascending:true})) : [];
+      state.data.topics = await rpc("get_course_discussion_feed",{_course_id:courseId}) || [];
+      state.data.posts = [];
     } else if (state.tab === "payments") {
       state.data.payments = await rows("payment_orders", q =>
         isAdmin() ? q.order("created_at",{ascending:false}).limit(100) :
@@ -238,16 +257,19 @@
         esc(text("الدرجة: ","Max score: ")) + esc(a.max_score) + '</div>';
       if (!isTeacher()) {
         detail += mine ? '<div class="edf-status">' + esc(text("تم التسليم: ","Submitted: ")) + esc(fmtDate(mine.submitted_at)) +
-          (mine.score == null ? "" : ' · ' + esc(text("درجتك: ","Your score: ")) + esc(mine.score)) + '</div>' : "";
+          (mine.score == null ? "" : ' · ' + esc(text("درجتك: ","Your score: ")) + esc(mine.score)) + '</div>' +
+          ((mine.attachments || []).filter(x=>x && x.signedUrl).map(x=>'<a class="edf-link" href="' + esc(x.signedUrl) + '" target="_blank" rel="noopener noreferrer">' + esc(x.name || text("فتح المرفق","Open attachment")) + '</a>').join("")) : "";
         detail += '<form class="edf-form" data-form="submit-assignment" data-id="' + esc(a.id) + '">' +
-          '<textarea name="content" maxlength="30000" required placeholder="' + esc(text("اكتب إجابتك هنا","Write your answer")) + '">' + esc(mine && mine.content || "") + '</textarea>' +
+          '<textarea name="content" maxlength="30000" placeholder="' + esc(text("اكتب إجابتك هنا أو أرفق ملفاً","Write your answer or attach a file")) + '">' + esc(mine && mine.content || "") + '</textarea>' +
           '<label class="edf-file-field">' + esc(text("مرفقات (PDF أو صورة أو Word، حتى 20MB للملف)","Attachments (PDF, image or Word, up to 20MB each)")) +
           '<input name="attachments" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.docx,application/pdf,image/jpeg,image/png,image/webp,application/vnd.openxmlformats-officedocument.wordprocessingml.document"></label>' +
           '<button class="edf-btn edf-primary" type="submit">' + esc(text("حفظ التسليم","Submit answer")) + '</button></form>';
       } else {
         detail += '<div class="edf-submissions">' + (submitted.length ? submitted.map(s =>
-          '<div class="edf-submission"><small>' + esc(text("معرّف الطالب: ","Student ID: ")) + esc(s.student_id) + '</small>' +
-          '<p>' + esc(s.content || "") + '</p><small>' + esc(fmtDate(s.submitted_at)) + '</small>' +
+          '<div class="edf-submission"><strong>' + esc(s.student_name || s.student_public_id || s.student_id) + '</strong>' +
+          (s.student_public_id ? '<small> · ' + esc(s.student_public_id) + '</small>' : '') +
+          '<p>' + esc(s.content || "") + '</p><small>' + esc(fmtDate(s.submitted_at)) + (s.is_late ? ' · ' + esc(text("متأخر","Late")) : '') + '</small>' +
+          ((s.attachments || []).filter(x=>x && x.signedUrl).map(x=>'<a class="edf-link" href="' + esc(x.signedUrl) + '" target="_blank" rel="noopener noreferrer">' + esc(x.name || text("فتح المرفق","Open attachment")) + '</a>').join("")) +
           '<form class="edf-inline-form" data-form="grade-submission" data-id="' + esc(s.id) + '">' +
           '<input name="score" type="number" min="0" max="' + esc(a.max_score) + '" step="0.01" value="' + esc(s.score == null ? "" : s.score) + '" placeholder="' + esc(text("الدرجة","Score")) + '" required>' +
           '<input name="feedback" maxlength="6000" value="' + esc(s.feedback || "") + '" placeholder="' + esc(text("ملاحظات","Feedback")) + '">' +
@@ -275,7 +297,7 @@
       let details = '<div class="edf-meta">' + esc(fmtDate(s.starts_at)) + '</div>';
       if (isTeacher()) {
         const options = (state.data.roster || []).map(r =>
-          '<option value="' + esc(r.user_id) + '">' + esc(r.user_id) + '</option>'
+          '<option value="' + esc(r.user_id) + '">' + esc(r.student_name || r.public_id || r.user_id) + '</option>'
         ).join("");
         details += '<form class="edf-inline-form" data-form="mark-attendance" data-id="' + esc(s.id) + '">' +
           '<select name="student_id" required><option value="">' + esc(text("اختر الطالب","Select student")) + '</option>' + options + '</select>' +
@@ -351,11 +373,11 @@
       '<textarea name="content" maxlength="12000" required placeholder="' + esc(text("اكتب رسالتك","Write your post")) + '"></textarea>' +
       '<button class="edf-btn edf-primary" type="submit">' + esc(text("نشر","Publish")) + '</button></form>';
     body += topics.map(t => {
-      const topicPosts = posts.filter(p => p.topic_id === t.id);
+      const topicPosts = Array.isArray(t.posts) ? t.posts : posts.filter(p => p.topic_id === t.id);
       return card(t.title,
         '<div class="edf-meta">' + esc(fmtDate(t.created_at)) + (t.is_pinned ? ' · ' + esc(text("مثبّت","Pinned")) : "") +
           (t.is_locked ? ' · ' + esc(text("مغلق","Locked")) : "") + '</div>' +
-        topicPosts.map(p => '<div class="edf-post' + (p.is_hidden ? ' is-hidden' : '') + '"><p>' + esc(p.content) + '</p><small>' + esc(fmtDate(p.created_at)) + '</small>' +
+        topicPosts.map(p => '<div class="edf-post' + (p.is_hidden ? ' is-hidden' : '') + '"><strong>' + esc(p.author_name || "") + '</strong><p>' + esc(p.content) + '</p><small>' + esc(fmtDate(p.created_at)) + '</small>' +
           (isTeacher() ? '<button class="edf-text-btn" data-action="moderate-post" data-id="' + esc(p.id) + '" data-hidden="' + (!p.is_hidden) + '">' + esc(p.is_hidden ? text("إظهار","Unhide") : text("إخفاء","Hide")) + '</button>' : "") +
           '</div>').join("") +
         '<form class="edf-inline-form" data-form="reply-topic" data-id="' + esc(t.id) + '">' +
@@ -584,25 +606,37 @@
         case "submit-assignment": {
           const files = Array.from(form.querySelector('input[name="attachments"]')?.files || []);
           if (files.length > 5) throw new Error(text("الحد الأقصى خمسة مرفقات لكل تسليم.","A submission may contain up to five attachments."));
+          if (!String(v.content || "").trim() && files.length === 0) {
+            throw new Error(text("اكتب إجابة أو أرفق ملفاً واحداً على الأقل.","Write an answer or attach at least one file."));
+          }
           const accepted = new Set([
             "application/pdf","image/jpeg","image/png","image/webp",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
           ]);
           const attachments = [];
-          for (const file of files) {
-            if (!accepted.has(file.type) || file.size > 20 * 1024 * 1024) {
-              throw new Error(text("نوع الملف غير مسموح أو حجمه أكبر من 20MB.","Unsupported file type or file larger than 20MB."));
+          const uploadedPaths = [];
+          try {
+            for (const file of files) {
+              if (!accepted.has(file.type) || file.size > 20 * 1024 * 1024) {
+                throw new Error(text("نوع الملف غير مسموح أو حجمه أكبر من 20MB.","Unsupported file type or file larger than 20MB."));
+              }
+              const safeName = (file.name || "attachment")
+                .normalize("NFKD").replace(/[^A-Za-z0-9_. -]/g,"_").slice(-140) || "attachment";
+              const path = state.user.id + "/" + id + "/" + Date.now() + "_" + safeName;
+              const { error } = await sb().storage.from("assignment-submissions").upload(path,file,{
+                upsert:false,contentType:file.type
+              });
+              if (error) throw error;
+              uploadedPaths.push(path);
+              attachments.push({path,name:safeName,mime_type:file.type,size:file.size});
             }
-            const safeName = (file.name || "attachment")
-              .normalize("NFKD").replace(/[^A-Za-z0-9_. -]/g,"_").slice(-140) || "attachment";
-            const path = state.user.id + "/" + id + "/" + Date.now() + "_" + safeName;
-            const { error } = await sb().storage.from("assignment-submissions").upload(path,file,{
-              upsert:false,contentType:file.type
-            });
-            if (error) throw error;
-            attachments.push({path,name:safeName,mime_type:file.type,size:file.size});
+            await rpc("submit_assignment",{_assignment_id:id,_content:v.content || "",_attachments:attachments});
+          } catch (error) {
+            if (uploadedPaths.length) {
+              await sb().storage.from("assignment-submissions").remove(uploadedPaths).catch(()=>{});
+            }
+            throw error;
           }
-          await rpc("submit_assignment",{_assignment_id:id,_content:v.content || "",_attachments:attachments});
           break;
         }
         case "grade-submission":
