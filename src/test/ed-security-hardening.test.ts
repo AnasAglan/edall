@@ -202,6 +202,18 @@ describe("ED-ALL production authorization hardening", () => {
     expect(worker).toContain("}, 503, origin)");
   });
 
+  it("returns complete platform statistics through one MFA-gated database snapshot", () => {
+    const learning = read("supabase/migrations/20261114121000_add_integrated_learning_suite.sql");
+    const worker = read("workers/edall-assistant/index.js");
+    for (const field of ["lesson_video_links", "lesson_pdf_links", "enrollments", "exams", "exam_attempts"]) {
+      expect(learning).toContain("'" + field + "'");
+      expect(worker).toContain('"' + field + '"');
+    }
+    expect(learning).toContain("OR NOT public.admin_mfa_verified()");
+    expect(worker).toContain('/rest/v1/rpc/get_platform_analytics');
+    expect(worker).toContain("Number.isSafeInteger(value)");
+  });
+
   it("blocks account deletion when financial, certificate or academic history would cascade", () => {
     const edge = read("supabase/functions/admin-delete-user/index.ts");
     expect(edge).toContain('from("payment_orders")');
