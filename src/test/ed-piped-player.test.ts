@@ -156,7 +156,9 @@ describe("ED ALL Piped player", () => {
     expect(worker).toContain("bundle.audioStreams = verifiedDirectAudios");
     const mediaProxy = readFileSync(resolve(process.cwd(), "workers/video-media-proxy/index.js"), "utf8");
     expect(mediaProxy).toContain("getAllowedMediaUrl");
-    expect(mediaProxy).toContain('"Access-Control-Allow-Origin": "*"');
+    expect(mediaProxy).not.toContain('"Access-Control-Allow-Origin": "*"');
+    expect(mediaProxy).toContain("if (origin && !ALLOWED_ORIGINS.has(origin))");
+    expect(mediaProxy).toContain('responseCorsHeaders.set("Access-Control-Allow-Origin", origin)');
     expect(mediaProxy).toContain("request.headers.get(\"Range\")");
     expect(playerSource).toContain("mediaProxyBase + '/media?url='");
     expect(playerSource).toContain("proxyUrl: mediaProxyBase");
