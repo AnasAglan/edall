@@ -2,7 +2,7 @@
 -- Runs inside a transaction and rolls back all fixture accounts/data.
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT plan(23);
+SELECT plan(25);
 
 INSERT INTO auth.users (
   id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -173,6 +173,23 @@ SELECT ok(
       AND 'search_path=""' = ANY(p.proconfig)
   ),
   'wallet purchase SECURITY DEFINER function has an empty search path'
+);
+
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_proc p
+    WHERE p.oid='public.setup_new_user(uuid,text,text,text)'::regprocedure
+      AND 'search_path=""' = ANY(p.proconfig)
+  ),
+  'new-user bootstrap SECURITY DEFINER function has an empty search path'
+);
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_proc p
+    WHERE p.oid='public.handle_new_user()'::regprocedure
+      AND 'search_path=""' = ANY(p.proconfig)
+  ),
+  'auth signup trigger SECURITY DEFINER function has an empty search path'
 );
 
 SELECT * FROM finish();
