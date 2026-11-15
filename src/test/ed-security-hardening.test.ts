@@ -202,6 +202,16 @@ describe("ED-ALL production authorization hardening", () => {
     expect(worker).toContain("}, 503, origin)");
   });
 
+  it("restricts privileged learning RPC execution to intended database roles", () => {
+    const acl = read("supabase/migrations/20261115118000_restrict_learning_rpc_execution.sql");
+    expect(acl).toContain("REVOKE ALL ON FUNCTION public.fulfill_payment_order(uuid,text,text,numeric,text,text) FROM PUBLIC, anon, authenticated");
+    expect(acl).toContain("GRANT EXECUTE ON FUNCTION public.fulfill_payment_order(uuid,text,text,numeric,text,text) TO service_role");
+    expect(acl).toContain("REVOKE ALL ON FUNCTION public.create_payment_order(uuid,text) FROM PUBLIC, anon");
+    expect(acl).toContain("GRANT EXECUTE ON FUNCTION public.create_payment_order(uuid,text) TO authenticated, service_role");
+    expect(acl).toContain("GRANT EXECUTE ON FUNCTION public.verify_course_certificate(text) TO anon, authenticated, service_role");
+    expect(acl).toContain("REVOKE ALL ON FUNCTION public.moderate_discussion_topic(uuid,boolean,boolean,boolean) FROM PUBLIC, anon");
+  });
+
   it("allows only course content staff to upload and clean up staged lesson PDFs", () => {
     const migration = read("supabase/migrations/20261115117000_allow_scoped_staged_lesson_pdfs.sql");
     expect(migration).toContain('CREATE POLICY "Course capability upload lesson PDFs"');
