@@ -2,7 +2,7 @@
 -- Runs inside a transaction and rolls back all fixture accounts/data.
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT plan(25);
+SELECT plan(34);
 
 INSERT INTO auth.users (
   id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -190,6 +190,44 @@ SELECT ok(
       AND 'search_path=""' = ANY(p.proconfig)
   ),
   'auth signup trigger SECURITY DEFINER function has an empty search path'
+);
+
+-- Course staff may only update the fields used by the legacy essay-grading UI.
+SELECT ok(
+  has_column_privilege('authenticated','public.exam_results','score','UPDATE'),
+  'authenticated course staff can update exam scores'
+);
+SELECT ok(
+  has_column_privilege('authenticated','public.exam_results','passed','UPDATE'),
+  'authenticated course staff can update pass state'
+);
+SELECT ok(
+  has_column_privilege('authenticated','public.exam_results','essay_graded','UPDATE'),
+  'authenticated course staff can mark essay grading complete'
+);
+SELECT ok(
+  has_column_privilege('authenticated','public.exam_results','answers','UPDATE'),
+  'authenticated course staff can save graded answers'
+);
+SELECT ok(
+  NOT has_column_privilege('authenticated','public.exam_results','user_id','UPDATE'),
+  'authenticated course staff cannot change result ownership'
+);
+SELECT ok(
+  NOT has_column_privilege('authenticated','public.exam_results','exam_id','UPDATE'),
+  'authenticated course staff cannot move a result to another exam'
+);
+SELECT ok(
+  NOT has_column_privilege('authenticated','public.exam_results','submitted_at','UPDATE'),
+  'authenticated course staff cannot rewrite submission timestamps'
+);
+SELECT ok(
+  NOT has_column_privilege('authenticated','public.exam_results','id','UPDATE'),
+  'authenticated course staff cannot rewrite result identifiers'
+);
+SELECT ok(
+  NOT has_column_privilege('anon','public.exam_results','score','UPDATE'),
+  'anonymous clients cannot update exam results'
 );
 
 SELECT * FROM finish();
