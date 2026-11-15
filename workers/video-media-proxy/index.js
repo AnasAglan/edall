@@ -1,4 +1,8 @@
-const ALLOWED_ORIGINS = new Set(["https://edall.lovable.app", "https://id-preview--41c4997e-3169-4ff8-bf15-3da064df3594.lovable.app"]);
+const ALLOWED_ORIGINS = new Set([
+  "https://edall.lovable.app",
+  "https://id-preview--41c4997e-3169-4ff8-bf15-3da064df3594.lovable.app",
+  "https://security-edall-hardening-and-feature-suite-edall.anasaglan2011.workers.dev",
+]);
 
 const corsHeaders = {
   "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
