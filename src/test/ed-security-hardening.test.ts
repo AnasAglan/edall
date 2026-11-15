@@ -232,6 +232,24 @@ describe("ED-ALL production authorization hardening", () => {
     expect(mfa).toContain("Students clean up unsubmitted assignment files");
   });
 
+  it("prevents cross-user role enumeration and forged audit events", () => {
+    const helpers = read("supabase/migrations/20261115116000_lock_down_definer_helpers.sql");
+    expect(helpers).toContain("auth.uid() IS NOT NULL");
+    expect(helpers).toContain("COALESCE(auth.jwt()->>'aal','')='aal2'");
+    expect(helpers).toContain("REVOKE ALL ON FUNCTION public.get_user_role(uuid) FROM PUBLIC,anon");
+    expect(helpers).toContain("CASE WHEN public.admin_mfa_verified() THEN p.email ELSE NULL END");
+    expect(helpers).toContain("REVOKE ALL ON FUNCTION public.write_platform_audit_event(text,text,uuid,uuid,jsonb)");
+    expect(helpers).toContain("REVOKE ALL ON FUNCTION public.audit_sensitive_row_change()");
+    expect(helpers).toContain("REVOKE ALL ON FUNCTION public.handle_new_user()");
+  });
+
+  it("requires the course exam capability to view student grading results", () => {
+    const helpers = read("supabase/migrations/20261115116000_lock_down_definer_helpers.sql");
+    expect(helpers).toContain("public.has_course_capability(_course_id,'exams')");
+    expect(helpers).toContain("REVOKE ALL ON FUNCTION public.exam_grading_list(uuid) FROM PUBLIC,anon");
+    expect(helpers).toContain("SET search_path = ''");
+  });
+
   it("tracks exam attempts and prevents cross-user finalization and answer-key disclosure", () => {
     const exam = read("supabase/migrations/20261115115000_harden_exam_attempt_lifecycle.sql");
     expect(exam).toContain("ALTER TABLE public.exams");
