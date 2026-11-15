@@ -211,9 +211,12 @@
     ];
   }
 
+  function createWorkbookBytes(rows, options) {
+    return zipStored(workbookEntries(rows, options));
+  }
+
   async function createWorkbookBlob(rows, options) {
-    const archive = zipStored(workbookEntries(rows, options));
-    return new Blob([archive], { type: MIME });
+    return new Blob([createWorkbookBytes(rows, options)], { type: MIME });
   }
 
   async function download(rows, filename, options) {
@@ -229,5 +232,5 @@
     setTimeout(() => URL.revokeObjectURL(url), 1500);
   }
 
-  global.EDALLXLSX = { createWorkbookBlob, download };
+  global.EDALLXLSX = { createWorkbookBytes, createWorkbookBlob, download };
 })(typeof window !== "undefined" ? window : globalThis);
