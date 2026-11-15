@@ -2,7 +2,7 @@
 -- Runs inside a transaction and rolls back all fixture accounts/data.
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT plan(12);
+SELECT plan(21);
 
 INSERT INTO auth.users (
   id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -117,6 +117,45 @@ SELECT is(
    WHERE t.id='10000000-0000-4000-8000-000000000002'),
   true,
   'anonymous teacher search never exposes email'
+);
+
+-- Privileged SECURITY DEFINER RPCs must not inherit PostgreSQL's default
+-- PUBLIC execute grant. The certificate verifier is intentionally public.
+SELECT ok(
+  NOT has_function_privilege('anon','public.grant_course_staff_role(uuid,uuid,text)','EXECUTE'),
+  'anonymous callers cannot grant course staff roles'
+);
+SELECT ok(
+  NOT has_function_privilege('anon','public.submit_assignment(uuid,text,jsonb)','EXECUTE'),
+  'anonymous callers cannot submit assignments'
+);
+SELECT ok(
+  NOT has_function_privilege('anon','public.mark_attendance(uuid,uuid,text,text)','EXECUTE'),
+  'anonymous callers cannot alter attendance'
+);
+SELECT ok(
+  NOT has_function_privilege('anon','public.moderate_discussion_post(uuid,boolean)','EXECUTE'),
+  'anonymous callers cannot moderate discussions'
+);
+SELECT ok(
+  NOT has_function_privilege('anon','public.create_payment_order(uuid,text)','EXECUTE'),
+  'anonymous callers cannot create payment orders'
+);
+SELECT ok(
+  NOT has_function_privilege('authenticated','public.fulfill_payment_order(uuid,text,text,numeric,text,text)','EXECUTE'),
+  'authenticated clients cannot fulfill payment orders'
+);
+SELECT ok(
+  has_function_privilege('service_role','public.fulfill_payment_order(uuid,text,text,numeric,text,text)','EXECUTE'),
+  'trusted service role can fulfill verified payment webhooks'
+);
+SELECT ok(
+  has_function_privilege('anon','public.verify_course_certificate(text)','EXECUTE'),
+  'public certificate verification remains available to visitors'
+);
+SELECT ok(
+  has_function_privilege('authenticated','public.create_assignment(uuid,uuid,text,text,timestamptz,numeric)','EXECUTE'),
+  'authenticated course staff can call the assignment creation RPC'
 );
 
 SELECT * FROM finish();
