@@ -300,7 +300,8 @@ SELECT ok(
   AND recount_after_lock > 0
   AND shared_lock_key > 0,
   'first-admin bootstrap recounts after a shared lock only when roles are empty'
-);
+)
+FROM positions;
 
 SELECT * FROM finish();
 ROLLBACK;
