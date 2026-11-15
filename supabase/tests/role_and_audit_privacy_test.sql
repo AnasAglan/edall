@@ -2,7 +2,7 @@
 -- Runs inside a transaction and rolls back all fixture accounts/data.
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT plan(21);
+SELECT plan(23);
 
 INSERT INTO auth.users (
   id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -156,6 +156,23 @@ SELECT ok(
 SELECT ok(
   has_function_privilege('authenticated','public.create_assignment(uuid,uuid,text,text,timestamptz,numeric)','EXECUTE'),
   'authenticated course staff can call the assignment creation RPC'
+);
+
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_proc p
+    WHERE p.oid='public.protect_profile_security_fields()'::regprocedure
+      AND 'search_path=""' = ANY(p.proconfig)
+  ),
+  'profile security trigger function has an empty search path'
+);
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_proc p
+    WHERE p.oid='public.purchase_course(uuid)'::regprocedure
+      AND 'search_path=""' = ANY(p.proconfig)
+  ),
+  'wallet purchase SECURITY DEFINER function has an empty search path'
 );
 
 SELECT * FROM finish();
