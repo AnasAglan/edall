@@ -9,4 +9,10 @@ ALTER FUNCTION public.protect_profile_security_fields()
 ALTER FUNCTION public.purchase_course(uuid)
   SET search_path = '';
 
+ALTER FUNCTION public.setup_new_user(uuid,text,text,text)
+  SET search_path = '';
+
+ALTER FUNCTION public.handle_new_user()
+  SET search_path = '';
+
 COMMIT;
