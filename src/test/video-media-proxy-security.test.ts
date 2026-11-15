@@ -5,15 +5,38 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function proxyRequest(mediaUrl: string) {
+function proxyRequest(mediaUrl: string, origin = "https://edall.lovable.app") {
   const encoded = encodeURIComponent(mediaUrl);
   return new Request("https://proxy.example/media?url=" + encoded, {
     method: "GET",
-    headers: { Origin: "https://edall.lovable.app" },
+    headers: { Origin: origin },
   });
 }
 
 describe("video media proxy redirect security", () => {
+  it("allows the dedicated ED-ALL pull-request preview origin", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("video-chunk", {
+      status: 206,
+      headers: { "Content-Type": "video/mp4" },
+    })));
+
+    const origin = "https://security-edall-hardening-and-feature-suite-edall.anasaglan2011.workers.dev";
+    const response = await videoMediaProxy.fetch(
+      proxyRequest("https://r1.googlevideo.com/videoplayback?itag=137", origin),
+    );
+
+    expect(response.status).toBe(206);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(origin);
+  });
+
+  it("rejects arbitrary origins", async () => {
+    const response = await videoMediaProxy.fetch(
+      proxyRequest("https://r1.googlevideo.com/videoplayback?itag=137", "https://attacker.example"),
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
+  });
   it("rejects an untrusted redirect before making a request to its destination", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, {
       status: 302,
