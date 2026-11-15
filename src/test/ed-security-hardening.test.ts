@@ -204,8 +204,15 @@ describe("ED-ALL production authorization hardening", () => {
 
   it("allows only course content staff to upload and clean up staged lesson PDFs", () => {
     const migration = read("supabase/migrations/20261115117000_allow_scoped_staged_lesson_pdfs.sql");
-    expect(migration).toContain("CREATE POLICY \"Course capability upload lesson PDFs\"");
-    expect(migration).toContain("split_part(name,'/',2) ~ '^temp_[0-9]{10,}
+    expect(migration).toContain('CREATE POLICY "Course capability upload lesson PDFs"');
+    expect(migration).toContain("temp_[0-9]{10,}");
+    expect(migration).toContain("public.has_course_capability(c.id,'content')");
+    expect(migration).toContain('CREATE POLICY "Course staff delete staged lesson PDFs"');
+    expect(migration).toContain("ON storage.objects FOR DELETE TO authenticated");
+    expect(migration).toContain("bucket_id='lesson-pdfs'");
+  });
+
+  it("exports analytics and audit records as native XLSX without CSV formula cells", () => {
     const ui = read("public/ed_features.js");
     const exporter = read("public/ed-xlsx.js");
     expect(ui).toContain('await exportXlsx()');
