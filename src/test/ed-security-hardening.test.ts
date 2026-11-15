@@ -202,12 +202,15 @@ describe("ED-ALL production authorization hardening", () => {
     expect(worker).toContain("}, 503, origin)");
   });
 
-  it("neutralizes spreadsheet formulas in downloadable CSV values", () => {
+  it("exports analytics and audit records as native XLSX without CSV formula cells", () => {
     const ui = read("public/ed_features.js");
-    expect(ui).toContain("const csvCell = value =>");
-    expect(ui).toContain("Prevent spreadsheet formula execution when opening CSV exports in Excel.");
-    expect(ui).toContain("if (/^\\s*[=+@-]/.test(raw))");
-
+    const exporter = read("public/ed-xlsx.js");
+    expect(ui).toContain('await exportXlsx()');
+    expect(ui).toContain('window.EDALLXLSX');
+    expect(exporter).toContain('t="inlineStr"');
+    expect(exporter).toContain('async function createWorkbookBlob');
+    expect(exporter).not.toContain('<f>');
+    expect(exporter).toContain('rightToLeft="1"');
   });
 
   it("prevents client-side exam-completion flags without a passing graded result", () => {
