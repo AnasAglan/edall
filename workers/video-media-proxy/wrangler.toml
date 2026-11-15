@@ -2,3 +2,9 @@ name = "edall-video-media-proxy"
 main = "index.js"
 compatibility_date = "2026-11-11"
 workers_dev = true
+
+[observability]
+enabled = true
+
+[observability.issues]
+enabled = true
