@@ -2,7 +2,7 @@
 -- Runs inside a transaction and rolls back all fixture accounts/data.
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT plan(34);
+SELECT plan(42);
 
 INSERT INTO auth.users (
   id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -228,6 +228,39 @@ SELECT ok(
 SELECT ok(
   NOT has_column_privilege('anon','public.exam_results','score','UPDATE'),
   'anonymous clients cannot update exam results'
+);
+
+SELECT ok(
+  NOT has_table_privilege('authenticated','public.exam_results','INSERT'),
+  'authenticated clients cannot insert exam results directly'
+);
+SELECT ok(
+  NOT has_table_privilege('authenticated','public.exam_results','DELETE'),
+  'authenticated clients cannot delete exam results'
+);
+SELECT ok(
+  NOT has_table_privilege('authenticated','public.exam_results','TRUNCATE'),
+  'authenticated clients cannot truncate exam results'
+);
+SELECT ok(
+  NOT has_table_privilege('authenticated','public.exam_results','TRIGGER'),
+  'authenticated clients cannot attach triggers to exam results'
+);
+SELECT ok(
+  NOT has_table_privilege('anon','public.exam_results','INSERT'),
+  'anonymous clients cannot insert exam results directly'
+);
+SELECT ok(
+  NOT has_table_privilege('anon','public.exam_results','DELETE'),
+  'anonymous clients cannot delete exam results'
+);
+SELECT ok(
+  NOT has_table_privilege('anon','public.exam_results','TRUNCATE'),
+  'anonymous clients cannot truncate exam results'
+);
+SELECT ok(
+  NOT has_table_privilege('anon','public.exam_results','TRIGGER'),
+  'anonymous clients cannot attach triggers to exam results'
 );
 
 SELECT * FROM finish();
