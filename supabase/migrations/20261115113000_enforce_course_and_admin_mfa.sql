@@ -292,6 +292,12 @@ WITH CHECK (
 DROP POLICY IF EXISTS "Users can insert own results" ON public.exam_results;
 REVOKE INSERT ON public.exam_results FROM PUBLIC, anon, authenticated;
 
+-- Preserve the legacy teacher grading UI, but do not let course staff rewrite
+-- result ownership, exam identity, attempt identity, or submission timestamps.
+REVOKE UPDATE ON public.exam_results FROM PUBLIC, anon, authenticated;
+GRANT UPDATE (score, passed, essay_graded, answers)
+ON public.exam_results TO authenticated;
+
 -- Enrolment lists are visible to the student and MFA-authenticated admins.
 DROP POLICY IF EXISTS "Users can view own enrollments" ON public.enrollments;
 CREATE POLICY "Users and MFA admins view enrollments"
