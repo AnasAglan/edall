@@ -272,8 +272,8 @@ SELECT ok(
       AND cmd='UPDATE'
       AND position('temp_' in COALESCE(qual,'')) > 0
       AND position('temp_' in COALESCE(with_check,'')) > 0
-      AND position('public.has_course_capability' in COALESCE(qual,'')) > 0
-      AND position('public.has_course_capability' in COALESCE(with_check,'')) > 0
+      AND position('has_course_capability' in COALESCE(qual,'')) > 0
+      AND position('has_course_capability' in COALESCE(with_check,'')) > 0
   ),
   'staged lesson PDF retries stay limited to course content managers'
 );
