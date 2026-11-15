@@ -280,10 +280,21 @@ SELECT ok(
 
 SELECT ok(
   position(
-    'pg_advisory_xact_lock'
-    in pg_get_functiondef('public.setup_new_user(uuid,text,text,text)'::regprocedure)
+    'PG_ADVISORY_XACT_LOCK'
+    in upper(pg_get_functiondef('public.setup_new_user(uuid,text,text,text)'::regprocedure))
+  ) > 0
+  AND position(
+    'PG_ADVISORY_XACT_LOCK'
+    in upper(pg_get_functiondef('public.setup_new_user(uuid,text,text,text)'::regprocedure))
+  ) < position(
+    'SELECT COUNT(*) INTO _USER_COUNT'
+    in upper(pg_get_functiondef('public.setup_new_user(uuid,text,text,text)'::regprocedure))
+  )
+  AND position(
+    'EDALL-INITIAL-ADMIN-BOOTSTRAP'
+    in upper(pg_get_functiondef('public.setup_new_user(uuid,text,text,text)'::regprocedure))
   ) > 0,
-  'first-admin bootstrap is serialized against concurrent initial signups'
+  'first-admin bootstrap locks before counting roles using a shared lock key'
 );
 
 SELECT * FROM finish();
