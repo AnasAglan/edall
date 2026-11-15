@@ -2,7 +2,7 @@
 -- Runs inside a transaction and rolls back all fixture accounts/data.
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT plan(43);
+SELECT plan(44);
 
 INSERT INTO auth.users (
   id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -276,6 +276,14 @@ SELECT ok(
       AND position('has_course_capability' in COALESCE(with_check,'')) > 0
   ),
   'staged lesson PDF retries stay limited to course content managers'
+);
+
+SELECT ok(
+  position(
+    'pg_advisory_xact_lock'
+    in pg_get_functiondef('public.setup_new_user(uuid,text,text,text)'::regprocedure)
+  ) > 0,
+  'first-admin bootstrap is serialized against concurrent initial signups'
 );
 
 SELECT * FROM finish();
