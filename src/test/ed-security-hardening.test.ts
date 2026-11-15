@@ -206,7 +206,9 @@ describe("ED-ALL production authorization hardening", () => {
     const migration = read("supabase/migrations/20261115119000_empty_search_path_for_legacy_definers.sql");
     expect(migration).toContain("ALTER FUNCTION public.protect_profile_security_fields()");
     expect(migration).toContain("ALTER FUNCTION public.purchase_course(uuid)");
-    expect(migration.match(/SET search_path = ''/g)).toHaveLength(2);
+    expect(migration).toContain("ALTER FUNCTION public.setup_new_user(uuid,text,text,text)");
+    expect(migration).toContain("ALTER FUNCTION public.handle_new_user()");
+    expect(migration.match(/SET search_path = ''/g)).toHaveLength(4);
   });
 
   it("restricts privileged learning RPC execution to intended database roles", () => {
