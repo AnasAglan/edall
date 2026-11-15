@@ -3,6 +3,12 @@
 -- entitled students can read exam questions. Correct answers never leave the server.
 BEGIN;
 
+-- This column exists in the current live schema but was added manually and
+-- never entered the migration history. Track it before compiling rowtype-based
+-- functions below.
+ALTER TABLE public.exams
+  ADD COLUMN IF NOT EXISTS max_attempts integer;
+
 CREATE TABLE IF NOT EXISTS public.exam_attempts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL,
