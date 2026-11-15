@@ -234,6 +234,8 @@ describe("ED-ALL production authorization hardening", () => {
 
   it("tracks exam attempts and prevents cross-user finalization and answer-key disclosure", () => {
     const exam = read("supabase/migrations/20261115115000_harden_exam_attempt_lifecycle.sql");
+    expect(exam).toContain("ALTER TABLE public.exams");
+    expect(exam).toContain("ADD COLUMN IF NOT EXISTS max_attempts integer");
     expect(exam).toContain("CREATE TABLE IF NOT EXISTS public.exam_attempts");
     expect(exam).toContain("public._finalize_exam_attempt(uuid,jsonb)");
     expect(exam).toContain("IF _a.user_id<>auth.uid() THEN RAISE EXCEPTION 'NOT_ALLOWED'");
