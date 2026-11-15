@@ -53,14 +53,16 @@ BEGIN
         RETURN;
     END IF;
 
-    -- Take the same transaction-scoped lock for every bootstrap attempt.
-    -- The count below runs after lock acquisition and therefore sees the
-    -- role row committed by any earlier first-signup transaction.
-    PERFORM pg_catalog.pg_advisory_xact_lock(
-        pg_catalog.hashtextextended('edall-initial-admin-bootstrap', 0)
-    );
-
     SELECT count(*) INTO _user_count FROM public.user_roles;
+    IF _user_count = 0 THEN
+        -- Only the empty-table bootstrap path needs serialization. Re-count
+        -- after obtaining the lock because another first signup may have
+        -- committed while this transaction was waiting.
+        PERFORM pg_catalog.pg_advisory_xact_lock(
+            pg_catalog.hashtextextended('edall-initial-admin-bootstrap', 0)
+        );
+        SELECT count(*) INTO _user_count FROM public.user_roles;
+    END IF;
     IF _user_count = 0 THEN
         _target_role := 'admin'::public.app_role;
     ELSE
