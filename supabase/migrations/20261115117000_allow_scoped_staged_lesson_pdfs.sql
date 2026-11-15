@@ -36,25 +36,7 @@ ON storage.objects FOR UPDATE TO authenticated
 USING (
   bucket_id='lesson-pdfs'
   AND array_length(storage.foldername(name),1)=2
-  AND split_part(name,'/',2) ~ '^temp_[0-9]{10,}-- or the lesson form is abandoned. Restrict this exception to the staging path
--- and course content managers; final lesson objects keep the stricter policy.
-DROP POLICY IF EXISTS "Course staff delete staged lesson PDFs" ON storage.objects;
-CREATE POLICY "Course staff delete staged lesson PDFs"
-ON storage.objects FOR DELETE TO authenticated
-USING (
-  bucket_id='lesson-pdfs'
-  AND array_length(storage.foldername(name),1)=2
   AND split_part(name,'/',2) ~ '^temp_[0-9]{10,}$'
-  AND EXISTS (
-    SELECT 1
-    FROM public.courses c
-    WHERE c.id::text=split_part(name,'/',1)
-      AND public.has_course_capability(c.id,'content')
-  )
-);
-
-COMMIT;
-
   AND EXISTS (
     SELECT 1 FROM public.courses c
     WHERE c.id::text=split_part(name,'/',1)
@@ -65,25 +47,7 @@ WITH CHECK (
   bucket_id='lesson-pdfs'
   AND metadata->>'mimetype'='application/pdf'
   AND array_length(storage.foldername(name),1)=2
-  AND split_part(name,'/',2) ~ '^temp_[0-9]{10,}-- or the lesson form is abandoned. Restrict this exception to the staging path
--- and course content managers; final lesson objects keep the stricter policy.
-DROP POLICY IF EXISTS "Course staff delete staged lesson PDFs" ON storage.objects;
-CREATE POLICY "Course staff delete staged lesson PDFs"
-ON storage.objects FOR DELETE TO authenticated
-USING (
-  bucket_id='lesson-pdfs'
-  AND array_length(storage.foldername(name),1)=2
   AND split_part(name,'/',2) ~ '^temp_[0-9]{10,}$'
-  AND EXISTS (
-    SELECT 1
-    FROM public.courses c
-    WHERE c.id::text=split_part(name,'/',1)
-      AND public.has_course_capability(c.id,'content')
-  )
-);
-
-COMMIT;
-
   AND EXISTS (
     SELECT 1 FROM public.courses c
     WHERE c.id::text=split_part(name,'/',1)
