@@ -278,23 +278,28 @@ SELECT ok(
   'staged lesson PDF retries stay limited to course content managers'
 );
 
+WITH function_definition AS (
+  SELECT upper(
+    pg_get_functiondef('public.setup_new_user(uuid,text,text,text)'::regprocedure)
+  ) AS source
+),
+positions AS (
+  SELECT
+    position('SELECT COUNT(*) INTO _USER_COUNT' IN source) AS initial_count,
+    position('PG_ADVISORY_XACT_LOCK' IN source) AS lock_position,
+    position(
+      'SELECT COUNT(*) INTO _USER_COUNT'
+      IN substring(source FROM position('PG_ADVISORY_XACT_LOCK' IN source) + 1)
+    ) AS recount_after_lock,
+    position('EDALL-INITIAL-ADMIN-BOOTSTRAP' IN source) AS shared_lock_key
+  FROM function_definition
+)
 SELECT ok(
-  position(
-    'PG_ADVISORY_XACT_LOCK'
-    in upper(pg_get_functiondef('public.setup_new_user(uuid,text,text,text)'::regprocedure))
-  ) > 0
-  AND position(
-    'PG_ADVISORY_XACT_LOCK'
-    in upper(pg_get_functiondef('public.setup_new_user(uuid,text,text,text)'::regprocedure))
-  ) < position(
-    'SELECT COUNT(*) INTO _USER_COUNT'
-    in upper(pg_get_functiondef('public.setup_new_user(uuid,text,text,text)'::regprocedure))
-  )
-  AND position(
-    'EDALL-INITIAL-ADMIN-BOOTSTRAP'
-    in upper(pg_get_functiondef('public.setup_new_user(uuid,text,text,text)'::regprocedure))
-  ) > 0,
-  'first-admin bootstrap locks before counting roles using a shared lock key'
+  initial_count > 0
+  AND lock_position > initial_count
+  AND recount_after_lock > 0
+  AND shared_lock_key > 0,
+  'first-admin bootstrap recounts after a shared lock only when roles are empty'
 );
 
 SELECT * FROM finish();
