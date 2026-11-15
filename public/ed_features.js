@@ -395,7 +395,7 @@
     if (!data) return empty(text("لا توجد بيانات تحليلية متاحة.","Analytics are not available."));
     const keys = Object.keys(data);
     const body = '<div class="edf-metrics">' + keys.map(k => card(k.replace(/_/g," "),'<strong>' + esc(typeof data[k] === "object" ? JSON.stringify(data[k]) : data[k]) + '</strong>')).join("") + '</div>' +
-      '<div class="edf-actions">' + makeBtn(text("تصدير CSV لبرنامج Excel","Export CSV for Excel"),"export") + makeBtn(text("طباعة / حفظ PDF","Print / Save PDF"),"print") + '</div>';
+      '<div class="edf-actions">' + makeBtn(text("تصدير Excel (XLSX)","Download Excel (XLSX)"),"export") + makeBtn(text("طباعة / حفظ PDF","Print / Save PDF"),"print") + '</div>';
     state.exportRows = [data];
     return body;
   }
@@ -422,7 +422,7 @@
 
   function renderAuditTab() {
     const list = state.data.audit || [];
-    const actions = '<div class="edf-actions">' + makeBtn(text("تصدير CSV لبرنامج Excel","Export CSV for Excel"),"export") +
+    const actions = '<div class="edf-actions">' + makeBtn(text("تصدير Excel (XLSX)","Download Excel (XLSX)"),"export") +
       makeBtn(text("طباعة / حفظ PDF","Print / Save PDF"),"print") + '</div>';
     return actions + (list.length ? list.map(a => card(a.event_type,
       '<div class="edf-meta">' + esc(fmtDate(a.created_at)) + ' · ' + esc(a.entity_type) + ' · ' + esc(a.entity_id || "") + '</div>' +
@@ -689,7 +689,7 @@
         await rpc("revoke_course_staff_role",{_course_id:button.dataset.course,_user_id:button.dataset.id});
         notify(text("تم إلغاء الصلاحية.","Course role revoked."),"success"); await refresh(); return;
       }
-      if (action === "export") { exportCsv(); return; }
+      if (action === "export") { await exportXlsx(); return; }
       if (action === "print") { window.print(); return; }
       if (action === "mfa-enroll") {
         const { data,error } = await sb().auth.mfa.enroll({factorType:"totp",friendlyName:"ED-ALL Administrator"});
@@ -718,21 +718,22 @@
     }
   }
 
-  function exportCsv() {
-    const items = state.tab === "audit" ? (state.data.audit||[]) : (state.exportRows||[]);
-    if (!items.length) { notify(text("لا توجد بيانات للتصدير.","No data to export."),"warning"); return; }
-    const keys = [...new Set(items.flatMap(x=>Object.keys(x)))];
-    const csvCell = value => {
-      let raw = String(value == null ? "" : typeof value === "object" ? JSON.stringify(value) : value);
-      // Prevent spreadsheet formula execution when opening CSV exports in Excel.
-      if (/^\s*[=+@-]/.test(raw)) raw = "'" + raw;
-      return '"' + raw.replace(/"/g,'""') + '"';
-    };
-    const csv = [keys.map(csvCell).join(","),...items.map(x=>keys.map(k=>csvCell(x[k])).join(","))].join("\r\n");
-    const blob = new Blob(["\uFEFF",csv],{type:"text/csv;charset=utf-8"});
-    const url = URL.createObjectURL(blob);
-    const a=document.createElement("a"); a.href=url; a.download="edall-report-"+new Date().toISOString().slice(0,10)+".csv";
-    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  async function exportXlsx() {
+    const items = state.tab === "audit" ? (state.data.audit || []) : (state.exportRows || []);
+    if (!items.length) {
+      notify(text("لا توجد بيانات للتصدير.", "No data to export."), "warning");
+      return;
+    }
+    const exporter = window.EDALLXLSX;
+    if (!exporter || typeof exporter.download !== "function") {
+      throw new Error(text("مكوّن تصدير Excel غير متاح. أعد تحميل الصفحة.", "The Excel export module is unavailable. Reload the page."));
+    }
+    await exporter.download(
+      items,
+      "edall-report-" + new Date().toISOString().slice(0, 10) + ".xlsx",
+      { rightToLeft: true, sheetName: "ED-ALL" }
+    );
+    notify(text("تم تنزيل تقرير Excel بصيغة XLSX.", "Excel XLSX report downloaded."), "success");
   }
 
   function init() {
