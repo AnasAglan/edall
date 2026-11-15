@@ -39,6 +39,7 @@ on:
       - "src/test/ed-security-hardening.test.ts"
       - "src/test/ed-piped-player.test.ts"
       - "src/test/ed-learning-suite.test.ts"
+      - "supabase/tests/**"
       - "package.json"
       - ".github/workflows/ed-security-suite.yml"
 
