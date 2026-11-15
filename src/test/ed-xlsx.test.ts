@@ -25,7 +25,7 @@ function readStoredZip(bytes: Uint8Array): Map<string, string> {
 }
 
 describe("ED-ALL XLSX export", () => {
-  it("creates a readable right-to-left XLSX workbook with safe text cells", async () => {
+  it("creates a readable right-to-left XLSX workbook with safe text cells", () => {
     const source = read("public/ed-xlsx.js");
     const sandbox = {
       window: {},
@@ -47,12 +47,12 @@ describe("ED-ALL XLSX export", () => {
     const api = (sandbox.window as { EDALLXLSX?: { createWorkbookBytes: (rows: unknown[], options?: unknown) => Uint8Array } }).EDALLXLSX;
     expect(api).toBeDefined();
 
-    const blob = await api!.createWorkbookBlob(
+    const archive = api!.createWorkbookBytes(
       [{ student: "أحمد & <اختبار>", score: 95, comment: "=HYPERLINK(\"https://bad.example\")" }],
       { rightToLeft: true, sheetName: "التقرير" },
     );
-    expect(blob.type).toBe("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-    const files = readStoredZip(await blob.arrayBuffer());
+    expect(archive).toBeInstanceOf(Uint8Array);
+    const files = readStoredZip(archive);
     expect(files.has("[Content_Types].xml")).toBe(true);
     expect(files.has("xl/workbook.xml")).toBe(true);
 
