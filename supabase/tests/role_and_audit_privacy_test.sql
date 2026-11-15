@@ -2,7 +2,7 @@
 -- Runs inside a transaction and rolls back all fixture accounts/data.
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT plan(42);
+SELECT plan(43);
 
 INSERT INTO auth.users (
   id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -261,6 +261,21 @@ SELECT ok(
 SELECT ok(
   NOT has_table_privilege('anon','public.exam_results','TRIGGER'),
   'anonymous clients cannot attach triggers to exam results'
+);
+
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname='storage'
+      AND tablename='objects'
+      AND policyname='Course staff update staged lesson PDFs'
+      AND cmd='UPDATE'
+      AND position('temp_' in COALESCE(qual,'')) > 0
+      AND position('temp_' in COALESCE(with_check,'')) > 0
+      AND position('public.has_course_capability' in COALESCE(qual,'')) > 0
+      AND position('public.has_course_capability' in COALESCE(with_check,'')) > 0
+  ),
+  'staged lesson PDF retries stay limited to course content managers'
 );
 
 SELECT * FROM finish();
