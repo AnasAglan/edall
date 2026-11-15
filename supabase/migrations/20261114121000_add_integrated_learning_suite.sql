@@ -232,6 +232,7 @@ DECLARE
   _due_at timestamptz;
   _id uuid;
   _attachment jsonb;
+  _existing_graded_at timestamptz;
 BEGIN
   IF auth.uid() IS NULL THEN RAISE EXCEPTION 'AUTH_REQUIRED'; END IF;
   SELECT a.course_id,a.due_at INTO _course_id,_due_at
@@ -258,6 +259,16 @@ BEGIN
       RAISE EXCEPTION 'INVALID_ATTACHMENT_PATH';
     END IF;
   END LOOP;
+
+  -- Lock an existing submission before checking its grading state. A learner
+  -- may revise an ungraded submission, but must not erase an approved grade.
+  SELECT s.graded_at INTO _existing_graded_at
+  FROM public.assignment_submissions s
+  WHERE s.assignment_id = _assignment_id AND s.student_id = auth.uid()
+  FOR UPDATE;
+  IF FOUND AND _existing_graded_at IS NOT NULL THEN
+    RAISE EXCEPTION 'SUBMISSION_ALREADY_GRADED';
+  END IF;
 
   INSERT INTO public.assignment_submissions(assignment_id,student_id,content,attachments,is_late)
   VALUES (_assignment_id,auth.uid(),COALESCE(_content,''),COALESCE(_attachments,'[]'::jsonb),_due_at IS NOT NULL AND now() > _due_at)
