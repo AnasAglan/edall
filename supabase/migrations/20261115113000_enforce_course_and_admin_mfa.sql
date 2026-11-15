@@ -290,7 +290,10 @@ WITH CHECK (
 
 -- The official exam-attempt RPC is the only path for student submission.
 DROP POLICY IF EXISTS "Users can insert own results" ON public.exam_results;
-REVOKE INSERT ON public.exam_results FROM PUBLIC, anon, authenticated;
+-- Exam submission is handled by the attempt RPC; clients cannot insert,
+-- delete, truncate, or attach arbitrary triggers to result records.
+REVOKE INSERT, DELETE, TRUNCATE, TRIGGER
+ON public.exam_results FROM PUBLIC, anon, authenticated;
 
 -- Preserve the legacy teacher grading UI, but do not let course staff rewrite
 -- result ownership, exam identity, attempt identity, or submission timestamps.
