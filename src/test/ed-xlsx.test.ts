@@ -5,9 +5,8 @@ import { runInNewContext } from "node:vm";
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 
-function readStoredZip(buffer: ArrayBuffer): Map<string, string> {
-  const view = new DataView(buffer);
-  const bytes = new Uint8Array(buffer);
+function readStoredZip(bytes: Uint8Array): Map<string, string> {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const decoder = new TextDecoder();
   const files = new Map<string, string>();
   let offset = 0;
@@ -30,7 +29,6 @@ describe("ED-ALL XLSX export", () => {
     const source = read("public/ed-xlsx.js");
     const sandbox = {
       window: {},
-      Blob,
       TextEncoder,
       TextDecoder,
       Uint8Array,
@@ -46,7 +44,7 @@ describe("ED-ALL XLSX export", () => {
       clearTimeout,
     };
     runInNewContext(source, sandbox);
-    const api = (sandbox.window as { EDALLXLSX?: { createWorkbookBlob: (rows: unknown[], options?: unknown) => Promise<Blob> } }).EDALLXLSX;
+    const api = (sandbox.window as { EDALLXLSX?: { createWorkbookBytes: (rows: unknown[], options?: unknown) => Uint8Array } }).EDALLXLSX;
     expect(api).toBeDefined();
 
     const blob = await api!.createWorkbookBlob(
@@ -68,12 +66,12 @@ describe("ED-ALL XLSX export", () => {
 
   it("keeps the first row frozen and supports a header-only report", async () => {
     const source = read("public/ed-xlsx.js");
-    const sandbox = { window: {}, Blob, TextEncoder, Uint8Array, DataView, ArrayBuffer, URL, Math, JSON, Number, String, Object, setTimeout, clearTimeout };
+    const sandbox = { window: {}, TextEncoder, Uint8Array, DataView, ArrayBuffer, URL, Math, JSON, Number, String, Object, setTimeout, clearTimeout };
     runInNewContext(source, sandbox);
-    const api = (sandbox.window as { EDALLXLSX?: { createWorkbookBlob: (rows: unknown[], options?: unknown) => Promise<Blob> } }).EDALLXLSX;
+    const api = (sandbox.window as { EDALLXLSX?: { createWorkbookBytes: (rows: unknown[], options?: unknown) => Uint8Array } }).EDALLXLSX;
     expect(api).toBeDefined();
-    const blob = await api!.createWorkbookBlob([], { headers: ["الاسم", "الدرجة"], rightToLeft: true });
-    const files = readStoredZip(await blob.arrayBuffer());
+    const archive = api!.createWorkbookBytes([], { headers: ["الاسم", "الدرجة"], rightToLeft: true });
+    const files = readStoredZip(archive);
     expect(files.get("xl/worksheets/sheet1.xml")).toContain('state="frozen"');
     expect(files.get("xl/worksheets/sheet1.xml")).toContain("الدرجة");
   });
