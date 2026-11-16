@@ -22,6 +22,17 @@ describe("video media proxy environment isolation", () => {
     const res = await videoMediaProxy.fetch(request(MEDIA_URL, "https://attacker.example"), STAGING_ENV);
     expect(res.status).toBe(403);
   });
+
+  it("does not allow the temporary PR preview origin in the production allowlist", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const branchPreviewOrigin = "https://security-edall-hardening-and-feature-suite-edall.anasaglan2011.workers.dev";
+    const res = await videoMediaProxy.fetch(request(MEDIA_URL, branchPreviewOrigin));
+    expect(res.status).toBe(403);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("blocks redirects to untrusted targets", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 302, headers: { Location: "http://127.0.0.1/latest/meta-data" } }));
     vi.stubGlobal("fetch", fetchMock);
