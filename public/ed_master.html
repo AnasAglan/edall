@@ -2333,10 +2333,39 @@ word-spacing: normal !important;
         <div class="loading-spinner"></div>
     </div>
 
+    <script src="/ed-staging-config.js"></script>
     <script>
-        // Supabase Client
-        const SUPABASE_URL = 'https://iuaddjoofgrirzslzqfy.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml1YWRkam9vZmdyaXJ6c2x6cWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5ODczMjcsImV4cCI6MjA4OTU2MzMyN30.bkMuslyDuH4lkIWhwVoGdTqr_lgM9HMKdo57yj4xT5M';
+        // Vite serves/emits this configuration asset from this project's .env.
+        const stagingConfig = window.ED_STAGING_CONFIG;
+        let stagingConfigValid = !!(stagingConfig &&
+            stagingConfig.projectId === 'atpltvpwfammcnxcpvop' &&
+            ['https://' + stagingConfig.projectId + '.supabase.co',
+             'https://c--4d956767-2768-416c-981b-79ff624686eb-prod.lovable.cloud'].includes(stagingConfig.supabaseUrl) &&
+            typeof stagingConfig.supabasePublishableKey === 'string');
+        if (stagingConfigValid) {
+            const key = stagingConfig.supabasePublishableKey;
+            if (key.startsWith('sb_publishable_')) {
+                stagingConfigValid = /^sb_publishable_[A-Za-z0-9_-]+$/.test(key);
+            } else {
+                try {
+                    const payload = JSON.parse(atob(key.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+                    stagingConfigValid = payload.ref === stagingConfig.projectId && payload.role === 'anon';
+                } catch (_) { stagingConfigValid = false; }
+            }
+        }
+        if (!stagingConfigValid) {
+            const configError = 'خطأ إعداد Staging: إعدادات الاتصال الخاصة بهذا المشروع ناقصة أو غير مطابقة. تم إيقاف الاتصال.';
+            window.ED_STAGING_CONFIG_ERROR = configError;
+            const errorToast = document.getElementById('toast');
+            if (errorToast) {
+                errorToast.textContent = configError;
+                errorToast.setAttribute('role', 'alert');
+                errorToast.style.display = 'block';
+            }
+            throw new Error(configError);
+        }
+        const SUPABASE_URL = stagingConfig.supabaseUrl;
+        const SUPABASE_ANON_KEY = stagingConfig.supabasePublishableKey;
         const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
             auth: {
                 // Preserve the existing Supabase storage key so previously saved sessions remain readable.
@@ -2702,12 +2731,12 @@ word-spacing: normal !important;
                     '/storage/v1/object/sign/lesson-pdfs/',
                     '/storage/v1/object/lesson-pdfs/'
                 ];
-                if (/^https?:\\/\\//i.test(value)) {
+                if (/^https?:\/\//i.test(value)) {
                     const marker = markers.find(item => value.includes(item));
                     if (!marker) return null;
                     value = value.slice(value.indexOf(marker) + marker.length).split('?')[0];
                 }
-                value = decodeURIComponent(value).replace(/^\\/+|\\/+$/g, '');
+                value = decodeURIComponent(value).replace(/^\/+|\/+$/g, '');
                 const parts = value.split('/');
                 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
                 const stagedFolder = /^temp_[0-9]{10,}$/;
@@ -3627,8 +3656,8 @@ cleanups.push(() => {
                             language: currentLanguage,
                             desktopBridge: null,
                             extractorConfig: {
-                                workerUrl: 'https://edall-invidious-extractor.anasaglan2011.workers.dev',
-                                mediaProxyUrl: 'https://edall-video-media-proxy.anasaglan2011.workers.dev',
+                                workerUrl: 'https://edall-invidious-extractor-staging.anasaglan2011.workers.dev',
+                                mediaProxyUrl: 'https://edall-video-media-proxy-staging.anasaglan2011.workers.dev',
                                 origin: window.location.origin
                             },
                             toast: (message, type) => showToast(message, type || 'info')

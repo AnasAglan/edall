@@ -1,23 +1,27 @@
 // Cloudflare Workers version of the ED-ALL Invidious extractor.
 // Playback readiness requires an actual segment response, not only a metadata or manifest response.
 // Deploy as a Worker named edall-invidious-extractor.
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "https://edall.lovable.app",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Vary": "Origin",
-};
-const REGISTRY_URL = "https://edall.lovable.app/video-instances.json";
+const DEFAULT_ALLOWED_ORIGIN = "https://edall.lovable.app";
+const DEFAULT_REGISTRY_URL = "https://edall.lovable.app/video-instances.json";
+function buildCorsHeaders(origin: string | null, allowedOrigin: string) {
+  const headers = new Headers({
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Vary": "Origin",
+  });
+  if (origin && origin === allowedOrigin) headers.set("Access-Control-Allow-Origin", allowedOrigin);
+  return headers;
+}
 const OFFICIAL_INSTANCES_API = "https://api.invidious.io/instances.json?sort_by=health";
 const VIDEO_ID_PATTERN = /^[a-zA-Z0-9_-]{11}$/;
 const REQUEST_TIMEOUT_MS = 6500;
 const BATCH_SIZE = 4;
 
-function responseJson(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" },
-  });
+function responseJson(body: unknown, status = 200, origin: string | null = null, allowedOrigin = DEFAULT_ALLOWED_ORIGIN) {
+  const headers = buildCorsHeaders(origin, allowedOrigin);
+  headers.set("Content-Type", "application/json");
+  headers.set("Cache-Control", "no-store");
+  return new Response(JSON.stringify(body), { status, headers });
 }
 
 function cleanBase(value: unknown): string | null {
@@ -47,9 +51,9 @@ async function fetchWithTimeout(url: string, timeout = REQUEST_TIMEOUT_MS) {
   }
 }
 
-async function loadOfficialInstances(): Promise<Array<{ url: string; score: number; status: string }>> {
+async function loadOfficialInstances(registryUrl = DEFAULT_REGISTRY_URL): Promise<Array<{ url: string; score: number; status: string }>> {
   try {
-    const registryResponse = await fetchWithTimeout(REGISTRY_URL, 4500);
+    const registryResponse = await fetchWithTimeout(registryUrl, 4500);
     if (registryResponse.ok) {
       const registry = await registryResponse.json();
       const entries = Array.isArray(registry?.sources?.invidious) ? registry.sources.invidious : [];
@@ -460,9 +464,9 @@ async function probeInstance(instance: { url: string; score: number; status: str
   }
 }
 
-async function extract(videoId: string, excluded: string[]) {
+async function extract(videoId: string, excluded: string[], registryUrl = DEFAULT_REGISTRY_URL) {
   const excludedSet = new Set((excluded || []).map(cleanBase).filter(Boolean));
-  const instances = (await loadOfficialInstances())
+  const instances = (await loadOfficialInstances(registryUrl))
     .filter((item) => !excludedSet.has(item.url))
     .sort((a, b) => {
       const rank = (status: string) => status === "healthy" ? 3 : status === "degraded" ? 2 : status === "unknown" ? 1 : 0;
@@ -516,30 +520,28 @@ async function extract(videoId: string, excluded: string[]) {
   };
 }
 
-export default { async fetch(req: Request) {
+export default { async fetch(req: Request, env: Record<string, string> = {}) {
+  const allowedOrigin = env.EDALL_ALLOWED_ORIGIN || DEFAULT_ALLOWED_ORIGIN;
+  const registryUrl = env.EDALL_REGISTRY_URL || `${allowedOrigin}/video-instances.json`;
+  const origin = req.headers.get("origin");
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    if (origin && origin !== allowedOrigin) return new Response("Origin is not allowed.", { status: 403 });
+    return new Response(null, { status: 204, headers: buildCorsHeaders(origin, allowedOrigin) });
   }
-  if (req.method !== "POST") return responseJson({ success: false, error: "Method not allowed." }, 405);
-
+  if (req.method !== "POST") return responseJson({ success: false, error: "Method not allowed." }, 405, origin, allowedOrigin);
+  if (origin && origin !== allowedOrigin) return responseJson({ success: false, error: "Origin is not allowed." }, 403, origin, allowedOrigin);
   try {
-    const origin = req.headers.get("origin");
-    if (origin && origin !== "https://edall.lovable.app") {
-      return responseJson({ success: false, error: "Origin is not allowed." }, 403);
-    }
     const body = await req.json();
     const videoId = String(body?.videoId || "");
-    if (!VIDEO_ID_PATTERN.test(videoId)) {
-      return responseJson({ success: false, error: "A valid YouTube video ID is required." }, 400);
-    }
+    if (!VIDEO_ID_PATTERN.test(videoId)) return responseJson({ success: false, error: "A valid YouTube video ID is required." }, 400, origin, allowedOrigin);
     const excluded = Array.isArray(body?.excludeInstances) ? body.excludeInstances.map(String).slice(0, 30) : [];
-    const result = await extract(videoId, excluded);
-    return responseJson(result);
+    const result = await extract(videoId, excluded, registryUrl);
+    return responseJson(result, 200, origin, allowedOrigin);
   } catch (error) {
     console.error("[extract-youtube-stream]", error);
     return responseJson({
       success: false,
       error: String((error as Error)?.message || error || "Unknown extractor error").slice(0, 500),
-    }, 502);
+    }, 502, origin, allowedOrigin);
   }
 } };

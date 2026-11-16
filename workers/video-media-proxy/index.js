@@ -1,15 +1,18 @@
-const ALLOWED_ORIGINS = new Set([
+const DEFAULT_ALLOWED_ORIGINS = new Set([
   "https://edall.lovable.app",
   "https://id-preview--41c4997e-3169-4ff8-bf15-3da064df3594.lovable.app",
   "https://security-edall-hardening-and-feature-suite-edall.anasaglan2011.workers.dev",
 ]);
-
-const corsHeaders = {
-  "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-  "Access-Control-Allow-Headers": "Range, Content-Type",
-  "Access-Control-Expose-Headers": "Accept-Ranges, Content-Length, Content-Range, Content-Type",
-  "Vary": "Origin",
-};
+function buildCorsHeaders(origin, origins) {
+  const headers = new Headers({
+    "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+    "Access-Control-Allow-Headers": "Range, Content-Type",
+    "Access-Control-Expose-Headers": "Accept-Ranges, Content-Length, Content-Range, Content-Type",
+    "Vary": "Origin",
+  });
+  if (origin && origins.has(origin)) headers.set("Access-Control-Allow-Origin", origin);
+  return headers;
+}
 
 function isGoogleVideoHost(hostname) {
   const host = String(hostname || "").toLowerCase();
@@ -28,16 +31,18 @@ function getAllowedMediaUrl(raw) {
 }
 
 export default {
-  async fetch(request) {
+  async fetch(request, env = {}) {
     const requestUrl = new URL(request.url);
     const origin = request.headers.get("Origin") || "";
-    const responseCorsHeaders = new Headers(corsHeaders);
-    if (origin && !ALLOWED_ORIGINS.has(origin)) {
+    const allowedOrigins = typeof env.EDALL_ALLOWED_ORIGIN === "string" && env.EDALL_ALLOWED_ORIGIN
+      ? new Set([env.EDALL_ALLOWED_ORIGIN]) : DEFAULT_ALLOWED_ORIGINS;
+    const responseCorsHeaders = buildCorsHeaders(origin, allowedOrigins);
+    if (origin && !allowedOrigins.has(origin)) {
       return new Response("Origin not allowed", { status: 403, headers: responseCorsHeaders });
     }
     if (origin) responseCorsHeaders.set("Access-Control-Allow-Origin", origin);
     if (requestUrl.pathname === "/health" && request.method === "GET") {
-      return new Response(JSON.stringify({ status: "ok", service: "edall-video-media-proxy" }), {
+      return new Response(JSON.stringify({ status: "ok", service: env.EDALL_SERVICE_NAME || "edall-video-media-proxy" }), {
         status: 200, headers: { ...Object.fromEntries(responseCorsHeaders), "Content-Type": "application/json" }
       });
     }
