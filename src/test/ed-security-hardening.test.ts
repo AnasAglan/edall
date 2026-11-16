@@ -105,7 +105,8 @@ describe("ED-ALL production authorization hardening", () => {
   it("does not expose the media proxy to arbitrary browser origins", () => {
     const proxy = read("workers/video-media-proxy/index.js");
     expect(proxy).not.toContain('"Access-Control-Allow-Origin": "*"');
-    expect(proxy).toContain("if (origin && !ALLOWED_ORIGINS.has(origin))");
+    expect(proxy).toContain("if (origin && !allowedOrigins.has(origin))");
+    expect(proxy).toContain("env.EDALL_ALLOWED_ORIGIN");
     expect(proxy).toContain('responseCorsHeaders.set("Access-Control-Allow-Origin", origin)');
   });
 

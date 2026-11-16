@@ -34,6 +34,10 @@ jobs:
           node --check scripts/staging-config.mjs
           node --check scripts/deploy-edall-assistant-staging.mjs
       - name: Test suite
+        env:
+          VITE_SUPABASE_PROJECT_ID: "atpltvpwfammcnxcpvop"
+          VITE_SUPABASE_URL: "https://c--4d956767-2768-416c-981b-79ff624686eb-prod.lovable.cloud"
+          VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_fixture_only
         run: npm test -- --reporter=verbose
       - name: Build using non-secret Staging fixture
         env:
