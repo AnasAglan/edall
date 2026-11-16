@@ -16,18 +16,23 @@ function isValidStagingPublishableKey(key) {
   try { payload = JSON.parse(atob(key.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))); } catch {}
   return payload?.ref === STAGING_PROJECT_REF && payload?.role === "anon";
 }
+export function resolveAssistantRedirectOrigin(isStaging) {
+  return isStaging ? STAGING_ORIGIN : "https://edall.lovable.app";
+}
 function resolveAssistantEnv(env) {
   if (env?.EDALL_ENV === "staging") {
     const key = env.STAGING_SUPABASE_PUBLISHABLE_KEY;
     if (env.SUPABASE_PROJECT_ID !== STAGING_PROJECT_REF || env.SUPABASE_URL !== STAGING_SUPABASE_URL || !isValidStagingPublishableKey(key)) return null;
     return { ...env, SUPABASE_URL: STAGING_SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY: key,
-      GEMINI_API_KEY: env.STAGING_GEMINI_API_KEY, WORKER_SERVICE_NAME: env.WORKER_SERVICE_NAME || "edall-assistant-staging" };
+      GEMINI_API_KEY: env.STAGING_GEMINI_API_KEY, WORKER_SERVICE_NAME: env.WORKER_SERVICE_NAME || "edall-assistant-staging",
+      WORKER_APP_ORIGIN: resolveAssistantRedirectOrigin(true) };
   }
   const key = env?.SUPABASE_PUBLISHABLE_KEY;
   if (typeof key !== "string" || !key.trim()) return null;
   if (env.SUPABASE_URL && env.SUPABASE_URL !== PRODUCTION_SUPABASE_URL) return null;
   return { ...env, SUPABASE_URL: PRODUCTION_SUPABASE_URL, GEMINI_API_KEY: env.GEMINI_API_KEY,
-    WORKER_SERVICE_NAME: env.WORKER_SERVICE_NAME || "edall-assistant" };
+    WORKER_SERVICE_NAME: env.WORKER_SERVICE_NAME || "edall-assistant",
+    WORKER_APP_ORIGIN: resolveAssistantRedirectOrigin(false) };
 }
 const SYSTEM = [
   "أنت مساعد ED-ALL التشغيلي الذكي للمديرين والمدرسين فقط. مهمتك مساعدة المستخدم في إنجاز الأعمال الحقيقية داخل ED-ALL: الدورات وأسعارها، الشراء والتسجيل والمحفظة، المفضلة، المحاضرات والفيديوهات وملفات PDF، الاختبارات والأسئلة والنتائج، حسابات الطلاب والمدرسين وصورهم الشخصية، الإشعارات، الإحصاءات وإعدادات المنصة.",
@@ -1507,7 +1512,7 @@ async function tool(name, args, env, token, user, roles, images = []) {
     let resetEmailWarning = null;
     try {
       const recoveryUrl = new URL("/auth/v1/recover", env.SUPABASE_URL);
-      recoveryUrl.searchParams.set("redirect_to", STAGING_ORIGIN);
+      recoveryUrl.searchParams.set("redirect_to", env.WORKER_APP_ORIGIN);
       const recoveryResponse = await fetch(recoveryUrl, {
         method: "POST",
         headers: {
@@ -1538,7 +1543,7 @@ async function tool(name, args, env, token, user, roles, images = []) {
     const profile = Array.isArray(profiles) ? profiles[0] : null;
     if (!profile?.email) throw new Error("لم أجد بريدًا إلكترونيًا مرتبطًا بهذا الحساب.");
     const recoveryUrl = new URL("/auth/v1/recover", env.SUPABASE_URL);
-    recoveryUrl.searchParams.set("redirect_to", STAGING_ORIGIN);
+    recoveryUrl.searchParams.set("redirect_to", env.WORKER_APP_ORIGIN);
     const response = await fetch(recoveryUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: env.SUPABASE_PUBLISHABLE_KEY },

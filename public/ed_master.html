@@ -2339,8 +2339,7 @@ word-spacing: normal !important;
         const stagingConfig = window.ED_STAGING_CONFIG;
         let stagingConfigValid = !!(stagingConfig &&
             stagingConfig.projectId === 'atpltvpwfammcnxcpvop' &&
-            ['https://' + stagingConfig.projectId + '.supabase.co',
-             'https://c--4d956767-2768-416c-981b-79ff624686eb-prod.lovable.cloud'].includes(stagingConfig.supabaseUrl) &&
+            stagingConfig.supabaseUrl === 'https://c--4d956767-2768-416c-981b-79ff624686eb-prod.lovable.cloud' &&
             typeof stagingConfig.supabasePublishableKey === 'string');
         if (stagingConfigValid) {
             const key = stagingConfig.supabasePublishableKey;

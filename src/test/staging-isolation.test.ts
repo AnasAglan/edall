@@ -2,7 +2,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { renderStagingConfig, validateStagingConfig, stagingConfigPlugin } from "../../scripts/staging-config.mjs";
-import worker from "../../workers/edall-assistant/index.js";
+import worker, { resolveAssistantRedirectOrigin } from "../../workers/edall-assistant/index.js";
 
 const ref = "atpltvpwfammcnxcpvop";
 const origin = "https://id-preview--c65d2fd9-1c85-479f-9347-d54b6341e6a7.lovable.app";
@@ -15,6 +15,12 @@ const request = (requestOrigin = origin, method = "POST") => new Request("https:
 });
 
 describe("Staging isolation", () => {
+  it("keeps password reset redirects inside the matching environment", () => {
+    expect(resolveAssistantRedirectOrigin(true)).toBe(origin);
+    expect(resolveAssistantRedirectOrigin(false)).toBe("https://edall.lovable.app");
+  });
+
+
   it("removes production refs, URLs, endpoints and embedded JWT keys from scoped source", () => {
     for (const file of ["public/ed_master.html", "public/ed_assistant.js", "wrangler.assistant.staging.toml", "wrangler.staging.toml", "workers/video-media-proxy/wrangler.staging.toml", "scripts/staging-config.mjs", "scripts/deploy-edall-assistant-staging.mjs"]) {
       const source = readFileSync(file, "utf8");
