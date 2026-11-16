@@ -180,14 +180,14 @@ function bundleScore(bundle: any, verifiedHeights: number[] = []): number {
     (bundle.hls ? 25 : 0);
 }
 
-async function probeMediaUrl(url: string) {
+async function probeMediaUrl(url: string, origin = DEFAULT_ALLOWED_ORIGIN) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 4500);
   try {
     const response = await fetch(url, {
       method: "GET",
       signal: controller.signal,
-      headers: { Range: "bytes=0-1", Origin: "https://edall.lovable.app" },
+      headers: { Range: "bytes=0-1", Origin: origin },
       cache: "no-store",
     });
     const contentType = response.headers.get("content-type") || "";
@@ -200,7 +200,7 @@ async function probeMediaUrl(url: string) {
       status: response.status,
       rangeSupported: response.status === 206,
       cors: response.headers.get("access-control-allow-origin"),
-      corsAllowed: ["*", "https://edall.lovable.app"].includes(response.headers.get("access-control-allow-origin") || ""),
+      corsAllowed: ["*", origin].includes(response.headers.get("access-control-allow-origin") || ""),
       contentType,
       error: !httpOk ? "Media HTTP " + response.status : isManifest ? "The URL returned a manifest, not a media segment." : !mediaTypeOk ? "Media URL returned a non-media content type: " + contentType : null,
     };
@@ -290,7 +290,7 @@ function parseHlsPlaylist(body: string, baseUrl: string, fallbackHeight = 0) {
   return { variants, audioTracks, segmentUrl };
 }
 
-async function probeHlsPlaylist(url: string, expectedHeight = 0, depth = 0, initial?: { body: string; cors: string | null; status: number; contentType: string | null }): Promise<HlsProbeResult> {
+async function probeHlsPlaylist(url: string, expectedHeight = 0, depth = 0, initial?: { body: string; cors: string | null; status: number; contentType: string | null }, origin = DEFAULT_ALLOWED_ORIGIN): Promise<HlsProbeResult> {
   if (depth > 3) return { ok: false, format: "hls", height: expectedHeight, audioAvailable: false, error: "HLS playlist nesting limit reached." };
   let body = initial?.body;
   let cors = initial?.cors || null;
@@ -302,7 +302,7 @@ async function probeHlsPlaylist(url: string, expectedHeight = 0, depth = 0, init
     try {
       const response = await fetch(url, {
         signal: controller.signal,
-        headers: { Accept: "application/vnd.apple.mpegurl, application/x-mpegURL, */*", Origin: "https://edall.lovable.app" },
+        headers: { Accept: "application/vnd.apple.mpegurl, application/x-mpegURL, */*", Origin: origin },
         cache: "no-store",
       });
       status = response.status;
@@ -313,7 +313,7 @@ async function probeHlsPlaylist(url: string, expectedHeight = 0, depth = 0, init
       clearTimeout(timer);
     }
   }
-  const corsAllowed = cors === "*" || cors === "https://edall.lovable.app";
+  const corsAllowed = cors === "*" || cors === origin;
   if (status < 200 || status >= 300 || !/#EXTM3U/i.test(body) || !corsAllowed) {
     return { ok: false, format: "hls", status, cors, corsAllowed, contentType, height: expectedHeight, audioAvailable: false, error: status < 200 || status >= 300 ? "Playlist HTTP " + status : !corsAllowed ? "Playlist CORS is not allowed." : "Response is not an HLS playlist." };
   }
@@ -321,12 +321,12 @@ async function probeHlsPlaylist(url: string, expectedHeight = 0, depth = 0, init
   if (parsed.variants.length) {
     const bestVariants: HlsVariant[] = parsed.variants.sort((a: HlsVariant, b: HlsVariant) => b.height - a.height).slice(0, 3);
     const checks: HlsProbeResult[] = await Promise.all(bestVariants.map(async (variant: HlsVariant): Promise<HlsProbeResult> => {
-      const video: HlsProbeResult = await probeHlsPlaylist(variant.url, variant.height, depth + 1);
+      const video: HlsProbeResult = await probeHlsPlaylist(variant.url, variant.height, depth + 1, undefined, origin);
       if (!video.ok) return { ...video, height: variant.height, audioAvailable: false };
       if (!variant.audioGroup) return { ...video, height: variant.height, audioAvailable: true };
       const audioTrack = parsed.audioTracks.find((track) => track.groupId === variant.audioGroup);
       if (!audioTrack) return { ...video, ok: false, height: variant.height, audioAvailable: false, error: "HLS variant needs a separate audio group without a URI." };
-      const audio: HlsProbeResult = await probeHlsPlaylist(audioTrack.url, 0, depth + 1);
+      const audio: HlsProbeResult = await probeHlsPlaylist(audioTrack.url, 0, depth + 1, undefined, origin);
       return { ...video, ok: video.ok && audio.ok, height: variant.height, audioAvailable: audio.ok, audioProbe: { ok: audio.ok, status: audio.status || null, error: audio.error || null }, error: video.ok && audio.ok ? null : audio.error || video.error };
     }));
     const usable: HlsProbeResult[] = checks.filter((check: HlsProbeResult) => check.ok && check.audioAvailable);
@@ -336,36 +336,36 @@ async function probeHlsPlaylist(url: string, expectedHeight = 0, depth = 0, init
   if (!parsed.segmentUrl) {
     return { ok: false, format: "hls", status, cors, corsAllowed: true, contentType, heights: [], audioAvailable: false, error: "HLS media playlist contained no testable segment." };
   }
-  const segmentProbe = await probeMediaUrl(parsed.segmentUrl);
+  const segmentProbe = await probeMediaUrl(parsed.segmentUrl, origin);
   const ok = segmentProbe.ok && segmentProbe.corsAllowed;
   const heights = ok && expectedHeight > 0 ? [expectedHeight] : [];
   return { ok, format: "hls", status: segmentProbe.status, cors, corsAllowed: true, contentType, heights, audioAvailable: ok, segmentVerified: ok, segmentProbe, error: ok ? null : segmentProbe.error || "HLS segment did not pass media/range/CORS verification." };
 }
 
-async function probeManifestUrl(url: string) {
+async function probeManifestUrl(url: string, origin = DEFAULT_ALLOWED_ORIGIN) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 4500);
   try {
     const response = await fetch(url, {
       signal: controller.signal,
-      headers: { Accept: "application/dash+xml, application/vnd.apple.mpegurl, application/x-mpegURL, */*", Origin: "https://edall.lovable.app" },
+      headers: { Accept: "application/dash+xml, application/vnd.apple.mpegurl, application/x-mpegURL, */*", Origin: origin },
       cache: "no-store",
     });
     const cors = response.headers.get("access-control-allow-origin");
-    const corsAllowed = cors === "*" || cors === "https://edall.lovable.app";
+    const corsAllowed = cors === "*" || cors === origin;
     const contentType = response.headers.get("content-type");
     const body = response.ok ? await response.text() : "";
     const isDash = /<MPD\b/i.test(body);
     const isHls = /#EXTM3U/i.test(body);
     if (isHls && response.ok && corsAllowed) {
-      const verified = await probeHlsPlaylist(url, 0, 0, { body, cors, status: response.status, contentType });
+      const verified = await probeHlsPlaylist(url, 0, 0, { body, cors, status: response.status, contentType }, origin);
       return { ...verified, cors, corsAllowed, contentType, format: "hls" };
     }
     if (isDash && response.ok && corsAllowed) {
       const baseMatch = body.match(/<BaseURL[^>]*>([^<]+)<\/BaseURL>/i);
       if (baseMatch) {
         const baseUrl = new URL(baseMatch[1].trim(), response.url || url).href;
-        const mediaProbe = await probeMediaUrl(baseUrl);
+        const mediaProbe = await probeMediaUrl(baseUrl, origin);
         const ok = mediaProbe.ok && mediaProbe.corsAllowed;
         return { ok, status: mediaProbe.status, cors, corsAllowed, contentType, format: "dash", heights: [], audioAvailable: ok, segmentVerified: ok, mediaProbe, error: ok ? null : mediaProbe.error || "DASH BaseURL media probe failed." };
       }
@@ -378,7 +378,7 @@ async function probeManifestUrl(url: string) {
     clearTimeout(timer);
   }
 }
-async function probeInstance(instance: { url: string; score: number; status: string }, videoId: string) {
+async function probeInstance(instance: { url: string; score: number; status: string }, videoId: string, origin = DEFAULT_ALLOWED_ORIGIN) {
   const url = instance.url + "/api/v1/videos/" + encodeURIComponent(videoId) +
     "?fields=title,lengthSeconds,liveNow,hlsUrl,dashUrl,formatStreams,adaptiveFormats";
   const controller = new AbortController();
@@ -401,8 +401,8 @@ async function probeInstance(instance: { url: string; score: number; status: str
       .filter((stream: any) => typeof stream.url === "string")
       .slice(0, 3);
     const [initialVideoProbes, initialAudioProbes] = await Promise.all([
-      Promise.all(videoCandidates.map((stream: any) => probeMediaUrl(stream.url))),
-      Promise.all(audioCandidates.map((stream: any) => probeMediaUrl(stream.url))),
+      Promise.all(videoCandidates.map((stream: any) => probeMediaUrl(stream.url, origin))),
+      Promise.all(audioCandidates.map((stream: any) => probeMediaUrl(stream.url, origin))),
     ]);
     const sourceManifestUrls = [bundle.dash, bundle.hls].filter(
       (manifest): manifest is string => typeof manifest === "string" && !!manifest
@@ -413,7 +413,7 @@ async function probeInstance(instance: { url: string; score: number; status: str
       ...audioCandidates.filter((stream: any, index: number) => initialAudioProbes[index]?.isManifest).map((stream: any) => stream.url),
     ];
     const manifestUrls = [...new Set(discoveredManifestUrls)];
-    const manifestProbes = await Promise.all(manifestUrls.map((manifest) => probeManifestUrl(manifest)));
+    const manifestProbes = await Promise.all(manifestUrls.map((manifest) => probeManifestUrl(manifest, origin)));
     const mediaProbes = initialVideoProbes.filter((probe: any) => !probe.isManifest);
     const audioProbes = initialAudioProbes.filter((probe: any) => !probe.isManifest);
     const verifiedDirectVideos = videoCandidates.filter((stream: any, index: number) =>
@@ -464,7 +464,7 @@ async function probeInstance(instance: { url: string; score: number; status: str
   }
 }
 
-async function extract(videoId: string, excluded: string[], registryUrl = DEFAULT_REGISTRY_URL) {
+async function extract(videoId: string, excluded: string[], registryUrl = DEFAULT_REGISTRY_URL, origin = DEFAULT_ALLOWED_ORIGIN) {
   const excludedSet = new Set((excluded || []).map(cleanBase).filter(Boolean));
   const instances = (await loadOfficialInstances(registryUrl))
     .filter((item) => !excludedSet.has(item.url))
@@ -479,7 +479,7 @@ async function extract(videoId: string, excluded: string[], registryUrl = DEFAUL
 
   for (let offset = 0; offset < instances.length; offset += BATCH_SIZE) {
     const batch = instances.slice(offset, offset + BATCH_SIZE);
-    const results = await Promise.allSettled(batch.map((instance) => probeInstance(instance, videoId)));
+    const results = await Promise.allSettled(batch.map((instance) => probeInstance(instance, videoId, origin)));
     for (const result of results) {
       if (result.status === "fulfilled") {
         if (!best || result.value.score > best.score) best = result.value;
@@ -535,7 +535,7 @@ export default { async fetch(req: Request, env: Record<string, string> = {}) {
     const videoId = String(body?.videoId || "");
     if (!VIDEO_ID_PATTERN.test(videoId)) return responseJson({ success: false, error: "A valid YouTube video ID is required." }, 400, origin, allowedOrigin);
     const excluded = Array.isArray(body?.excludeInstances) ? body.excludeInstances.map(String).slice(0, 30) : [];
-    const result = await extract(videoId, excluded, registryUrl);
+    const result = await extract(videoId, excluded, registryUrl, allowedOrigin);
     return responseJson(result, 200, origin, allowedOrigin);
   } catch (error) {
     console.error("[extract-youtube-stream]", error);
