@@ -69,7 +69,12 @@ export function validateAppConfig(env) {
 }
 
 export function validateStagingConfig(env) {
-  const config = validateAppConfig(env);
+  let config;
+  try {
+    config = validateAppConfig(env);
+  } catch {
+    throw new Error("Staging configuration error: the project ID, backend URL and publishable key must match the Staging project.");
+  }
   if (config.environment !== "staging") {
     throw new Error("Staging configuration error: production credentials are not accepted by the Staging build.");
   }
