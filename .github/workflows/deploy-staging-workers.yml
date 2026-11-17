@@ -1,0 +1,83 @@
+name: Deploy isolated ED-ALL Staging Workers
+
+on:
+  push:
+    branches: [fix/staging-isolation]
+    paths:
+      - ".github/workflows/deploy-staging-workers.yml"
+      - "workers/extract-youtube-stream/**"
+      - "workers/video-media-proxy/**"
+      - "workers/edall-assistant/**"
+      - "wrangler.staging.toml"
+      - "wrangler.assistant.staging.toml"
+      - "scripts/deploy-edall-assistant-staging.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-staging-workers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate isolated Staging deployment credentials
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          STAGING_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::Missing CLOUDFLARE_API_TOKEN GitHub Actions secret."; exit 1; }
+          test -n "$STAGING_SUPABASE_PUBLISHABLE_KEY" || { echo "::error::Missing STAGING_SUPABASE_PUBLISHABLE_KEY GitHub Actions secret."; exit 1; }
+          case "$STAGING_SUPABASE_PUBLISHABLE_KEY" in
+            sb_publishable_*|eyJ*) ;;
+            *) echo "::error::Staging publishable key has an unexpected format."; exit 1 ;;
+          esac
+
+      - name: Prepare short-lived Staging assistant secrets file
+        env:
+          STAGING_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_PUBLISHABLE_KEY }}
+          STAGING_GEMINI_API_KEY: ${{ secrets.STAGING_GEMINI_API_KEY }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const key = process.env.STAGING_SUPABASE_PUBLISHABLE_KEY;
+          if (!key) throw new Error("Missing Staging publishable key.");
+          const values = { STAGING_SUPABASE_PUBLISHABLE_KEY: key };
+          if (process.env.STAGING_GEMINI_API_KEY) values.STAGING_GEMINI_API_KEY = process.env.STAGING_GEMINI_API_KEY;
+          const destination = path.join(process.env.RUNNER_TEMP, "edall-assistant-staging-secrets.json");
+          fs.writeFileSync(destination, JSON.stringify(values), { encoding: "utf8", mode: 0o600, flag: "wx" });
+          NODE
+
+      - name: Deploy isolated Invidious extractor
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: f5cd21e0ec5497880217da477e4640f2
+          wranglerVersion: "4"
+          command: deploy --config wrangler.staging.toml
+
+      - name: Deploy isolated video media proxy
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: f5cd21e0ec5497880217da477e4640f2
+          wranglerVersion: "4"
+          command: deploy --config workers/video-media-proxy/wrangler.staging.toml
+
+      - name: Deploy isolated assistant with Staging-only credentials
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: f5cd21e0ec5497880217da477e4640f2
+          wranglerVersion: "4"
+          command: deploy --config wrangler.assistant.staging.toml --secrets-file=${{ runner.temp }}/edall-assistant-staging-secrets.json
+
+      - name: Remove temporary secret file
+        if: always()
+        run: rm -f "${{ runner.temp }}/edall-assistant-staging-secrets.json"
