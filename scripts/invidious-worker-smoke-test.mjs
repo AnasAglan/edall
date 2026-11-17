@@ -38,6 +38,9 @@ if (!payload.instance || !hasPlayablePath) {
     "Invidious Worker returned data but did not prove a browser-playable video+audio path: " +
       JSON.stringify({
         instance: payload.instance || null,
+        testedInstances: diagnostics.testedInstances || 0,
+        failedInstances: diagnostics.failedInstances || 0,
+        failedInstanceDetails: diagnostics.failedInstanceDetails || [],
         videoStreams: videoStreams.length,
         audioStreams: audioStreams.length,
         playbackVerified: diagnostics.playbackVerified === true,
@@ -81,6 +84,9 @@ console.log(
   JSON.stringify({
     success: true,
     instance: payload.instance,
+    testedInstances: diagnostics.testedInstances || 0,
+    failedInstances: diagnostics.failedInstances || 0,
+    failedInstanceDetails: diagnostics.failedInstanceDetails || [],
     videoQualities: [...new Set(videoStreams.map((stream) => stream.height).filter(Boolean))].sort((a, b) => b - a),
     videoStreams: videoStreams.length,
     audioStreams: audioStreams.length,
