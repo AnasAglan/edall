@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#172337">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="stylesheet" href="/ed_features.css">
     <title>ED ALL — منصة تعليمية متطورة</title>
      <!-- أيقونة الموقع وهوية المنصة -->
  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=20261110" sizes="256x256" />
@@ -1913,6 +1917,10 @@ word-spacing: normal !important;
                     <i class="fas fa-pen"></i>
                 </button>
             </div>
+            <button type="button" id="edLearningHubEntry" class="btn" onclick="window.EDFeatures && window.EDFeatures.open()" style="display:none;margin-top:12px;padding:10px 24px;border-radius:9999px;">
+                <i class="fas fa-graduation-cap"></i>
+                <span>مساحة التعلم</span>
+            </button>
         </div>
 
 
@@ -1955,6 +1963,10 @@ word-spacing: normal !important;
         </div>
 
         <div class="cards-container" id="coursesGrid"></div>
+    </div>
+
+    <div id="edLearningHubPage" class="page">
+        <div id="edFeaturesRoot"></div>
     </div>
 
     <div id="loginPage" class="page">
@@ -2321,10 +2333,61 @@ word-spacing: normal !important;
         <div class="loading-spinner"></div>
     </div>
 
+    <script src="/ed-app-config.js"></script>
     <script>
-        // Supabase Client
-        const SUPABASE_URL = 'https://iuaddjoofgrirzslzqfy.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml1YWRkam9vZmdyaXJ6c2x6cWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5ODczMjcsImV4cCI6MjA4OTU2MzMyN30.bkMuslyDuH4lkIWhwVoGdTqr_lgM9HMKdo57yj4xT5M';
+        // The same HTML is used by the original Production project and its isolated Staging remix.
+        // Vite emits only the matching approved backend + Worker endpoints from that project's .env.
+        const appConfig = window.ED_APP_CONFIG;
+        const environmentSuffix = appConfig?.environment === 'staging' ? '-staging' : '';
+        const isExpectedWorker = (value, service) => {
+            try {
+                const url = new URL(value);
+                return url.protocol === 'https:' &&
+                    url.hostname === `edall-${service}${environmentSuffix}.anasaglan2011.workers.dev` &&
+                    !url.username && !url.password && !url.port && url.pathname === '/';
+            } catch (_) {
+                return false;
+            }
+        };
+        let appConfigValid = !!(
+            appConfig &&
+            ['staging', 'production'].includes(appConfig.environment) &&
+            typeof appConfig.projectId === 'string' && appConfig.projectId.length > 0 &&
+            typeof appConfig.supabaseUrl === 'string' && appConfig.supabaseUrl.startsWith('https://') &&
+            isExpectedWorker(appConfig.assistantUrl, 'assistant') &&
+            isExpectedWorker(appConfig.extractorUrl, 'invidious-extractor') &&
+            isExpectedWorker(appConfig.mediaProxyUrl, 'video-media-proxy') &&
+            typeof appConfig.supabasePublishableKey === 'string' &&
+            appConfig.supabasePublishableKey.length > 0
+        );
+        if (appConfigValid) {
+            const key = appConfig.supabasePublishableKey;
+            if (key.startsWith('sb_publishable_')) {
+                appConfigValid = /^sb_publishable_[A-Za-z0-9_-]+$/.test(key);
+            } else {
+                try {
+                    const part = key.split('.')[1];
+                    if (!part) throw new Error('Invalid publishable key');
+                    const payload = JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/')));
+                    appConfigValid = payload.ref === appConfig.projectId && payload.role === 'anon';
+                } catch (_) {
+                    appConfigValid = false;
+                }
+            }
+        }
+        if (!appConfigValid) {
+            const configError = 'خطأ إعداد المنصة: إعدادات الاتصال لهذا المشروع ناقصة أو غير مطابقة. تم إيقاف الاتصال.';
+            window.ED_APP_CONFIG_ERROR = configError;
+            const errorToast = document.getElementById('toast');
+            if (errorToast) {
+                errorToast.textContent = configError;
+                errorToast.setAttribute('role', 'alert');
+                errorToast.style.display = 'block';
+            }
+            throw new Error(configError);
+        }
+        const SUPABASE_URL = appConfig.supabaseUrl;
+        const SUPABASE_ANON_KEY = appConfig.supabasePublishableKey;
         const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
             auth: {
                 // Preserve the existing Supabase storage key so previously saved sessions remain readable.
@@ -2333,6 +2396,8 @@ word-spacing: normal !important;
                 detectSessionInUrl: true
             }
         });
+        // The modular Learning Hub reuses this exact authenticated client and session.
+        window.sb = sb;
                 // دالة تعقيم وحماية النصوص
         function edEsc(str) {
             if (str == null) return '';
@@ -2508,8 +2573,8 @@ word-spacing: normal !important;
                 
                 xhr.onload = function() {
                     if (xhr.status >= 200 && xhr.status < 300) {
-                        const { data: urlData } = sb.storage.from('lesson-pdfs').getPublicUrl(filePath);
-                        onComplete({ filePath, publicUrl: urlData.publicUrl, fileName: file.name });
+                        // Store the private object path, never a public URL.
+                        onComplete({ filePath, publicUrl: filePath, fileName: file.name });
                     } else {
                         let errMsg = 'Upload failed';
                         try { errMsg = JSON.parse(xhr.responseText).message || errMsg; } catch(e) {}
@@ -2543,8 +2608,8 @@ word-spacing: normal !important;
                 };
                 xhr.onload = function() {
                     if (xhr.status >= 200 && xhr.status < 300) {
-                        const { data: urlData } = sb.storage.from('lesson-pdfs').getPublicUrl(filePath);
-                        resolve({ publicUrl: urlData.publicUrl, xhr });
+                        // Store the private object path; the UI creates a short-lived signed URL when opened.
+                        resolve({ publicUrl: filePath, xhr });
                     } else {
                         let errMsg = currentLanguage === 'ar' ? 'فشل رفع ملف PDF' : 'PDF upload failed';
                         try {
@@ -2572,7 +2637,7 @@ word-spacing: normal !important;
         async function uploadLessonPdfFiles(courseId, lessonId, fileList, uploadedPaths = []) {
             const files = Array.from(fileList || []);
             const lessonFiles = [];
-            const maxPdfSizeBytes = 100 * 1024 * 1024;
+            const maxPdfSizeBytes = 25 * 1024 * 1024;
 
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
@@ -2585,8 +2650,8 @@ word-spacing: normal !important;
 
                 if (file.size > maxPdfSizeBytes) {
                     throw new Error(currentLanguage === 'ar'
-                        ? `حجم الملف ${file.name} أكبر من الحد المسموح 100MB`
-                        : `${file.name} exceeds the 100MB limit`
+                        ? `حجم الملف ${file.name} أكبر من الحد المسموح 25MB`
+                        : `${file.name} exceeds the 25MB limit`
                     );
                 }
 
@@ -2681,16 +2746,72 @@ word-spacing: normal !important;
 
         function getStoragePathFromPublicUrl(fileUrl) {
             try {
-                if (!fileUrl) return null;
-                const marker = '/storage/v1/object/public/lesson-pdfs/';
-                const idx = fileUrl.indexOf(marker);
-                if (idx === -1) return null;
-                return decodeURIComponent(fileUrl.slice(idx + marker.length));
+                if (typeof fileUrl !== 'string' || !fileUrl.trim()) return null;
+                let value = fileUrl.trim();
+                const markers = [
+                    '/storage/v1/object/public/lesson-pdfs/',
+                    '/storage/v1/object/sign/lesson-pdfs/',
+                    '/storage/v1/object/lesson-pdfs/'
+                ];
+                if (/^https?:\/\//i.test(value)) {
+                    const marker = markers.find(item => value.includes(item));
+                    if (!marker) return null;
+                    value = value.slice(value.indexOf(marker) + marker.length).split('?')[0];
+                }
+                value = decodeURIComponent(value).replace(/^\/+|\/+$/g, '');
+                const parts = value.split('/');
+                const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+                const stagedFolder = /^temp_[0-9]{10,}$/;
+                if (parts.length !== 3 || !uuid.test(parts[0]) ||
+                    (!uuid.test(parts[1]) && !stagedFolder.test(parts[1])) ||
+                    parts.some(part => !part || part === '.' || part === '..' || /[\\\0]/.test(part))) return null;
+                return value;
             } catch (error) {
-                console.error('Error parsing storage path:', error);
+                console.error('Error parsing private PDF path:', error);
                 return null;
             }
         }
+
+        async function openLessonPdfFromElement(element) {
+            const value = element && element.dataset ? element.dataset.pdfUrl : '';
+            return openLessonPdf(value);
+        }
+
+        async function openLessonPdf(fileUrl) {
+            // Open synchronously during the click so mobile browsers do not block the new tab.
+            const popup = window.open('about:blank', '_blank');
+            if (!popup) {
+                showToast(currentLanguage === 'ar'
+                    ? 'اسمح بفتح نافذة جديدة لعرض ملف المحاضرة.'
+                    : 'Allow pop-ups to open this lesson file.', 'error');
+                return false;
+            }
+            try {
+                popup.opener = null;
+                const path = getStoragePathFromPublicUrl(fileUrl);
+                let destination = '';
+                if (path) {
+                    const { data, error } = await sb.storage.from('lesson-pdfs').createSignedUrl(path, 900);
+                    if (error || !data?.signedUrl) throw error || new Error('Could not create a private file link.');
+                    destination = data.signedUrl;
+                } else {
+                    const candidate = new URL(String(fileUrl || ''), window.location.origin);
+                    if (candidate.protocol !== 'https:' && candidate.origin !== window.location.origin) {
+                        throw new Error('Only secure lesson file links are allowed.');
+                    }
+                    destination = candidate.href;
+                }
+                popup.location.replace(destination);
+                return true;
+            } catch (error) {
+                try { popup.close(); } catch (_) {}
+                console.error('Could not open private lesson PDF:', error);
+                showToast((currentLanguage === 'ar' ? 'تعذر فتح ملف المحاضرة: ' : 'Could not open lesson file: ') +
+                    String(error?.message || error), 'error');
+                return false;
+            }
+        }
+        window.openLessonPdfFromElement = openLessonPdfFromElement;
 
         async function removeLessonFile(courseId, lessonId, fileId, fileUrl, fileIndex) {
             try {
@@ -3557,8 +3678,8 @@ cleanups.push(() => {
                             language: currentLanguage,
                             desktopBridge: null,
                             extractorConfig: {
-                                workerUrl: 'https://edall-invidious-extractor.anasaglan2011.workers.dev',
-                                mediaProxyUrl: 'https://edall-video-media-proxy.anasaglan2011.workers.dev',
+                                workerUrl: appConfig.extractorUrl,
+                                mediaProxyUrl: appConfig.mediaProxyUrl,
                                 origin: window.location.origin
                             },
                             toast: (message, type) => showToast(message, type || 'info')
@@ -6900,7 +7021,7 @@ window.triggerModalClose = function() {
                                         <i class="fas fa-file-pdf" style="color:var(--danger);"></i>
                                         <span>${edEsc(file.name) || (currentLanguage === 'ar' ? 'ملف' : 'File')}</span>
                                     </div>
-                                    <a href="${file.url}" target="_blank" class="btn btn-sm" onclick="trackLessonProgress('${courseId}', '${lessonId}', 'pdfOpened', true)">
+                                    <a href="#" data-pdf-url="${edEsc(file.url)}" class="btn btn-sm" onclick="trackLessonProgress('${courseId}', '${lessonId}', 'pdfOpened', true); openLessonPdfFromElement(this); return false;">
                                         <i class="fas fa-external-link-alt"></i> ${currentLanguage === 'ar' ? 'فتح' : 'Open'}
                                     </a>
                                 </div>
@@ -8318,32 +8439,7 @@ if (_attempt && _attempt.id &&
     }
 }
 
-if (
-    !gradeResult &&
-    exam.id &&
-    (!_attempt ||
-        String(_attempt.id || '').startsWith('local_'))
-) {
-    try {
-        const { data, error } = await sb.rpc(
-            'grade_exam_submission',
-            {
-                _exam_id: exam.id,
-                _answers: rawAnswers
-            }
-        );
-
-        if (!error && data) {
-            gradeResult = data;
-            attemptSubmissionConfirmed = true;
-        }
-    } catch (e) {
-        console.warn(
-            'grade_exam_submission fallback error:',
-            e
-        );
-    }
-}
+// Do not fall back to the legacy RPC: only a server-created attempt can be graded.
 
 if (
     !gradeResult ||
@@ -9486,11 +9582,11 @@ exam.questions.forEach((question, index) => {
                     continue;
                 }
 
-                if (file.size > 100 * 1024 * 1024) {
+                if (file.size > 25 * 1024 * 1024) {
                     uploadInfo.error = true;
                     const row = document.getElementById(`pdfProgress_${i}`);
-                    if (row) row.innerHTML = `<span style="color:var(--danger);font-size:0.85rem;"><i class="fas fa-times-circle"></i> ${currentLanguage === 'ar' ? 'الحجم أكبر من 100MB' : 'Over 100MB'}</span>`;
-                    showToast(currentLanguage === 'ar' ? `حجم الملف ${file.name} أكبر من 100MB` : `${file.name} exceeds 100MB`, 'error');
+                    if (row) row.innerHTML = `<span style="color:var(--danger);font-size:0.85rem;"><i class="fas fa-times-circle"></i> ${currentLanguage === 'ar' ? 'الحجم أكبر من 25MB' : 'Over 25MB'}</span>`;
+                    showToast(currentLanguage === 'ar' ? `حجم الملف ${file.name} أكبر من 25MB` : `${file.name} exceeds 25MB`, 'error');
                     continue;
                 }
                 
@@ -9524,8 +9620,8 @@ exam.questions.forEach((question, index) => {
                         xhr.onload = function() {
                             if (uploadInfo.cancelled) { resolve(); return; }
                             if (xhr.status >= 200 && xhr.status < 300) {
-                                const { data: urlData } = sb.storage.from('lesson-pdfs').getPublicUrl(filePath);
-                                uploadInfo.publicUrl = urlData.publicUrl;
+                                // Store the private object path; signed URLs are created only when a learner opens the file.
+                                uploadInfo.publicUrl = filePath;
                                 const bar = document.getElementById(`pdfProgressBar_${i}`);
                                 const text = document.getElementById(`pdfProgressText_${i}`);
                                 if (bar) { bar.style.width = '100%'; bar.style.background = 'var(--success)'; }
@@ -9550,7 +9646,7 @@ exam.questions.forEach((question, index) => {
                         xhr.open('POST', uploadUrl, true);
                         xhr.setRequestHeader('Authorization', `Bearer ${token}`);
                         xhr.setRequestHeader('apikey', SUPABASE_ANON_KEY);
-                        xhr.setRequestHeader('Content-Type', file.type || 'application/pdf');
+                        xhr.setRequestHeader('Content-Type', 'application/pdf');
                         xhr.setRequestHeader('x-upsert', 'false');
                         xhr.send(file);
                     });
@@ -11551,6 +11647,9 @@ exam.questions.forEach((question, index) => {
   window.EDAuthRules = { MIN_PASSWORD_LENGTH: MIN_PASSWORD_LENGTH, validateSignupPassword: validateSignupPassword, describeAuthError: describeAuthError, signupOutcome: signupOutcome, authEventOutcome: authEventOutcome, canShowLessonVideoOnWeb: canShowLessonVideoOnWeb, normalizeSignupOtp: normalizeSignupOtp, isValidSignupOtp: isValidSignupOtp, isEmailNotConfirmedError: isEmailNotConfirmedError };
 })();
 </script>
+<script src="/ed-xlsx.js" defer></script>
+<script src="/ed_features.js" defer></script>
+<script src="/ed-pwa.js" defer></script>
 <script src="/ed_assistant.js" defer></script>
 </body>
 </html>

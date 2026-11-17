@@ -1,0 +1,59 @@
+name: Validate ED-ALL Staging isolation
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "public/ed_master.html"
+      - "public/ed_assistant.js"
+      - "workers/edall-assistant/**"
+      - "workers/extract-youtube-stream/**"
+      - "workers/video-media-proxy/**"
+      - "scripts/staging-config*"
+      - "wrangler*.toml"
+      - "src/test/**"
+      - ".github/workflows/validate-staging-isolation.yml"
+  push:
+    branches: [fix/staging-isolation]
+    paths:
+      - "public/ed_master.html"
+      - "public/ed_assistant.js"
+      - "scripts/staging-config.*"
+      - "workers/edall-assistant/index.js"
+      - "workers/extract-youtube-stream/index.ts"
+      - "workers/video-media-proxy/index.js"
+      - "src/test/**"
+      - "wrangler*.toml"
+      - "workers/video-media-proxy/wrangler.staging.toml"
+      - ".github/workflows/validate-staging-isolation.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  staging-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund --no-package-lock
+      - name: Syntax checks
+        run: |
+          node --check workers/edall-assistant/index.js
+          node --check workers/video-media-proxy/index.js
+          node --check scripts/staging-config.mjs
+          node --check scripts/deploy-edall-assistant-staging.mjs
+      - name: Test suite
+        env:
+          VITE_SUPABASE_PROJECT_ID: "atpltvpwfammcnxcpvop"
+          VITE_SUPABASE_URL: "https://c--4d956767-2768-416c-981b-79ff624686eb-prod.lovable.cloud"
+          VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_fixture_only
+        run: npm test -- --reporter=verbose
+      - name: Build using non-secret Staging fixture
+        env:
+          VITE_SUPABASE_PROJECT_ID: "atpltvpwfammcnxcpvop"
+          VITE_SUPABASE_URL: "https://c--4d956767-2768-416c-981b-79ff624686eb-prod.lovable.cloud"
+          VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_fixture_only
+        run: npm run build

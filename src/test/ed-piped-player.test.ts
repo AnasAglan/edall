@@ -156,7 +156,10 @@ describe("ED ALL Piped player", () => {
     expect(worker).toContain("bundle.audioStreams = verifiedDirectAudios");
     const mediaProxy = readFileSync(resolve(process.cwd(), "workers/video-media-proxy/index.js"), "utf8");
     expect(mediaProxy).toContain("getAllowedMediaUrl");
-    expect(mediaProxy).toContain('"Access-Control-Allow-Origin": "*"');
+    expect(mediaProxy).not.toContain('"Access-Control-Allow-Origin": "*"');
+    expect(mediaProxy).toContain("if (origin && !allowedOrigins.has(origin))");
+    expect(mediaProxy).toContain("env.EDALL_ALLOWED_ORIGIN");
+    expect(mediaProxy).toContain('responseCorsHeaders.set("Access-Control-Allow-Origin", origin)');
     expect(mediaProxy).toContain("request.headers.get(\"Range\")");
     expect(playerSource).toContain("mediaProxyBase + '/media?url='");
     expect(playerSource).toContain("proxyUrl: mediaProxyBase");
@@ -170,7 +173,8 @@ describe("ED ALL Piped player", () => {
   it("keeps Piped playback exclusive to ordinary browsers", () => {
     expect(platformHtml).toContain("_edLoadExternalScript('_edpiped', '/ed_piped_player.js?v=20261111-finalfix'");
     expect(platformHtml).toContain("window.EDPipedPlayer.open");
-    expect(platformHtml).toContain("mediaProxyUrl: 'https://edall-video-media-proxy.anasaglan2011.workers.dev'");
+    expect(platformHtml).toContain("workerUrl: appConfig.extractorUrl");
+    expect(platformHtml).toContain("mediaProxyUrl: appConfig.mediaProxyUrl");
     expect(platformHtml).toContain("_edLoadLib({ nativeOnly: isDesktop || isAndroidApp });");
     expect(platformHtml).toContain("if (nativeOnly) return;");
     expect(platformHtml).toContain("if (!isAndroidApp && window.EDPipedPlayer && window.Plyr)");

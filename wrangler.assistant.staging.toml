@@ -1,0 +1,18 @@
+name = "edall-assistant-staging"
+main = "workers/edall-assistant/index.js"
+compatibility_date = "2026-11-08"
+workers_dev = true
+[ai]
+binding = "AI"
+[vars]
+EDALL_ENV = "staging"
+SUPABASE_URL = "https://c--4d956767-2768-416c-981b-79ff624686eb-prod.lovable.cloud"
+SUPABASE_PROJECT_ID = "atpltvpwfammcnxcpvop"
+WORKER_SERVICE_NAME = "edall-assistant-staging"
+[secrets]
+required = ["STAGING_SUPABASE_PUBLISHABLE_KEY"]
+# Optional isolated fallback: STAGING_GEMINI_API_KEY. Workers AI is primary.
+[observability]
+enabled = true
+[observability.issues]
+enabled = true

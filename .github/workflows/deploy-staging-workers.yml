@@ -1,0 +1,74 @@
+name: Deploy isolated ED-ALL Staging Workers
+
+on:
+  push:
+    branches: [fix/staging-isolation]
+    paths:
+      - ".github/workflows/deploy-staging-workers.yml"
+      - "workers/extract-youtube-stream/**"
+      - "workers/video-media-proxy/**"
+      - "workers/edall-assistant/**"
+      - "wrangler.staging.toml"
+      - "wrangler.assistant.staging.toml"
+      - "scripts/deploy-edall-assistant-staging.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-staging-workers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate Cloudflare deployment credential
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::Missing CLOUDFLARE_API_TOKEN GitHub Actions secret."; exit 1; }
+
+      - name: Deploy isolated Invidious extractor
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: f5cd21e0ec5497880217da477e4640f2
+          wranglerVersion: "4"
+          packageManager: npm
+          command: deploy --config wrangler.staging.toml
+
+      - name: Deploy isolated video media proxy
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: f5cd21e0ec5497880217da477e4640f2
+          wranglerVersion: "4"
+          packageManager: npm
+          command: deploy --config workers/video-media-proxy/wrangler.staging.toml
+
+      - name: Verify both Staging Workers reject Production origins
+        shell: bash
+        run: |
+          set -euo pipefail
+          STAGING_ORIGIN="https://id-preview--c65d2fd9-1c85-479f-9347-d54b6341e6a7.lovable.app"
+          PRODUCTION_ORIGIN="https://edall.lovable.app"
+
+          extractor="https://edall-invidious-extractor-staging.anasaglan2011.workers.dev/"
+          extractor_stage_status=$(curl -sS -o /dev/null -w "%{http_code}" -X OPTIONS "$extractor" -H "Origin: $STAGING_ORIGIN" -H "Access-Control-Request-Method: POST")
+          extractor_prod_status=$(curl -sS -o /dev/null -w "%{http_code}" -X OPTIONS "$extractor" -H "Origin: $PRODUCTION_ORIGIN" -H "Access-Control-Request-Method: POST")
+          proxy="https://edall-video-media-proxy-staging.anasaglan2011.workers.dev/health"
+          proxy_stage_status=$(curl -sS -o /dev/null -w "%{http_code}" "$proxy" -H "Origin: $STAGING_ORIGIN")
+          proxy_prod_status=$(curl -sS -o /dev/null -w "%{http_code}" "$proxy" -H "Origin: $PRODUCTION_ORIGIN")
+
+          echo "Extractor preflight: Staging=${extractor_stage_status}, Production=${extractor_prod_status}"
+          echo "Media proxy health: Staging=${proxy_stage_status}, Production=${proxy_prod_status}"
+
+          failed=0
+          [[ "$extractor_stage_status" == "204" ]] || { echo "::error::Extractor rejected Staging preflight."; failed=1; }
+          [[ "$extractor_prod_status" == "403" ]] || { echo "::error::Extractor did not reject Production origin."; failed=1; }
+          [[ "$proxy_stage_status" == "200" ]] || { echo "::error::Media proxy health check failed for Staging origin."; failed=1; }
+          [[ "$proxy_prod_status" == "403" ]] || { echo "::error::Media proxy did not reject Production origin."; failed=1; }
+          exit "$failed"

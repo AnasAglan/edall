@@ -1,0 +1,93 @@
+name: ED-ALL security and learning suite
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/functions/**"
+      - "workers/edall-assistant/**"
+      - "workers/video-media-proxy/**"
+      - "public/ed_master.html"
+      - "public/ed_features.js"
+      - "public/ed_features.css"
+      - "public/ed_assistant.js"
+      - "public/sw.js"
+      - "public/ed-pwa.js"
+      - "public/manifest.webmanifest"
+      - "src/test/ed-security-hardening.test.ts"
+      - "src/test/ed-piped-player.test.ts"
+      - "src/test/ed-learning-suite.test.ts"
+      - "src/test/ed-xlsx.test.ts"
+      - "src/test/video-media-proxy-security.test.ts"
+      - "supabase/tests/**"
+      - "package.json"
+      - ".github/workflows/ed-security-suite.yml"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/functions/**"
+      - "workers/edall-assistant/**"
+      - "workers/video-media-proxy/**"
+      - "public/ed_master.html"
+      - "public/ed_features.js"
+      - "public/ed_features.css"
+      - "public/ed_assistant.js"
+      - "public/sw.js"
+      - "public/ed-pwa.js"
+      - "public/manifest.webmanifest"
+      - "src/test/ed-security-hardening.test.ts"
+      - "src/test/ed-piped-player.test.ts"
+      - "src/test/ed-learning-suite.test.ts"
+      - "supabase/tests/**"
+      - "package.json"
+      - ".github/workflows/ed-security-suite.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  security-and-features:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund --no-package-lock
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.122.0
+      - name: Apply every migration to a clean local Supabase stack
+        run: |
+          supabase start -x studio,mailpit,edge-runtime,logflare,vector,imgproxy
+          supabase db reset --local
+          supabase db lint --local --level error --fail-on error
+          supabase test db
+      - name: Build the platform
+        run: npm run build
+      - name: Run all platform tests
+        run: npm test -- --reporter=verbose
+      - name: Validate Worker and browser modules
+        run: |
+          node --check workers/edall-assistant/index.js
+          node --check workers/video-media-proxy/index.js
+          node --check public/ed_features.js
+          node --check public/ed-pwa.js
+          deno check supabase/functions/admin-create-user/index.ts
+          deno check supabase/functions/admin-delete-user/index.ts
+          deno check supabase/functions/create-payment-intention/index.ts
+          deno check supabase/functions/paymob-webhook/index.ts
+          deno check supabase/functions/_shared/app-origin.ts
+          deno check supabase/functions/_shared/paymob-hmac.ts
+      - name: Test Paymob webhook signature verification
+        run: deno test supabase/functions/_shared/paymob-hmac.test.ts
+      - name: Test ED-ALL environment origin isolation
+        run: deno test supabase/functions/_shared/app-origin.test.ts
