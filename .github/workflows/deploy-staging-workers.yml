@@ -2,7 +2,7 @@ name: Deploy isolated ED-ALL Staging Workers
 
 on:
   push:
-    branches: [fix/staging-isolation]
+    branches: [main, fix/invidious-candidates-and-staging-sync]
     paths:
       - ".github/workflows/deploy-staging-workers.yml"
       - "workers/extract-youtube-stream/**"
@@ -49,7 +49,18 @@ jobs:
           packageManager: npm
           command: deploy --config workers/video-media-proxy/wrangler.staging.toml
 
-      - name: Verify both Staging Workers reject Production origins
+      - name: Deploy ED-ALL Assistant from the checked-out source revision
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: f5cd21e0ec5497880217da477e4640f2
+          STAGING_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_PUBLISHABLE_KEY }}
+          STAGING_GEMINI_API_KEY: ${{ secrets.STAGING_GEMINI_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$STAGING_SUPABASE_PUBLISHABLE_KEY" || { echo "::error::Missing STAGING_SUPABASE_PUBLISHABLE_KEY GitHub Actions secret."; exit 1; }
+          node scripts/deploy-edall-assistant-staging.mjs
+
+      - name: Verify all Staging Workers reject Production origins
         shell: bash
         run: |
           set -euo pipefail
@@ -62,13 +73,19 @@ jobs:
           proxy="https://edall-video-media-proxy-staging.anasaglan2011.workers.dev/health"
           proxy_stage_status=$(curl -sS -o /dev/null -w "%{http_code}" "$proxy" -H "Origin: $STAGING_ORIGIN")
           proxy_prod_status=$(curl -sS -o /dev/null -w "%{http_code}" "$proxy" -H "Origin: $PRODUCTION_ORIGIN")
+          assistant="https://edall-assistant-staging.anasaglan2011.workers.dev/health"
+          assistant_stage_status=$(curl -sS -o /dev/null -w "%{http_code}" "$assistant" -H "Origin: $STAGING_ORIGIN")
+          assistant_prod_status=$(curl -sS -o /dev/null -w "%{http_code}" "$assistant" -H "Origin: $PRODUCTION_ORIGIN")
 
           echo "Extractor preflight: Staging=${extractor_stage_status}, Production=${extractor_prod_status}"
           echo "Media proxy health: Staging=${proxy_stage_status}, Production=${proxy_prod_status}"
+          echo "Assistant health: Staging=${assistant_stage_status}, Production=${assistant_prod_status}"
 
           failed=0
           [[ "$extractor_stage_status" == "204" ]] || { echo "::error::Extractor rejected Staging preflight."; failed=1; }
           [[ "$extractor_prod_status" == "403" ]] || { echo "::error::Extractor did not reject Production origin."; failed=1; }
           [[ "$proxy_stage_status" == "200" ]] || { echo "::error::Media proxy health check failed for Staging origin."; failed=1; }
           [[ "$proxy_prod_status" == "403" ]] || { echo "::error::Media proxy did not reject Production origin."; failed=1; }
+          [[ "$assistant_stage_status" == "200" ]] || { echo "::error::Assistant Staging health check failed; verify the Staging publishable key and database URL."; failed=1; }
+          [[ "$assistant_prod_status" == "403" ]] || { echo "::error::Staging Assistant did not reject Production origin."; failed=1; }
           exit "$failed"
