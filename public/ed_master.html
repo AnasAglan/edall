@@ -2333,28 +2333,50 @@ word-spacing: normal !important;
         <div class="loading-spinner"></div>
     </div>
 
-    <script src="/ed-staging-config.js"></script>
+    <script src="/ed-app-config.js"></script>
     <script>
-        // Vite serves/emits this configuration asset from this project's .env.
-        const stagingConfig = window.ED_STAGING_CONFIG;
-        let stagingConfigValid = !!(stagingConfig &&
-            stagingConfig.projectId === 'atpltvpwfammcnxcpvop' &&
-            stagingConfig.supabaseUrl === 'https://c--4d956767-2768-416c-981b-79ff624686eb-prod.lovable.cloud' &&
-            typeof stagingConfig.supabasePublishableKey === 'string');
-        if (stagingConfigValid) {
-            const key = stagingConfig.supabasePublishableKey;
+        // The same HTML is used by the original Production project and its isolated Staging remix.
+        // Vite emits only the matching approved backend + Worker endpoints from that project's .env.
+        const appConfig = window.ED_APP_CONFIG;
+        const approvedAppConfigs = {
+            staging: {
+                projectId: 'atpltvpwfammcnxcpvop',
+                supabaseUrl: 'https://c--4d956767-2768-416c-981b-79ff624686eb-prod.lovable.cloud',
+                assistantUrl: 'https://edall-assistant-staging.anasaglan2011.workers.dev',
+                extractorUrl: 'https://edall-invidious-extractor-staging.anasaglan2011.workers.dev',
+                mediaProxyUrl: 'https://edall-video-media-proxy-staging.anasaglan2011.workers.dev'
+            },
+            production: {
+                projectId: 'iuaddjoofgrirzslzqfy',
+                supabaseUrl: 'https://iuaddjoofgrirzslzqfy.supabase.co',
+                assistantUrl: 'https://edall-assistant.anasaglan2011.workers.dev',
+                extractorUrl: 'https://edall-invidious-extractor.anasaglan2011.workers.dev',
+                mediaProxyUrl: 'https://edall-video-media-proxy.anasaglan2011.workers.dev'
+            }
+        };
+        const expectedConfig = appConfig && approvedAppConfigs[appConfig.environment];
+        let appConfigValid = !!(expectedConfig &&
+            appConfig.projectId === expectedConfig.projectId &&
+            appConfig.supabaseUrl === expectedConfig.supabaseUrl &&
+            appConfig.assistantUrl === expectedConfig.assistantUrl &&
+            appConfig.extractorUrl === expectedConfig.extractorUrl &&
+            appConfig.mediaProxyUrl === expectedConfig.mediaProxyUrl &&
+            typeof appConfig.supabasePublishableKey === 'string' &&
+            appConfig.supabasePublishableKey.length > 0);
+        if (appConfigValid) {
+            const key = appConfig.supabasePublishableKey;
             if (key.startsWith('sb_publishable_')) {
-                stagingConfigValid = /^sb_publishable_[A-Za-z0-9_-]+$/.test(key);
+                appConfigValid = /^sb_publishable_[A-Za-z0-9_-]+$/.test(key);
             } else {
                 try {
                     const payload = JSON.parse(atob(key.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-                    stagingConfigValid = payload.ref === stagingConfig.projectId && payload.role === 'anon';
-                } catch (_) { stagingConfigValid = false; }
+                    appConfigValid = payload.ref === appConfig.projectId && payload.role === 'anon';
+                } catch (_) { appConfigValid = false; }
             }
         }
-        if (!stagingConfigValid) {
-            const configError = 'خطأ إعداد Staging: إعدادات الاتصال الخاصة بهذا المشروع ناقصة أو غير مطابقة. تم إيقاف الاتصال.';
-            window.ED_STAGING_CONFIG_ERROR = configError;
+        if (!appConfigValid) {
+            const configError = 'خطأ إعداد المنصة: إعدادات الاتصال لهذا المشروع ناقصة أو غير مطابقة. تم إيقاف الاتصال.';
+            window.ED_APP_CONFIG_ERROR = configError;
             const errorToast = document.getElementById('toast');
             if (errorToast) {
                 errorToast.textContent = configError;
@@ -2363,8 +2385,8 @@ word-spacing: normal !important;
             }
             throw new Error(configError);
         }
-        const SUPABASE_URL = stagingConfig.supabaseUrl;
-        const SUPABASE_ANON_KEY = stagingConfig.supabasePublishableKey;
+        const SUPABASE_URL = appConfig.supabaseUrl;
+        const SUPABASE_ANON_KEY = appConfig.supabasePublishableKey;
         const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
             auth: {
                 // Preserve the existing Supabase storage key so previously saved sessions remain readable.
