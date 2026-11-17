@@ -127,8 +127,9 @@ describe("password recovery redirect routing", () => {
   });
 
   it("sends both administrator-created and administrator-requested password resets directly to the auth page", () => {
-    const redirectCalls = assistantWorker.match(/recoveryUrl\\.searchParams\\.set\\("redirect_to", new URL\\("\\/ed_master\\.html", env\\.WORKER_APP_ORIGIN\\)\\.href\\);/g) || [];
-    expect(redirectCalls).toHaveLength(2);
+    const redirectCall = 'recoveryUrl.searchParams.set("redirect_to", new URL("/ed_master.html", env.WORKER_APP_ORIGIN).href);';
+    const redirectCallCount = assistantWorker.split(redirectCall).length - 1;
+    expect(redirectCallCount).toBe(2);
     expect(assistantWorker).not.toContain('recoveryUrl.searchParams.set("redirect_to", env.WORKER_APP_ORIGIN)');
   });
 });
