@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
@@ -359,4 +359,20 @@ describe("ED-ALL production authorization hardening", () => {
     expect(edge).toContain('from("attendance_records")');
     expect(edge).toContain("سجلات تعليمية");
   });
+  it("backfills only profiles missing for existing role-bearing auth users", () => {
+    const migrationPath = "supabase/migrations/20261118203000_backfill_missing_profiles.sql";
+    const absolutePath = resolve(process.cwd(), migrationPath);
+    expect(existsSync(absolutePath)).toBe(true);
+    if (!existsSync(absolutePath)) return;
+
+    const repair = read(migrationPath);
+    expect(repair).toContain("INSERT INTO public.profiles (id, name, email, public_id)");
+    expect(repair).toContain("FROM auth.users u");
+    expect(repair).toMatch(/EXISTS\s*\(\s*SELECT 1 FROM public\.user_roles r/);
+    expect(repair).toMatch(/NOT EXISTS\s*\(\s*SELECT 1 FROM public\.profiles p/);
+    expect(repair).toContain("ON CONFLICT (id) DO NOTHING");
+    expect(repair).not.toMatch(/\b(UPDATE|DELETE)\s+public\.(user_roles|wallets)\b/i);
+    expect(repair).not.toMatch(/encrypted_password|auth\.admin/i);
+  });
+
 });
