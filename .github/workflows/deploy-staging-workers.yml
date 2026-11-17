@@ -59,13 +59,16 @@ jobs:
           extractor="https://edall-invidious-extractor-staging.anasaglan2011.workers.dev/"
           extractor_stage_status=$(curl -sS -o /dev/null -w "%{http_code}" -X OPTIONS "$extractor" -H "Origin: $STAGING_ORIGIN" -H "Access-Control-Request-Method: POST")
           extractor_prod_status=$(curl -sS -o /dev/null -w "%{http_code}" -X OPTIONS "$extractor" -H "Origin: $PRODUCTION_ORIGIN" -H "Access-Control-Request-Method: POST")
-          test "$extractor_stage_status" = "204"
-          test "$extractor_prod_status" = "403"
-
           proxy="https://edall-video-media-proxy-staging.anasaglan2011.workers.dev/health"
           proxy_stage_status=$(curl -sS -o /dev/null -w "%{http_code}" "$proxy" -H "Origin: $STAGING_ORIGIN")
           proxy_prod_status=$(curl -sS -o /dev/null -w "%{http_code}" "$proxy" -H "Origin: $PRODUCTION_ORIGIN")
-          test "$proxy_stage_status" = "200"
-          test "$proxy_prod_status" = "403"
 
-          echo "Staging-origin requests accepted; Production-origin requests rejected by both isolated Workers."
+          echo "Extractor preflight: Staging=${extractor_stage_status}, Production=${extractor_prod_status}"
+          echo "Media proxy health: Staging=${proxy_stage_status}, Production=${proxy_prod_status}"
+
+          failed=0
+          [[ "$extractor_stage_status" == "204" ]] || { echo "::error::Extractor rejected Staging preflight."; failed=1; }
+          [[ "$extractor_prod_status" == "403" ]] || { echo "::error::Extractor did not reject Production origin."; failed=1; }
+          [[ "$proxy_stage_status" == "200" ]] || { echo "::error::Media proxy health check failed for Staging origin."; failed=1; }
+          [[ "$proxy_prod_status" == "403" ]] || { echo "::error::Media proxy did not reject Production origin."; failed=1; }
+          exit "$failed"
