@@ -8,11 +8,26 @@ import worker, {
   buildVerifiedReadReply,
   parseScopeVerdict,
   buildScopeRouting,
-  attachUserRoles
+  attachUserRoles,
+  buildCourseImageObjectPath
 } from "./index.js";
 
 const ownId = "11111111-1111-4111-8111-111111111111";
 const otherId = "22222222-2222-4222-8222-222222222222";
+
+test("course image objects use course-id-first paths required by Storage RLS", () => {
+  const path = buildCourseImageObjectPath(
+    "33333333-3333-4333-8333-333333333333",
+    ownId,
+    "webp",
+    1760000000000,
+    "550e8400-e29b-41d4-a716-446655440000"
+  );
+  assert.equal(path, "33333333-3333-4333-8333-333333333333/11111111-1111-4111-8111-111111111111-1760000000000-550e8400-e29b-41d4-a716-446655440000.webp");
+  assert.equal(path.split("/")[0], "33333333-3333-4333-8333-333333333333");
+  assert.throws(() => buildCourseImageObjectPath("not-a-uuid", ownId, "webp"), /معرف الدورة/);
+  assert.throws(() => buildCourseImageObjectPath("33333333-3333-4333-8333-333333333333", ownId, "svg"), /امتداد/);
+});
 
 test("admins can use known tools but unknown tool names are denied", () => {
   assert.equal(canUseAssistantTool("get_platform_stats", {}, ["admin"], ownId), true);
