@@ -1,0 +1,96 @@
+name: Deploy ED-ALL production Workers
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "workers/extract-youtube-stream/**"
+      - "wrangler.toml"
+      - "workers/video-media-proxy/**"
+      - "workers/video-media-proxy/wrangler.toml"
+      - "workers/edall-assistant/**"
+      - "wrangler.assistant.toml"
+      - "scripts/deploy-edall-assistant.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/deploy-production-workers.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy and verify all production Workers
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+
+      - name: Verify Cloudflare credentials are configured
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::Missing CLOUDFLARE_API_TOKEN."; exit 1; }
+          test "$CLOUDFLARE_ACCOUNT_ID" = "f5cd21e0ec5497880217da477e4640f2" || { echo "::error::CLOUDFLARE_ACCOUNT_ID is missing or does not match the ED-ALL production account."; exit 1; }
+
+      - name: Deploy Invidious extractor to Production
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          packageManager: npm
+          command: deploy --config wrangler.toml
+
+      - name: Deploy video media proxy to Production
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          packageManager: npm
+          command: deploy --config workers/video-media-proxy/wrangler.toml
+
+      - name: Deploy ED-ALL Assistant to Production
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          packageManager: npm
+          command: deploy --config wrangler.assistant.toml
+
+      - name: Verify Production health and origin isolation
+        run: |
+          set -euo pipefail
+          ORIGIN="https://edall.lovable.app"
+          EVIL_ORIGIN="https://not-edall.example"
+          extractor="https://edall-invidious-extractor.anasaglan2011.workers.dev"
+          proxy="https://edall-video-media-proxy.anasaglan2011.workers.dev"
+          assistant="https://edall-assistant.anasaglan2011.workers.dev"
+
+          proxy_health="$(curl --fail --silent --show-error "$proxy/health")"
+          echo "$proxy_health" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.status!=="ok")process.exit(1);console.log("Media Proxy:",x.status,x.service);});'
+
+          assistant_health="$(curl --fail --silent --show-error "$assistant/health" -H "Origin: $ORIGIN")"
+          echo "$assistant_health" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(x.status!=="ok"||x.service!=="edall-assistant"||x.streaming!==true)process.exit(1);console.log("Assistant:",x.status,x.service,"streaming="+x.streaming);});'
+
+          extractor_allowed="$(curl --silent --show-error -o /dev/null -w "%{http_code}" -X OPTIONS "$extractor" -H "Origin: $ORIGIN" -H "Access-Control-Request-Method: POST")"
+          extractor_blocked="$(curl --silent --show-error -o /dev/null -w "%{http_code}" -X OPTIONS "$extractor" -H "Origin: $EVIL_ORIGIN" -H "Access-Control-Request-Method: POST")"
+          proxy_allowed="$(curl --silent --show-error -o /dev/null -w "%{http_code}" -X OPTIONS "$proxy/media" -H "Origin: $ORIGIN" -H "Access-Control-Request-Method: GET")"
+          proxy_blocked="$(curl --silent --show-error -o /dev/null -w "%{http_code}" -X OPTIONS "$proxy/media" -H "Origin: $EVIL_ORIGIN" -H "Access-Control-Request-Method: GET")"
+          assistant_blocked="$(curl --silent --show-error -o /dev/null -w "%{http_code}" "$assistant/health" -H "Origin: $EVIL_ORIGIN")"
+
+          echo "Extractor preflight: allowed=$extractor_allowed blocked=$extractor_blocked"
+          echo "Media Proxy: allowed=$proxy_allowed blocked=$proxy_blocked"
+          echo "Assistant: blocked_origin=$assistant_blocked"
+
+          [[ "$extractor_allowed" == "204" && "$extractor_blocked" == "403" ]]
+          [[ "$proxy_allowed" == "204" && "$proxy_blocked" == "403" ]]
+          [[ "$assistant_blocked" == "403" ]]
+
+      - name: Summarize upstream video-source limitation
+        if: always()
+        run: |
+          echo "::notice::Worker deployment health is independent of upstream video availability. Current public Invidious hosts may still reject extraction with HTTP 403; do not treat this as a successful Invidious playback test."
