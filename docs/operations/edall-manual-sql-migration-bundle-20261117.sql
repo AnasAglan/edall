@@ -81,3 +81,20 @@ $function$;
 REVOKE ALL ON FUNCTION public.setup_new_user(uuid, text, text, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.setup_new_user(uuid, text, text, text) TO authenticated, service_role;
 
+
+
+-- ============================================================================
+-- SOURCE FILE: 20261110170500_add_lesson_web_playback_mode.sql
+-- ============================================================================
+
+-- Default to browser + official app playback for all legacy lessons.
+-- A false value makes the web UI omit the video player and explain that the lesson
+-- should be opened from the official app. This is a presentation policy only until
+-- the Android client can prove its identity to the server (the browser and app
+-- currently share the same Supabase user token).
+ALTER TABLE public.lessons
+  ADD COLUMN IF NOT EXISTS web_playback_enabled boolean NOT NULL DEFAULT true;
+
+COMMENT ON COLUMN public.lessons.web_playback_enabled IS
+  'Whether lesson videos are displayed in the web platform. FALSE means app-only in the web UI; secure API separation requires verifiable app identity.';
+
