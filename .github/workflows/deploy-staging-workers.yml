@@ -49,16 +49,14 @@ jobs:
           packageManager: npm
           command: deploy --config workers/video-media-proxy/wrangler.staging.toml
 
-      - name: Deploy ED-ALL Assistant from the checked-out source revision
+      - name: Deploy ED-ALL Assistant from the checked-out source revision (preserve remote Staging secrets)
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: f5cd21e0ec5497880217da477e4640f2
-          STAGING_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_PUBLISHABLE_KEY }}
-          STAGING_GEMINI_API_KEY: ${{ secrets.STAGING_GEMINI_API_KEY }}
         run: |
           set -euo pipefail
-          test -n "$STAGING_SUPABASE_PUBLISHABLE_KEY" || { echo "::error::Missing STAGING_SUPABASE_PUBLISHABLE_KEY GitHub Actions secret."; exit 1; }
-          node scripts/deploy-edall-assistant-staging.mjs
+          # Existing encrypted Staging secrets stay attached to the Worker; deploy only the new code/config.
+          npx wrangler deploy --config wrangler.assistant.staging.toml
 
       - name: Verify all Staging Workers reject Production origins
         shell: bash
