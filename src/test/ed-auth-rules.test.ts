@@ -39,18 +39,32 @@ describe("auth session behavior", () => {
   it("does not mask every failure as invalid credentials", () => {
     expect(r.describeAuthError({ code: "email_not_confirmed" }, "en")).toMatch(/not confirmed/);
     expect(r.describeAuthError({ status: 429, message: "rate limit" }, "en")).toMatch(/Too many/);
-    expect(r.describeAuthError({ code: "invalid_credentials" }, "en")).toBe("Invalid email or password.");
+    expect(r.describeAuthError({ code: "invalid_credentials" }, "en")).toContain("Invalid email or password.");
+    expect(r.describeAuthError({ code: "invalid_credentials" }, "en")).toContain("Forgot password?");
+    expect(r.describeAuthError({ code: "invalid_credentials" }, "ar")).toContain("نسيت كلمة المرور؟");
     expect(r.describeAuthError({ name: "AuthRetryableFetchError", message: "Failed to fetch" }, "en")).toMatch(/connection/);
   });
 });
 
 describe("auth state listener rules", () => {
   const r = loadRules();
-  it("recognizes only signed-in, signed-out and token refresh events", () => {
+  it("recognizes sign-in, sign-out, token refresh and password recovery events", () => {
     expect(r.authEventOutcome("SIGNED_OUT", null)).toBe("signed_out");
     expect(r.authEventOutcome("SIGNED_IN", { user: { id: "u" } })).toBe("signed_in");
     expect(r.authEventOutcome("TOKEN_REFRESHED", { user: { id: "u" } })).toBe("signed_in");
+    expect(r.authEventOutcome("PASSWORD_RECOVERY", { user: { id: "u" } })).toBe("password_recovery");
+    expect(r.authEventOutcome("PASSWORD_RECOVERY", null)).toBe("ignore");
     expect(r.authEventOutcome("INITIAL_SESSION", { user: { id: "u" } })).toBe("ignore");
+  });
+
+  it("provides a complete self-service password recovery flow in the web login page", () => {
+    expect(html).toContain('id="btnForgotPassword"');
+    expect(html).toContain("async function requestPasswordReset()");
+    expect(html).toContain("sb.auth.resetPasswordForEmail(email");
+    expect(html).toContain("redirectTo: window.location.origin + window.location.pathname");
+    expect(html).toContain("if (outcome === 'password_recovery')");
+    expect(html).toContain("sb.auth.updateUser({ password })");
+    expect(html).toContain("edRecoveryConfirmPassword");
   });
 
   it("does not discard auth changes during initialization", () => {

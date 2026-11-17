@@ -1979,7 +1979,8 @@ word-spacing: normal !important;
             <div style="font-size:1.2rem;font-weight:900;margin-bottom:18px;">تسجيل الدخول</div>
             <input id="signInEmail" placeholder="البريد الإلكتروني">
             <input id="signInPass" type="password" placeholder="كلمة المرور">
-            <button class="btn" id="btnSignIn" style="width:100%;margin-bottom:12px;">دخول</button>
+            <button class="btn" id="btnSignIn" style="width:100%;margin-bottom:8px;">دخول</button>
+            <button class="btn btn-outline" type="button" id="btnForgotPassword" style="width:100%;margin-bottom:12px;" onclick="requestPasswordReset()">نسيت كلمة المرور؟</button>
             <div style="margin:20px 0;text-align:center;color:var(--text-muted);">أو أنشئ حسابًا جديدًا</div>
             <input id="signUpName" placeholder="الاسم الكامل">
             <input id="signUpEmail" placeholder="البريد الإلكتروني">
@@ -4107,12 +4108,19 @@ window.triggerModalClose = function() {
 
         function authEventOutcome(event, session) {
             if (event === 'SIGNED_OUT') return 'signed_out';
+            if (event === 'PASSWORD_RECOVERY' && session?.user?.id) return 'password_recovery';
             if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user?.id) return 'signed_in';
             return 'ignore';
         }
 
+        let _passwordRecoveryModalOpen = false;
+
         async function processAuthStateChange(event, session) {
             const outcome = authEventOutcome(event, session);
+            if (outcome === 'password_recovery') {
+                showPasswordRecoveryForm();
+                return;
+            }
             if (outcome === 'signed_out') {
                 currentUser = null;
                 _activeAuthUserId = null;
@@ -5587,10 +5595,146 @@ window.triggerModalClose = function() {
             }
         }
 
+        async function requestPasswordReset() {
+            const emailInput = document.getElementById('signInEmail');
+            const email = String(emailInput?.value || '').trim().toLowerCase();
+            const btn = document.getElementById('btnForgotPassword');
+
+            if (!email) {
+                showToast(currentLanguage === 'ar'
+                    ? 'أدخل بريدك الإلكتروني أولًا، ثم اضغط «نسيت كلمة المرور؟».'
+                    : 'Enter your email address first, then choose “Forgot password?”.', 'warning');
+                emailInput?.focus();
+                return;
+            }
+
+            try {
+                showBtnLoading(btn);
+                const { error } = await sb.auth.resetPasswordForEmail(email, {
+                    redirectTo: window.location.origin + window.location.pathname
+                });
+                if (error) throw error;
+                showToast(currentLanguage === 'ar'
+                    ? 'إذا كان البريد مرتبطًا بحساب، فستصلك رسالة لإعادة تعيين كلمة المرور. افحص صندوق الوارد والرسائل غير المرغوب فيها.'
+                    : 'If this email belongs to an account, a password reset link will be sent. Check your inbox and spam folder.', 'success');
+            } catch (error) {
+                console.warn('Password reset request failed:', {
+                    code: error?.code || error?.error_code || null,
+                    status: Number(error?.status) || null,
+                    name: error?.name || null
+                });
+                showToast(window.EDAuthRules.describeAuthError(error, currentLanguage, 'signin'), 'error');
+            } finally {
+                hideBtnLoading(btn);
+            }
+        }
+
+        function showPasswordRecoveryForm() {
+            if (_passwordRecoveryModalOpen) return;
+            _passwordRecoveryModalOpen = true;
+
+            const title = currentLanguage === 'ar' ? 'تعيين كلمة مرور جديدة' : 'Set a new password';
+            const description = currentLanguage === 'ar'
+                ? 'اختر كلمة مرور جديدة لحسابك، ثم أكدها في الحقل الثاني.'
+                : 'Choose a new password for your account and confirm it below.';
+            const passwordLabel = currentLanguage === 'ar' ? 'كلمة المرور الجديدة' : 'New password';
+            const confirmLabel = currentLanguage === 'ar' ? 'تأكيد كلمة المرور' : 'Confirm password';
+            const saveLabel = currentLanguage === 'ar' ? 'حفظ كلمة المرور' : 'Save password';
+            const cancelLabel = currentLanguage === 'ar' ? 'إلغاء' : 'Cancel';
+
+            showModal(
+                '<div style="padding:20px 8px;max-width:460px;">' +
+                    '<h3 style="margin:0 0 8px;font-weight:900;">' + title + '</h3>' +
+                    '<p style="color:var(--text-muted);margin:0 0 18px;">' + description + '</p>' +
+                    '<form id="edPasswordRecoveryForm">' +
+                        '<label for="edRecoveryNewPassword" style="display:block;margin:10px 0 6px;font-weight:800;">' + passwordLabel + '</label>' +
+                        '<input id="edRecoveryNewPassword" type="password" minlength="5" autocomplete="new-password" required style="width:100%;margin-bottom:12px;">' +
+                        '<label for="edRecoveryConfirmPassword" style="display:block;margin:10px 0 6px;font-weight:800;">' + confirmLabel + '</label>' +
+                        '<input id="edRecoveryConfirmPassword" type="password" minlength="5" autocomplete="new-password" required style="width:100%;margin-bottom:18px;">' +
+                        '<button class="btn" id="edRecoverySaveButton" type="submit" style="width:100%;margin-bottom:8px;">' + saveLabel + '</button>' +
+                        '<button class="btn btn-outline" type="button" id="edRecoveryCancelButton" style="width:100%;">' + cancelLabel + '</button>' +
+                    '</form>' +
+                '</div>',
+                { onClose: function() { _passwordRecoveryModalOpen = false; } }
+            );
+
+            const form = document.getElementById('edPasswordRecoveryForm');
+            const cancel = document.getElementById('edRecoveryCancelButton');
+            if (form) form.addEventListener('submit', handlePasswordRecoverySubmit);
+            if (cancel) cancel.addEventListener('click', function() {
+                _passwordRecoveryModalOpen = false;
+                closeModal();
+                showToast(currentLanguage === 'ar'
+                    ? 'لم يتم تغيير كلمة المرور. يمكنك فتح رابط الاستعادة مرة أخرى.'
+                    : 'The password was not changed. You can reopen the recovery link.', 'info');
+            });
+            document.getElementById('edRecoveryNewPassword')?.focus();
+        }
+
+        async function handlePasswordRecoverySubmit(event) {
+            event.preventDefault();
+            const passwordInput = document.getElementById('edRecoveryNewPassword');
+            const confirmInput = document.getElementById('edRecoveryConfirmPassword');
+            const btn = document.getElementById('edRecoverySaveButton');
+            const password = passwordInput?.value || '';
+            const confirmation = confirmInput?.value || '';
+
+            const validation = window.EDAuthRules.validateSignupPassword(password, currentLanguage);
+            if (!validation.ok) {
+                showToast(validation.message, 'warning');
+                passwordInput?.focus();
+                return;
+            }
+            if (password !== confirmation) {
+                showToast(currentLanguage === 'ar' ? 'كلمتا المرور غير متطابقتين.' : 'The passwords do not match.', 'warning');
+                confirmInput?.focus();
+                return;
+            }
+
+            try {
+                showBtnLoading(btn);
+                const { error } = await sb.auth.updateUser({ password });
+                if (error) throw error;
+
+                _passwordRecoveryModalOpen = false;
+                closeModal();
+                const { error: signOutError } = await sb.auth.signOut();
+                if (signOutError) {
+                    console.warn('Password was updated, but sign-out did not complete:', {
+                        code: signOutError.code || null,
+                        status: Number(signOutError.status) || null
+                    });
+                } else {
+                    currentUser = null;
+                    _activeAuthUserId = null;
+                    _dataLoaded = false;
+                    _syncUser();
+                    updateUI();
+                    showPage('loginPage');
+                }
+                showToast(currentLanguage === 'ar'
+                    ? (signOutError
+                        ? 'تم تغيير كلمة المرور. تعذر إنهاء الجلسة تلقائيًا؛ يمكنك تسجيل الخروج ثم الدخول بكلمة المرور الجديدة.'
+                        : 'تم تغيير كلمة المرور بنجاح. سجّل الدخول الآن بكلمة المرور الجديدة.')
+                    : (signOutError
+                        ? 'Your password was updated. Automatic sign-out failed; sign out manually and use the new password.'
+                        : 'Your password has been updated. Sign in with your new password.'), 'success');
+            } catch (error) {
+                console.warn('Password recovery update failed:', {
+                    code: error?.code || error?.error_code || null,
+                    status: Number(error?.status) || null,
+                    name: error?.name || null
+                });
+                showToast(window.EDAuthRules.describeAuthError(error, currentLanguage, 'signup'), 'error');
+            } finally {
+                hideBtnLoading(btn);
+            }
+        }
+
         async function handleSignIn() {
             const btn = document.getElementById('btnSignIn');
             try {
-                const email = document.getElementById('signInEmail').value.trim();
+                const email = document.getElementById('signInEmail').value.trim().toLowerCase();
                 const password = document.getElementById('signInPass').value;
                 
                 if (!email || !password) {
@@ -5603,6 +5747,13 @@ window.triggerModalClose = function() {
                 
                 if (error || !data || !data.session) {
                     hideBtnLoading(btn);
+                    if (error) {
+                        console.warn('Sign-in rejected by Supabase Auth:', {
+                            code: error.code || error.error_code || null,
+                            status: Number(error.status) || null,
+                            name: error.name || null
+                        });
+                    }
                     if (error && window.EDAuthRules.isEmailNotConfirmedError(error)) {
                         try {
                             sessionStorage.setItem(PENDING_SIGNUP_EMAIL_KEY, email);
@@ -10698,6 +10849,7 @@ exam.questions.forEach((question, index) => {
         window.hideUserMenu = hideUserMenu;
         window.toggleBackButton = toggleBackButton;
         window.handleSignIn = handleSignIn;
+        window.requestPasswordReset = requestPasswordReset;
         window.handleSignUp = handleSignUp;
         window.handleLogout = handleLogout;
         window.handleFilterClick = handleFilterClick;
@@ -11570,7 +11722,9 @@ exam.questions.forEach((question, index) => {
       return ar ? 'محاولات كثيرة. انتظر قليلًا ثم حاول مرة أخرى.' : 'Too many attempts. Please wait a moment and try again.';
     }
     if (code === 'invalid_credentials' || msg.indexOf('invalid login credentials') > -1) {
-      return ar ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة.' : 'Invalid email or password.';
+      return ar
+        ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة. تأكد من بياناتك، أو استخدم «نسيت كلمة المرور؟» لإعادة تعيين كلمة المرور.'
+        : 'Invalid email or password. Check your details, or use “Forgot password?” to reset your password.';
     }
     if (code === 'email_address_invalid' || msg.indexOf('invalid format') > -1 || msg.indexOf('email address') > -1 && msg.indexOf('invalid') > -1) {
       return ar ? 'صيغة البريد الإلكتروني غير صحيحة.' : 'The email address is invalid.';
@@ -11589,6 +11743,7 @@ exam.questions.forEach((question, index) => {
   // signUp returns no session while email confirmation is pending.
   function authEventOutcome(event, session){
     if (event === 'SIGNED_OUT') return 'signed_out';
+    if (event === 'PASSWORD_RECOVERY' && session && session.user && session.user.id) return 'password_recovery';
     if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session && session.user && session.user.id) return 'signed_in';
     return 'ignore';
   }
