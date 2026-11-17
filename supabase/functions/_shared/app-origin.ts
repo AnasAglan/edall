@@ -15,7 +15,7 @@ const PRODUCTION_APP_ORIGINS = [
 ];
 
 function normalizeBackendUrl(value: string | null | undefined): string {
-  return String(value || "").trim().replace(/\\/+$/, "");
+  return String(value || "").trim().replace(/\/+$/, "");
 }
 
 /** Resolve only the app origins belonging to the backend running this function. */
