@@ -63,7 +63,7 @@ describe("auth state listener rules", () => {
   });
 
   it("does not call the service-role-only account bootstrap RPC from a browser session", () => {
-    expect(html).not.toMatch(/sb\\.rpc\\(['"]setup_new_user['"]/);
+    expect(html).not.toContain("sb.rpc('setup_new_user'");
     expect(html).not.toContain("ensureUserAccountRecord(");
     expect(html).toContain("profileResult.error || roleResult.error");
     expect(html).toContain("code: 'account_setup_failed'");
