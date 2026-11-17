@@ -635,11 +635,18 @@ async function removeCourseImageObject(env, token, objectPath) {
   }
 }
 
+export function buildCourseImageObjectPath(courseId, userId, extension, timestamp = Date.now(), uniqueId = crypto.randomUUID()) {
+  if (!validId(courseId) || !validId(userId)) throw new Error("معرف الدورة أو المستخدم غير صالح.");
+  if (!/^(png|jpe?g|webp)$/i.test(String(extension || ""))) throw new Error("امتداد صورة الدورة غير صالح.");
+  return courseId + "/" + userId + "-" + timestamp + "-" + uniqueId + "." + extension.toLowerCase();
+}
+
 async function uploadCourseImage(env, token, course, image, user) {
   if (!image?.bytes || !image?.mime || !image?.extension) {
     throw new Error("لم يتم استلام ملف صورة صالح للرفع.");
   }
-  const objectPath = user.id + "/" + Date.now() + "-" + crypto.randomUUID() + "." + image.extension;
+  // course-images RLS requires the first object-path segment to be the course UUID.
+  const objectPath = buildCourseImageObjectPath(course.id, user.id, image.extension);
   const encodedPath = objectPath.split("/").map(encodeURIComponent).join("/");
   const base = env.SUPABASE_URL;
   const uploadResponse = await fetch(new URL("/storage/v1/object/course-images/" + encodedPath, base), {
