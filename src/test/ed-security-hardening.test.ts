@@ -367,7 +367,7 @@ describe("ED-ALL production authorization hardening", () => {
 
     const repair = read(migrationPath);
     expect(repair).toContain("INSERT INTO public.profiles (id, name, email, public_id)");
-    expect(repair).toContain("FROM auth.users u");
+    expect(repair).toContain("FROM auth.users AS u");
     expect(repair).toMatch(/EXISTS\s*\(\s*SELECT 1 FROM public\.user_roles r/);
     expect(repair).toMatch(/NOT EXISTS\s*\(\s*SELECT 1 FROM public\.profiles p/);
     expect(repair).toContain("ON CONFLICT (id) DO NOTHING");
