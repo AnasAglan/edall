@@ -35,12 +35,12 @@ export function renderStagingConfig(env) {
 
 // public/ HTML is copied verbatim by Vite: serve the same blocking config asset
 // in development and emit it into the final build, never into source control.
-export function stagingConfigPlugin() {
+export function stagingConfigPlugin(envOverride) {
   let configSource;
   return {
     name: "edall-staging-config",
     configResolved(config) {
-      configSource = renderStagingConfig(loadEnv(config.mode, config.envDir, "VITE_"));
+      configSource = renderStagingConfig(envOverride || loadEnv(config.mode, config.envDir, "VITE_"));
     },
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
