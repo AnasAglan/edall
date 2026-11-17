@@ -91,12 +91,12 @@ export function validateProductionConfig(env) {
 
 export function renderAppConfig(env) {
   const config = validateAppConfig(env);
-  return `window.ED_APP_CONFIG = Object.freeze(${JSON.stringify(config).replace(/</g, "\\u003c")});\\n`;
+  return `window.ED_APP_CONFIG = Object.freeze(${JSON.stringify(config).replace(/</g, "\\u003c")});\n`;
 }
 
 export function renderStagingConfig(env) {
   const config = validateStagingConfig(env);
-  return `window.ED_APP_CONFIG = Object.freeze(${JSON.stringify(config).replace(/</g, "\\u003c")});\\n`;
+  return `window.ED_APP_CONFIG = Object.freeze(${JSON.stringify(config).replace(/</g, "\\u003c")});\n`;
 }
 
 // public/ HTML is copied verbatim by Vite. Emit a per-project public config
