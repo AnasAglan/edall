@@ -21,6 +21,12 @@ Deno.test("Production backend accepts only Production app origins", () => {
   if (isAllowedEdallOrigin(STAGING_APP, PRODUCTION_BACKEND)) throw new Error("Staging origin must not reach Production");
 });
 
+Deno.test("normalizes trailing slash on the backend URL", () => {
+  if (!isAllowedEdallOrigin(STAGING_APP, STAGING_BACKEND + "/")) {
+    throw new Error("Trailing slash should not change the Staging backend mapping");
+  }
+});
+
 Deno.test("unknown backend fails closed for browser origins", () => {
   if (getEdallAppOrigins("https://unknown.example").length) throw new Error("Unknown backend got app origins");
   if (isAllowedEdallOrigin(STAGING_APP, "https://unknown.example")) throw new Error("Unknown backend accepted Staging");
