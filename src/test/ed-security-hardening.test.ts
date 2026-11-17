@@ -99,7 +99,10 @@ describe("ED-ALL production authorization hardening", () => {
     expect(fn).toContain("if (setupError");
     expect(fn).toContain("if (roleInsertError");
     expect(fn).toContain("auth.admin.deleteUser");
-    expect(fn).toContain("https://edall.lovable.app");
+    expect(fn).toContain("edallCorsHeaders");
+    expect(fn).toContain("isAllowedEdallOrigin");
+    expect(fn).toContain("../_shared/app-origin.ts");
+    expect(fn).not.toContain("https://edall.lovable.app");
   });
 
   it("does not expose the media proxy to arbitrary browser origins", () => {
