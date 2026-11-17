@@ -4,6 +4,8 @@ import { resolve } from "node:path";
 import { runInNewContext } from "node:vm";
 
 const html = readFileSync(resolve(process.cwd(), "public/ed_master.html"), "utf8");
+const appEntryHtml = readFileSync(resolve(process.cwd(), "index.html"), "utf8");
+const assistantWorker = readFileSync(resolve(process.cwd(), "workers/edall-assistant/index.js"), "utf8");
 const assistant = readFileSync(resolve(process.cwd(), "public/ed_assistant.js"), "utf8");
 const setupUserMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20261110170000_harden_setup_new_user_roles.sql"), "utf8");
 const secureSetupMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20261115120000_serialize_initial_admin_bootstrap.sql"), "utf8");
@@ -118,6 +120,18 @@ describe("assistant visibility", () => {
   });
 });
 
+
+describe("password recovery redirect routing", () => {
+  it("preserves query and hash values when the root redirects into the platform", () => {
+    expect(appEntryHtml).toContain('location.replace("/ed_master.html" + location.search + location.hash);');
+  });
+
+  it("sends both administrator-created and administrator-requested password resets directly to the auth page", () => {
+    const redirectCalls = assistantWorker.match(/recoveryUrl\\.searchParams\\.set\\("redirect_to", new URL\\("\\/ed_master\\.html", env\\.WORKER_APP_ORIGIN\\)\\.href\\);/g) || [];
+    expect(redirectCalls).toHaveLength(2);
+    expect(assistantWorker).not.toContain('recoveryUrl.searchParams.set("redirect_to", env.WORKER_APP_ORIGIN)');
+  });
+});
 
 describe("legacy auth account repair", () => {
   it("repairs only profiles missing for accounts that already have a role", () => {
