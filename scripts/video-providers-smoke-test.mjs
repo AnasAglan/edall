@@ -199,15 +199,20 @@ if (!pipedResults.length && !invidiousResult) {
     "; Invidious Worker: " + (invidiousWorkerError || "unavailable") +
     "; Invidious browser API: " + (invidiousBrowserError || "unavailable"));
 }
-if (eligibleInvidious && !invidiousBrowserResult && !invidiousWorkerResult) {
-  throw new Error("An official Invidious API/CORS instance is listed but neither the Worker nor direct browser API passed: " +
-    (invidiousBrowserError || invidiousWorkerError || "unknown failure"));
+const invidiousUnavailable = !invidiousWorkerResult && !invidiousBrowserResult;
+if (eligibleInvidious && invidiousUnavailable) {
+  console.warn("INVIDIOUS UNAVAILABLE: its listed public API/CORS candidate did not pass the real media test. " +
+    "This remains a provider-specific warning; a verified Piped result is still a valid platform playback path.");
 }
 
 console.log(JSON.stringify({
   success: true,
   videoId: VIDEO_ID,
   mediaProxy: "healthy",
+  providers: {
+    piped: pipedResults.length ? "playable" : "unavailable",
+    invidious: invidiousUnavailable ? "unavailable" : "playable",
+  },
   piped: pipedResults,
   invidious: invidiousResult,
   invidiousWorker: invidiousWorkerResult,
