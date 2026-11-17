@@ -62,7 +62,7 @@ async function callWorkerAs(roles) {
       method: "POST",
       headers: { Origin: "https://edall.lovable.app", Authorization: "Bearer t", "Content-Type": "application/json" },
       body: JSON.stringify({ messages: [{ role: "user", content: "hi" }] })
-    }), { SUPABASE_URL: "https://db.example", SUPABASE_PUBLISHABLE_KEY: "k", GEMINI_API_KEY: "g", AI: { run() { throw new Error("model must not run"); } } });
+    }), { SUPABASE_URL: "https://iuaddjoofgrirzslzqfy.supabase.co", SUPABASE_PUBLISHABLE_KEY: "k", GEMINI_API_KEY: "g", AI: { run() { throw new Error("model must not run"); } } });
     return { res, calls };
   } finally { globalThis.fetch = realFetch; }
 }
