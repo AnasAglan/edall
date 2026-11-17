@@ -43,6 +43,7 @@ on:
       - "supabase/tests/**"
       - "package.json"
       - ".github/workflows/ed-security-suite.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
