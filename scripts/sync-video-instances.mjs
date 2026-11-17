@@ -20,6 +20,7 @@ export const CURATED_INVIDIOUS_INSTANCES = [
   source: "curated-public-clearnet",
 }));
 const REQUEST_TIMEOUT_MS = 7000;
+const PROBE_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 const CONCURRENCY = 8;
 
 function cleanBase(value) {
@@ -47,7 +48,7 @@ function uniqueByUrl(items) {
 
 async function fetchJson(url) {
   const response = await fetch(url, {
-    headers: { Accept: "application/json" },
+    headers: { Accept: "application/json", "Accept-Language": "en-US,en;q=0.9", "User-Agent": PROBE_USER_AGENT },
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     cache: "no-store",
   });
@@ -157,7 +158,7 @@ async function probeMediaRange(url) {
   try {
     const response = await fetch(url, {
       method: "GET",
-      headers: { Range: "bytes=0-1", Origin: "https://edall.lovable.app" },
+      headers: { Range: "bytes=0-1", Origin: "https://edall.lovable.app", "User-Agent": PROBE_USER_AGENT },
       signal: controller.signal,
       cache: "no-store",
     });
@@ -345,6 +346,8 @@ async function probeManifest(url) {
       headers: {
         Accept: "application/dash+xml, application/vnd.apple.mpegurl, application/x-mpegURL, */*",
         Origin: "https://edall.lovable.app",
+        "Accept-Language": "en-US,en;q=0.9",
+        "User-Agent": PROBE_USER_AGENT,
       },
       signal: controller.signal,
       cache: "no-store",
