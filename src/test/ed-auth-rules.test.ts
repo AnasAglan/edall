@@ -4,10 +4,13 @@ import { resolve } from "node:path";
 import { runInNewContext } from "node:vm";
 
 const html = readFileSync(resolve(process.cwd(), "public/ed_master.html"), "utf8");
+const appEntryHtml = readFileSync(resolve(process.cwd(), "index.html"), "utf8");
+const assistantWorker = readFileSync(resolve(process.cwd(), "workers/edall-assistant/index.js"), "utf8");
 const assistant = readFileSync(resolve(process.cwd(), "public/ed_assistant.js"), "utf8");
 const setupUserMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20261110170000_harden_setup_new_user_roles.sql"), "utf8");
 const secureSetupMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20261115120000_serialize_initial_admin_bootstrap.sql"), "utf8");
 const accountTriggerMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20261118190000_fix_auth_account_provisioning.sql"), "utf8");
+const orphanAccountRepairMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20261118193000_repair_orphaned_auth_profiles.sql"), "utf8");
 
 function loadRules() {
   const m = html.match(/<script id="edAuthRules">([\s\S]*?)<\/script>/);
@@ -117,6 +120,37 @@ describe("assistant visibility", () => {
   });
 });
 
+
+describe("password recovery redirect routing", () => {
+  it("preserves query and hash values when the root redirects into the platform", () => {
+    expect(appEntryHtml).toContain('location.replace("/ed_master.html" + location.search + location.hash);');
+  });
+
+  it("sends both administrator-created and administrator-requested password resets directly to the auth page", () => {
+    const redirectCall = 'recoveryUrl.searchParams.set("redirect_to", new URL("/ed_master.html", env.WORKER_APP_ORIGIN).href);';
+    const redirectCallCount = assistantWorker.split(redirectCall).length - 1;
+    expect(redirectCallCount).toBe(2);
+    expect(assistantWorker).not.toContain('recoveryUrl.searchParams.set("redirect_to", env.WORKER_APP_ORIGIN)');
+  });
+});
+
+describe("legacy auth account repair", () => {
+  it("repairs only profiles missing for accounts that already have a role", () => {
+    expect(orphanAccountRepairMigration).toContain("LEFT JOIN public.profiles AS p ON p.id = u.id");
+    expect(orphanAccountRepairMigration).toContain("WHERE p.id IS NULL");
+    expect(orphanAccountRepairMigration).toContain("FROM public.user_roles AS r");
+    expect(orphanAccountRepairMigration).toContain("PERFORM public.setup_new_user(");
+  });
+
+  it("fills missing wallets without changing existing balances or roles", () => {
+    expect(orphanAccountRepairMigration).toContain("INSERT INTO public.wallets (user_id, balance)");
+    expect(orphanAccountRepairMigration).toContain("LEFT JOIN public.wallets AS w ON w.user_id = u.id");
+    expect(orphanAccountRepairMigration).toContain("ON CONFLICT (user_id) DO NOTHING");
+    expect(orphanAccountRepairMigration).not.toMatch(/UPDATE\s+public\.wallets/i);
+    expect(orphanAccountRepairMigration).not.toMatch(/(INSERT|UPDATE|DELETE)\s+(INTO\s+)?public\.user_roles/i);
+    expect(orphanAccountRepairMigration).not.toMatch(/UPDATE\s+auth\.users/i);
+  });
+});
 
 describe("trusted auth account provisioning", () => {
   it("creates profile, wallet, and only allowed signup roles in the auth trigger", () => {

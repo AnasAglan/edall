@@ -4,7 +4,7 @@
     <script>
       // تجاوز فوري لصفحة المنصة بدون وميض شاشة التحميل
       if (location.pathname === "/" && !location.pathname.startsWith("/.lovable")) {
-        location.replace("/ed_master.html");
+        location.replace("/ed_master.html" + location.search + location.hash);
       }
     </script>
     <meta charset="UTF-8" />

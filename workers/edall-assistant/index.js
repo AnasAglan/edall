@@ -1543,7 +1543,7 @@ async function tool(name, args, env, token, user, roles, images = []) {
     let resetEmailWarning = null;
     try {
       const recoveryUrl = new URL("/auth/v1/recover", env.SUPABASE_URL);
-      recoveryUrl.searchParams.set("redirect_to", env.WORKER_APP_ORIGIN);
+      recoveryUrl.searchParams.set("redirect_to", new URL("/ed_master.html", env.WORKER_APP_ORIGIN).href);
       const recoveryResponse = await fetch(recoveryUrl, {
         method: "POST",
         headers: {
@@ -1574,7 +1574,7 @@ async function tool(name, args, env, token, user, roles, images = []) {
     const profile = Array.isArray(profiles) ? profiles[0] : null;
     if (!profile?.email) throw new Error("لم أجد بريدًا إلكترونيًا مرتبطًا بهذا الحساب.");
     const recoveryUrl = new URL("/auth/v1/recover", env.SUPABASE_URL);
-    recoveryUrl.searchParams.set("redirect_to", env.WORKER_APP_ORIGIN);
+    recoveryUrl.searchParams.set("redirect_to", new URL("/ed_master.html", env.WORKER_APP_ORIGIN).href);
     const response = await fetch(recoveryUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: env.SUPABASE_PUBLISHABLE_KEY },
