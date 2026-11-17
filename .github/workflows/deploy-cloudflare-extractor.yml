@@ -1,12 +1,8 @@
 name: Deploy Invidious extractor to Cloudflare Workers
 
+# Manual compatibility workflow. Production deployments are centralized in
+# deploy-production-workers.yml so all three Workers release together.
 on:
-  push:
-    branches: [main]
-    paths:
-      - "workers/extract-youtube-stream/**"
-      - "wrangler.toml"
-      - ".github/workflows/deploy-cloudflare-extractor.yml"
   workflow_dispatch:
 
 permissions:
