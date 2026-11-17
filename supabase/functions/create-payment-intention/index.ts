@@ -1,21 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const DEFAULT_ORIGIN = "https://edall.lovable.app";
-
-function allowedOrigins(): Set<string> {
-  return new Set((Deno.env.get("EDALL_ALLOWED_ORIGINS") || DEFAULT_ORIGIN)
-    .split(",").map(value => value.trim()).filter(Boolean));
-}
-
-function corsHeaders(origin: string | null): Record<string,string> {
-  const allowed = allowedOrigins();
-  return {
-    ...(origin && allowed.has(origin) ? { "Access-Control-Allow-Origin": origin } : {}),
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Vary": "Origin"
-  };
-}
+import {
+  edallCorsHeaders,
+  getEdallAppOrigins,
+  isAllowedEdallOrigin,
+} from "../_shared/app-origin.ts";
 
 function json(body: Record<string,unknown>, status: number, headers: Record<string,string>) {
   return new Response(JSON.stringify(body), {
@@ -51,20 +39,23 @@ function splitName(name: string) {
 
 Deno.serve(async req => {
   const origin = req.headers.get("Origin");
-  const cors = corsHeaders(origin);
+  const url = Deno.env.get("SUPABASE_URL") || "";
+  const cors = edallCorsHeaders(origin, url);
+  const originAllowed = isAllowedEdallOrigin(origin, url);
 
   if (req.method === "OPTIONS") {
-    if (origin && !allowedOrigins().has(origin)) return json({ error: "Origin is not allowed." },403,cors);
+    if (!originAllowed) return json({ error: "Origin is not allowed for this backend." },403,cors);
     return new Response(null,{status:204,headers:cors});
   }
   if (req.method !== "POST") return json({error:"Method not allowed."},405,cors);
-  if (origin && !allowedOrigins().has(origin)) return json({error:"Origin is not allowed."},403,cors);
+  if (!originAllowed) return json({error:"Origin is not allowed for this backend."},403,cors);
 
   try {
     const authorization = req.headers.get("Authorization") || "";
     if (!authorization.startsWith("Bearer ")) return json({error:"Authentication required."},401,cors);
 
-    const url = Deno.env.get("SUPABASE_URL");
+    const appOrigins = getEdallAppOrigins(url);
+    if (!url || !appOrigins.length) return json({error:"Payment backend environment is not recognized."},503,cors);
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY");
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     if (!url || !anonKey || !serviceKey) return json({error:"Payment backend is not configured."},503,cors);
@@ -196,10 +187,21 @@ Deno.serve(async req => {
       return json({error:"CHECKOUT_ALREADY_BEING_PREPARED"},409,cors);
     }
 
-    const notificationUrl=Deno.env.get("PAYMOB_NOTIFICATION_URL") ||
-      `${url.replace(/\/$/,"")}/functions/v1/paymob-webhook`;
-    const redirectUrl=Deno.env.get("PAYMOB_REDIRECTION_URL") ||
-      `${DEFAULT_ORIGIN}/?payment=return`;
+    const notificationUrl = `${url.replace(/\/$/,"")}/functions/v1/paymob-webhook`;
+    const redirectOrigin = origin && appOrigins.includes(origin) ? origin : appOrigins[0];
+    let redirectUrl = `${redirectOrigin}/?payment=return`;
+    const configuredRedirectUrl = Deno.env.get("PAYMOB_REDIRECTION_URL") || "";
+    if (configuredRedirectUrl) {
+      try {
+        const parsedRedirect = new URL(configuredRedirectUrl);
+        if (!appOrigins.includes(parsedRedirect.origin)) {
+          return json({ error: "Payment return URL must stay inside the active ED-ALL environment." },503,cors);
+        }
+        redirectUrl = parsedRedirect.toString();
+      } catch {
+        return json({ error: "Configured payment return URL is invalid." },503,cors);
+      }
+    }
 
     const intentionPayload={
       amount:amountCents,
