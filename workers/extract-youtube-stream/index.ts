@@ -15,6 +15,7 @@ function buildCorsHeaders(origin: string | null, allowedOrigin: string) {
 const OFFICIAL_INSTANCES_API = "https://api.invidious.io/instances.json?sort_by=health";
 const VIDEO_ID_PATTERN = /^[a-zA-Z0-9_-]{11}$/;
 const REQUEST_TIMEOUT_MS = 6500;
+const PROBE_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 const BATCH_SIZE = 4;
 
 function responseJson(body: unknown, status = 200, origin: string | null = null, allowedOrigin = DEFAULT_ALLOWED_ORIGIN) {
@@ -42,7 +43,7 @@ async function fetchWithTimeout(url: string, timeout = REQUEST_TIMEOUT_MS) {
   try {
     const response = await fetch(url, {
       signal: controller.signal,
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/json", "Accept-Language": "en-US,en;q=0.9", "User-Agent": PROBE_USER_AGENT },
       cache: "no-store",
     });
     return response;
@@ -203,7 +204,7 @@ async function probeMediaUrl(url: string, origin = DEFAULT_ALLOWED_ORIGIN) {
     const response = await fetch(url, {
       method: "GET",
       signal: controller.signal,
-      headers: { Range: "bytes=0-1", Origin: origin },
+      headers: { Range: "bytes=0-1", Origin: origin, "User-Agent": PROBE_USER_AGENT },
       cache: "no-store",
     });
     const contentType = response.headers.get("content-type") || "";
@@ -364,7 +365,7 @@ async function probeManifestUrl(url: string, origin = DEFAULT_ALLOWED_ORIGIN) {
   try {
     const response = await fetch(url, {
       signal: controller.signal,
-      headers: { Accept: "application/dash+xml, application/vnd.apple.mpegurl, application/x-mpegURL, */*", Origin: origin },
+      headers: { Accept: "application/dash+xml, application/vnd.apple.mpegurl, application/x-mpegURL, */*", Origin: origin, "Accept-Language": "en-US,en;q=0.9", "User-Agent": PROBE_USER_AGENT },
       cache: "no-store",
     });
     const cors = response.headers.get("access-control-allow-origin");
@@ -403,7 +404,7 @@ async function probeInstance(instance: { url: string; score: number; status: str
   try {
     const response = await fetch(url, {
       signal: controller.signal,
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/json", "Accept-Language": "en-US,en;q=0.9", "User-Agent": PROBE_USER_AGENT },
       cache: "no-store",
     });
     if (!response.ok) throw new Error("Invidious HTTP " + response.status);
