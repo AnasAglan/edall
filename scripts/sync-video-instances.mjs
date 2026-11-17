@@ -5,6 +5,20 @@ const PIPED_SOURCE = "https://raw.githubusercontent.com/TeamPiped/documentation/
 const INVIDIOUS_SOURCE = "https://api.invidious.io/instances.json?sort_by=health";
 const OUTPUT = new URL("../public/video-instances.json", import.meta.url);
 export const SAMPLE_VIDEO_IDS = ["dQw4w9WgXcQ", "aqz-KE-bpKQ"];
+export const CURATED_INVIDIOUS_INSTANCES = [
+  "https://inv.nadeko.net",
+  "https://invidious.nerdvpn.de",
+  "https://yt.chocolatemoo53.com",
+  "https://invidious.tiekoetter.com",
+].map((url) => ({
+  url,
+  provider: "invidious",
+  official: false,
+  curated: true,
+  apiListed: false,
+  apiProbeCandidate: true,
+  source: "curated-public-clearnet",
+}));
 const REQUEST_TIMEOUT_MS = 7000;
 const CONCURRENCY = 8;
 
@@ -70,7 +84,9 @@ export function discoverPiped(markdown) {
 }
 
 export function supportsInvidiousApi(instance) {
-  return instance?.provider !== "invidious" || instance?.apiListed === true;
+  return instance?.provider !== "invidious" ||
+    instance?.apiListed === true ||
+    instance?.apiProbeCandidate === true;
 }
 
 export function discoverInvidious(payload) {
@@ -88,6 +104,8 @@ export function discoverInvidious(payload) {
       provider: "invidious",
       official: true,
       apiListed: meta.api === true,
+      directoryApiListed: meta.api === true,
+      apiProbeCandidate: true,
       cors: meta.cors === true,
       uptime: Number(monitor.uptime) || null,
       monitorDown: monitor.down === true,
@@ -444,7 +462,8 @@ async function probeInstance(instance) {
       testedVideoIds: SAMPLE_VIDEO_IDS,
       lastCheckedAt: new Date().toISOString(),
       lastSuccessAt: null,
-      error: "The official Invidious directory reports api=false; its video API is disabled, so extraction was not attempted.",
+      apiVerified: false,
+      error: "This candidate was not eligible for an API probe.",
     };
   }
   try {
@@ -533,6 +552,7 @@ async function probeInstance(instance) {
       testedVideoIds: SAMPLE_VIDEO_IDS,
       lastCheckedAt: new Date().toISOString(),
       lastSuccessAt: new Date().toISOString(),
+      apiVerified: true,
       error: null,
     };
   } catch (error) {
@@ -551,6 +571,7 @@ async function probeInstance(instance) {
       testedVideoIds: SAMPLE_VIDEO_IDS,
       lastCheckedAt: new Date().toISOString(),
       lastSuccessAt: null,
+      apiVerified: false,
       error: String(error && error.message || error).slice(0, 500),
     };
   }
@@ -595,7 +616,7 @@ async function main() {
     invidious = previous.sources.invidious.map((item) => ({ ...item, status: item.status || "unknown" }));
   }
   piped = piped || [];
-  invidious = invidious || [];
+  invidious = uniqueByUrl([...(invidious || []), ...CURATED_INVIDIOUS_INSTANCES]);
 
   if (!piped.length && !invidious.length) {
     throw new Error("Both official instance directories failed and there is no previous registry. " + sourceErrors.join(" | "));
@@ -619,14 +640,19 @@ async function main() {
   const registry = {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
-    refreshedDaily: true,
+    refreshedDaily: sourceErrors.length === 0,
+    sourcesUpdated: {
+      piped: pipedResult.status === "fulfilled",
+      invidious: invidiousResult.status === "fulfilled",
+    },
     sources: {
       piped: checkedPiped,
       invidious: checkedInvidious,
     },
     sourceErrors,
     policy: {
-      onlyOfficialDirectories: true,
+      onlyOfficialDirectories: false,
+      curatedInvidiousCandidates: CURATED_INVIDIOUS_INSTANCES.map((item) => item.url),
       onlyHttps: true,
       failedInstancesAreRetained: true,
       healthyInstancesFirst: true,
