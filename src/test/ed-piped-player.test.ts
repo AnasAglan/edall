@@ -173,8 +173,8 @@ describe("ED ALL Piped player", () => {
   it("keeps Piped playback exclusive to ordinary browsers", () => {
     expect(platformHtml).toContain("_edLoadExternalScript('_edpiped', '/ed_piped_player.js?v=20261111-finalfix'");
     expect(platformHtml).toContain("window.EDPipedPlayer.open");
-    expect(platformHtml).toContain("workerUrl: 'https://edall-invidious-extractor-staging.anasaglan2011.workers.dev'");
-    expect(platformHtml).toContain("mediaProxyUrl: 'https://edall-video-media-proxy-staging.anasaglan2011.workers.dev'");
+    expect(platformHtml).toContain("workerUrl: appConfig.extractorUrl");
+    expect(platformHtml).toContain("mediaProxyUrl: appConfig.mediaProxyUrl");
     expect(platformHtml).toContain("_edLoadLib({ nativeOnly: isDesktop || isAndroidApp });");
     expect(platformHtml).toContain("if (nativeOnly) return;");
     expect(platformHtml).toContain("if (!isAndroidApp && window.EDPipedPlayer && window.Plyr)");
