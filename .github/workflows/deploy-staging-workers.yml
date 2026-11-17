@@ -24,35 +24,12 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Validate isolated Staging deployment credentials
+      - name: Validate Cloudflare deployment credential
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          STAGING_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_PUBLISHABLE_KEY }}
         run: |
           set -euo pipefail
           test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::Missing CLOUDFLARE_API_TOKEN GitHub Actions secret."; exit 1; }
-          test -n "$STAGING_SUPABASE_PUBLISHABLE_KEY" || { echo "::error::Missing STAGING_SUPABASE_PUBLISHABLE_KEY GitHub Actions secret."; exit 1; }
-          case "$STAGING_SUPABASE_PUBLISHABLE_KEY" in
-            sb_publishable_*|eyJ*) ;;
-            *) echo "::error::Staging publishable key has an unexpected format."; exit 1 ;;
-          esac
-
-      - name: Prepare short-lived Staging assistant secrets file
-        env:
-          STAGING_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_PUBLISHABLE_KEY }}
-          STAGING_GEMINI_API_KEY: ${{ secrets.STAGING_GEMINI_API_KEY }}
-        run: |
-          set -euo pipefail
-          node <<'NODE'
-          const fs = require("node:fs");
-          const path = require("node:path");
-          const key = process.env.STAGING_SUPABASE_PUBLISHABLE_KEY;
-          if (!key) throw new Error("Missing Staging publishable key.");
-          const values = { STAGING_SUPABASE_PUBLISHABLE_KEY: key };
-          if (process.env.STAGING_GEMINI_API_KEY) values.STAGING_GEMINI_API_KEY = process.env.STAGING_GEMINI_API_KEY;
-          const destination = path.join(process.env.RUNNER_TEMP, "edall-assistant-staging-secrets.json");
-          fs.writeFileSync(destination, JSON.stringify(values), { encoding: "utf8", mode: 0o600, flag: "wx" });
-          NODE
 
       - name: Deploy isolated Invidious extractor
         uses: cloudflare/wrangler-action@v4
@@ -70,14 +47,23 @@ jobs:
           wranglerVersion: "4"
           command: deploy --config workers/video-media-proxy/wrangler.staging.toml
 
-      - name: Deploy isolated assistant with Staging-only credentials
-        uses: cloudflare/wrangler-action@v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: f5cd21e0ec5497880217da477e4640f2
-          wranglerVersion: "4"
-          command: deploy --config wrangler.assistant.staging.toml --secrets-file=${{ runner.temp }}/edall-assistant-staging-secrets.json
+      - name: Verify both Staging Workers reject Production origins
+        shell: bash
+        run: |
+          set -euo pipefail
+          STAGING_ORIGIN="https://id-preview--c65d2fd9-1c85-479f-9347-d54b6341e6a7.lovable.app"
+          PRODUCTION_ORIGIN="https://edall.lovable.app"
 
-      - name: Remove temporary secret file
-        if: always()
-        run: rm -f "${{ runner.temp }}/edall-assistant-staging-secrets.json"
+          extractor="https://edall-invidious-extractor-staging.anasaglan2011.workers.dev/"
+          extractor_stage_status=$(curl -sS -o /dev/null -w "%{http_code}" -X OPTIONS "$extractor" -H "Origin: $STAGING_ORIGIN" -H "Access-Control-Request-Method: POST")
+          extractor_prod_status=$(curl -sS -o /dev/null -w "%{http_code}" -X OPTIONS "$extractor" -H "Origin: $PRODUCTION_ORIGIN" -H "Access-Control-Request-Method: POST")
+          test "$extractor_stage_status" = "204"
+          test "$extractor_prod_status" = "403"
+
+          proxy="https://edall-video-media-proxy-staging.anasaglan2011.workers.dev/health"
+          proxy_stage_status=$(curl -sS -o /dev/null -w "%{http_code}" "$proxy" -H "Origin: $STAGING_ORIGIN")
+          proxy_prod_status=$(curl -sS -o /dev/null -w "%{http_code}" "$proxy" -H "Origin: $PRODUCTION_ORIGIN")
+          test "$proxy_stage_status" = "200"
+          test "$proxy_prod_status" = "403"
+
+          echo "Staging-origin requests accepted; Production-origin requests rejected by both isolated Workers."
