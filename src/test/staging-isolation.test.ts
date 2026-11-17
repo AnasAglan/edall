@@ -22,7 +22,7 @@ describe("Staging isolation", () => {
 
 
   it("removes production refs, URLs, endpoints and embedded JWT keys from scoped source", () => {
-    for (const file of ["public/ed_master.html", "public/ed_assistant.js", "wrangler.assistant.staging.toml", "wrangler.staging.toml", "workers/video-media-proxy/wrangler.staging.toml", "scripts/staging-config.mjs", "scripts/deploy-edall-assistant-staging.mjs"]) {
+    for (const file of ["public/ed_master.html", "public/ed_assistant.js", "wrangler.assistant.staging.toml", "wrangler.staging.toml", "workers/video-media-proxy/wrangler.staging.toml", "scripts/deploy-edall-assistant-staging.mjs"]) {
       const source = readFileSync(file, "utf8");
       expect(source.includes(productionRef), file).toBe(false);
       expect(source.includes("https://edall-assistant.anasaglan2011.workers.dev"), file).toBe(false);
@@ -56,11 +56,12 @@ describe("Staging isolation", () => {
     let middleware: Function = () => {};
     plugin.configureServer({ middlewares: { use: (handler: Function) => { middleware = handler; } } });
     let served = "";
-    middleware({ url: "/ed-staging-config.js" }, { setHeader() {}, end(value: string) { served = value; } }, () => { throw new Error("config not served"); });
+    middleware({ url: "/ed-app-config.js" }, { setHeader() {}, end(value: string) { served = value; } }, () => { throw new Error("config not served"); });
     let emitted: any;
     plugin.generateBundle.call({ emitFile(asset: any) { emitted = asset; } });
-    expect(emitted.fileName).toBe("ed-staging-config.js");
+    expect(emitted.fileName).toBe("ed-app-config.js");
     expect(emitted.source === served).toBe(true);
+    expect(served.includes(`"environment":"staging"`)).toBe(true);
     expect(served.includes(`"projectId":"${ref}"`)).toBe(true);
     expect(served.includes(stagingUrl)).toBe(true);
     expect(served.includes("iuaddjoofgrirzslzqfy")).toBe(false);
