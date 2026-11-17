@@ -6,6 +6,7 @@ import { runInNewContext } from "node:vm";
 const html = readFileSync(resolve(process.cwd(), "public/ed_master.html"), "utf8");
 const assistant = readFileSync(resolve(process.cwd(), "public/ed_assistant.js"), "utf8");
 const setupUserMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20261110170000_harden_setup_new_user_roles.sql"), "utf8");
+const secureSetupMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20261115120000_serialize_initial_admin_bootstrap.sql"), "utf8");
 const accountTriggerMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20261118190000_fix_auth_account_provisioning.sql"), "utf8");
 
 function loadRules() {
@@ -117,7 +118,9 @@ describe("trusted auth account provisioning", () => {
   });
 
   it("keeps privileged setup_new_user unavailable to browser roles", () => {
-    expect(setupUserMigration).toContain("GRANT EXECUTE ON FUNCTION public.setup_new_user(uuid, text, text, text) TO authenticated, service_role;");
+    expect(secureSetupMigration).toContain("REVOKE ALL ON FUNCTION public.setup_new_user(uuid, text, text, text)");
+    expect(secureSetupMigration).toContain("FROM PUBLIC, anon, authenticated");
+    expect(secureSetupMigration).toContain("TO service_role");
     expect(accountTriggerMigration).not.toContain("GRANT EXECUTE ON FUNCTION public.setup_new_user");
   });
 });
