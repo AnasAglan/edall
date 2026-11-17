@@ -1,5 +1,17 @@
 name: Validate ED-ALL Staging isolation
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "public/ed_master.html"
+      - "public/ed_assistant.js"
+      - "workers/edall-assistant/**"
+      - "workers/extract-youtube-stream/**"
+      - "workers/video-media-proxy/**"
+      - "scripts/staging-config*"
+      - "wrangler*.toml"
+      - "src/test/**"
+      - ".github/workflows/validate-staging-isolation.yml"
   push:
     branches: [fix/staging-isolation]
     paths:
