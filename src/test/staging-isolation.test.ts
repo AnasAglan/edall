@@ -51,7 +51,7 @@ describe("Staging isolation", () => {
   });
 
   it("emits the same public config asset in dev and builds without transforming public HTML", () => {
-    const plugin = stagingConfigPlugin();
+    const plugin = stagingConfigPlugin(config);
     plugin.configResolved({ mode: "development", envDir: process.cwd() });
     let middleware: Function = () => {};
     plugin.configureServer({ middlewares: { use: (handler: Function) => { middleware = handler; } } });
