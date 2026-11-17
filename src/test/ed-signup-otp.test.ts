@@ -86,3 +86,13 @@ describe("app-only video download navigation", () => {
     expect(notice).toContain("Download the app");
   });
 });
+  
+describe("confirmation email template", () => {
+  it("matches the link-only activation page instead of asking users to enter an OTP", () => {
+    expect(template).toContain("{{ .ConfirmationURL }}");
+    expect(template).not.toContain("{{ .Token }}");
+    expect(template).not.toMatch(/رمز التحقق|أدخل الرمز|استخدم رمز/);
+    expect(template).toContain("اضغط على زر التفعيل");
+    expect(config).toContain('subject = "تفعيل حسابك في ED-ALL"');
+  });
+});
