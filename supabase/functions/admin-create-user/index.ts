@@ -1,15 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const ALLOWED_ORIGIN = "https://edall.lovable.app";
-
-function corsHeaders(origin: string | null): Record<string, string> {
-  return {
-    ...(origin === ALLOWED_ORIGIN ? { "Access-Control-Allow-Origin": ALLOWED_ORIGIN } : {}),
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Vary": "Origin",
-  };
-}
+import { edallCorsHeaders, isAllowedEdallOrigin } from "../_shared/app-origin.ts";
 
 function json(body: Record<string, unknown>, status: number, headers: Record<string, string>) {
   return new Response(JSON.stringify(body), {
@@ -26,14 +16,16 @@ function validEmail(value: unknown): value is string {
 
 Deno.serve(async (req: Request) => {
   const origin = req.headers.get("Origin");
-  const cors = corsHeaders(origin);
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+  const cors = edallCorsHeaders(origin, supabaseUrl);
+  const originAllowed = isAllowedEdallOrigin(origin, supabaseUrl);
 
   if (req.method === "OPTIONS") {
-    if (origin && origin !== ALLOWED_ORIGIN) return json({ error: "Origin is not allowed." }, 403, cors);
+    if (!originAllowed) return json({ error: "Origin is not allowed for this backend." }, 403, cors);
     return new Response(null, { status: 204, headers: cors });
   }
   if (req.method !== "POST") return json({ error: "Method not allowed." }, 405, cors);
-  if (origin && origin !== ALLOWED_ORIGIN) return json({ error: "Origin is not allowed." }, 403, cors);
+  if (!originAllowed) return json({ error: "Origin is not allowed for this backend." }, 403, cors);
 
   try {
     const authHeader = req.headers.get("Authorization") || "";
@@ -41,7 +33,6 @@ Deno.serve(async (req: Request) => {
       return json({ error: "يجب تسجيل الدخول بصلاحية مدير." }, 401, cors);
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const publishableKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ||
       Deno.env.get("SUPABASE_ANON_KEY");
