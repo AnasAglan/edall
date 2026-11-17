@@ -37,6 +37,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: f5cd21e0ec5497880217da477e4640f2
           wranglerVersion: "4"
+          packageManager: npm
           command: deploy --config wrangler.staging.toml
 
       - name: Deploy isolated video media proxy
@@ -45,6 +46,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: f5cd21e0ec5497880217da477e4640f2
           wranglerVersion: "4"
+          packageManager: npm
           command: deploy --config workers/video-media-proxy/wrangler.staging.toml
 
       - name: Verify both Staging Workers reject Production origins
