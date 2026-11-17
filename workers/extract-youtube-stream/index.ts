@@ -51,7 +51,16 @@ async function fetchWithTimeout(url: string, timeout = REQUEST_TIMEOUT_MS) {
   }
 }
 
-async function loadOfficialInstances(registryUrl = DEFAULT_REGISTRY_URL): Promise<Array<{ url: string; score: number; status: string }>> {
+async function loadOfficialInstances(registryUrl = DEFAULT_REGISTRY_URL): Promise<Array<{
+  url: string;
+  score: number;
+  status: string;
+  official?: boolean;
+  curated?: boolean;
+  apiListed?: boolean;
+  apiVerified?: boolean;
+  apiProbeCandidate?: boolean;
+}>> {
   try {
     const registryResponse = await fetchWithTimeout(registryUrl, 4500);
     if (registryResponse.ok) {
@@ -62,8 +71,15 @@ async function loadOfficialInstances(registryUrl = DEFAULT_REGISTRY_URL): Promis
         score: Number(item?.score) || 0,
         status: String(item?.status || "unknown"),
         official: item?.official === true,
+        curated: item?.curated === true,
         apiListed: item?.apiListed === true,
-      })).filter((item: any) => item.url && item.official && item.apiListed);
+        apiVerified: item?.apiVerified === true,
+        apiProbeCandidate: item?.apiProbeCandidate === true,
+      })).filter((item: any) =>
+        item.url &&
+        (item.official || item.curated) &&
+        (item.apiVerified === true || item.apiListed === true)
+      );
       const usable = cleaned.filter((item: any) => item.status !== "unhealthy");
       if (usable.length) return usable;
     }
@@ -474,17 +490,21 @@ async function extract(videoId: string, excluded: string[], registryUrl = DEFAUL
     });
 
   if (!instances.length) throw new Error("No official HTTPS Invidious instances currently advertise API access.");
-  const failures: string[] = [];
+  const failures: Array<{ instance: string; error: string }> = [];
   let best: any = null;
 
   for (let offset = 0; offset < instances.length; offset += BATCH_SIZE) {
     const batch = instances.slice(offset, offset + BATCH_SIZE);
     const results = await Promise.allSettled(batch.map((instance) => probeInstance(instance, videoId, origin)));
-    for (const result of results) {
+    for (let index = 0; index < results.length; index += 1) {
+      const result = results[index];
       if (result.status === "fulfilled") {
         if (!best || result.value.score > best.score) best = result.value;
       } else {
-        failures.push(String(result.reason?.message || result.reason).slice(0, 180));
+        failures.push({
+          instance: batch[index].url,
+          error: String(result.reason?.message || result.reason).slice(0, 180),
+        });
       }
     }
     const heights = best?.heights || [];
@@ -492,7 +512,7 @@ async function extract(videoId: string, excluded: string[], registryUrl = DEFAUL
     // proof that a later instance cannot supply a higher selectable quality.
   }
 
-  if (!best) throw new Error("All official Invidious instances failed: " + failures.slice(0, 5).join(" | "));
+  if (!best) throw new Error("All Invidious candidates failed: " + failures.slice(0, 8).map((item) => item.instance + " — " + item.error).join(" | "));
   return {
     success: true,
     provider: "invidious",
@@ -511,6 +531,7 @@ async function extract(videoId: string, excluded: string[], registryUrl = DEFAUL
       selectedInstanceMs: best.elapsedMs,
       selectedScore: best.score,
       failedInstances: failures.length,
+      failedInstanceDetails: failures.slice(0, 12),
       playbackVerified: best.playbackVerified === true,
       audioAvailable: best.audioAvailable === true,
       mediaProbe: best.mediaProbe || null,
