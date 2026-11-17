@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { discoverPiped, discoverInvidious, supportsInvidiousApi, assessSamplePlayback, SAMPLE_VIDEO_IDS, parseHlsPlaylist, verifiedSampleHeights, classifyPlaybackHealth } from "./sync-video-instances.mjs";
+import { discoverPiped, discoverInvidious, supportsInvidiousApi, assessSamplePlayback, SAMPLE_VIDEO_IDS, CURATED_INVIDIOUS_INSTANCES, parseHlsPlaylist, verifiedSampleHeights, classifyPlaybackHealth } from "./sync-video-instances.mjs";
 
 test("discovers Piped API hosts from the current public directory table only", () => {
   const markdown = [
@@ -136,12 +136,21 @@ test("preserves the official directory's API capability flag", () => {
     ["api.example", { type: "https", uri: "https://api.example", api: true, cors: true }],
     ["web-only.example", { type: "https", uri: "https://web-only.example", api: false, cors: false }],
   ]);
-  assert.equal(entries.find((item) => item.url === "https://api.example").apiListed, true);
-  assert.equal(entries.find((item) => item.url === "https://web-only.example").apiListed, false);
+  assert.equal(entries.find((item) => item.url === "https://api.example").directoryApiListed, true);
+  assert.equal(entries.find((item) => item.url === "https://web-only.example").directoryApiListed, false);
+  assert.equal(entries.find((item) => item.url === "https://web-only.example").apiProbeCandidate, true);
 });
 
-test("does not probe Invidious instances whose official directory disables the API", () => {
+test("probes Invidious API=false entries and the four curated public Clearnet candidates", () => {
   assert.equal(supportsInvidiousApi({ provider: "invidious", apiListed: false }), false);
+  assert.equal(supportsInvidiousApi({ provider: "invidious", apiListed: false, apiProbeCandidate: true }), true);
   assert.equal(supportsInvidiousApi({ provider: "invidious", apiListed: true }), true);
   assert.equal(supportsInvidiousApi({ provider: "piped" }), true);
+  assert.deepEqual(CURATED_INVIDIOUS_INSTANCES.map((item) => item.url), [
+    "https://inv.nadeko.net",
+    "https://invidious.nerdvpn.de",
+    "https://yt.chocolatemoo53.com",
+    "https://invidious.tiekoetter.com",
+  ]);
+  assert.ok(CURATED_INVIDIOUS_INSTANCES.every((item) => item.curated && item.apiProbeCandidate));
 });
