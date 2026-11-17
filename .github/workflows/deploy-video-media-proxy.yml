@@ -1,11 +1,8 @@
 name: Deploy ED-ALL video media proxy
 
+# Manual compatibility workflow. Production deployments are centralized in
+# deploy-production-workers.yml so all three Workers release together.
 on:
-  push:
-    branches: [main]
-    paths:
-      - "workers/video-media-proxy/**"
-      - ".github/workflows/deploy-video-media-proxy.yml"
   workflow_dispatch:
 
 permissions:
