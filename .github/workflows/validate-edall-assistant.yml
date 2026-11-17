@@ -21,6 +21,7 @@ on:
       - "public/ed_assistant.js"
       - "supabase/functions/admin-delete-user/**"
       - ".github/workflows/validate-edall-assistant.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
