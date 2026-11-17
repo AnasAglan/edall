@@ -73,7 +73,7 @@ jobs:
           proxy_prod_status=$(curl -sS -o /dev/null -w "%{http_code}" "$proxy" -H "Origin: $PRODUCTION_ORIGIN")
           assistant="https://edall-assistant-staging.anasaglan2011.workers.dev/health"
           assistant_stage_status=$(curl -sS -o /dev/null -w "%{http_code}" "$assistant" -H "Origin: $STAGING_ORIGIN")
-          assistant_prod_status=$(curl -sS -o /dev/null -w "%{http_code}" "$assistant" -H "Origin: $PRODUCTION_ORIGIN")
+          assistant_prod_status=$(curl -sS -o /dev/null -w "%{http_code}" -X OPTIONS "$assistant" -H "Origin: $PRODUCTION_ORIGIN" -H "Access-Control-Request-Method: POST")
 
           echo "Extractor preflight: Staging=${extractor_stage_status}, Production=${extractor_prod_status}"
           echo "Media proxy health: Staging=${proxy_stage_status}, Production=${proxy_prod_status}"
