@@ -6,6 +6,8 @@ import { runInNewContext } from "node:vm";
 const html = readFileSync(resolve(process.cwd(), "public/ed_master.html"), "utf8");
 const assistant = readFileSync(resolve(process.cwd(), "public/ed_assistant.js"), "utf8");
 const setupUserMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20261110170000_harden_setup_new_user_roles.sql"), "utf8");
+const secureSetupMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20261115120000_serialize_initial_admin_bootstrap.sql"), "utf8");
+const accountTriggerMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20261118190000_fix_auth_account_provisioning.sql"), "utf8");
 
 function loadRules() {
   const m = html.match(/<script id="edAuthRules">([\s\S]*?)<\/script>/);
@@ -60,10 +62,12 @@ describe("auth state listener rules", () => {
     expect(init).toContain("flushPendingAuthState()");
   });
 
-  it("does not silently swallow profile, role or setup RPC failures", () => {
+  it("does not call the service-role-only account bootstrap RPC from a browser session", () => {
+    expect(html).not.toContain("sb.rpc('setup_new_user'");
+    expect(html).not.toContain("ensureUserAccountRecord(");
     expect(html).toContain("profileResult.error || roleResult.error");
     expect(html).toContain("code: 'account_setup_failed'");
-    expect(html).toContain("throw Object.assign(new Error(error.message");
+    expect(html).toContain("Your session is valid, but your account profile or role is not ready.");
   });
 });
 
@@ -96,5 +100,27 @@ describe("assistant visibility", () => {
     expect(fn(null)).toBe(false);
     expect(fn({ id: "1", roles: ["teacher"] })).toBe(true);
     expect(fn({ id: "1", roles: ["admin"] })).toBe(true);
+  });
+});
+
+
+describe("trusted auth account provisioning", () => {
+  it("creates profile, wallet, and only allowed signup roles in the auth trigger", () => {
+    expect(accountTriggerMigration).toContain("CREATE OR REPLACE FUNCTION public.handle_new_user()");
+    expect(accountTriggerMigration).toContain("INSERT INTO public.profiles");
+    expect(accountTriggerMigration).toContain("INSERT INTO public.wallets");
+    expect(accountTriggerMigration).toContain("pg_advisory_xact_lock");
+    expect(accountTriggerMigration).toContain("_requested_role = 'teacher'");
+    expect(accountTriggerMigration).toContain("_target_role := 'student'::public.app_role");
+    expect(accountTriggerMigration).toContain("_target_role := 'admin'::public.app_role");
+    expect(accountTriggerMigration).toContain("REVOKE ALL ON FUNCTION public.handle_new_user() FROM PUBLIC, anon, authenticated");
+    expect(accountTriggerMigration).toContain("EXECUTE FUNCTION public.handle_new_user()");
+  });
+
+  it("keeps privileged setup_new_user unavailable to browser roles", () => {
+    expect(secureSetupMigration).toContain("REVOKE ALL ON FUNCTION public.setup_new_user(uuid, text, text, text)");
+    expect(secureSetupMigration).toContain("FROM PUBLIC, anon, authenticated");
+    expect(secureSetupMigration).toContain("TO service_role");
+    expect(accountTriggerMigration).not.toContain("GRANT EXECUTE ON FUNCTION public.setup_new_user");
   });
 });

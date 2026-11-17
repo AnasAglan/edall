@@ -4089,25 +4089,6 @@ window.triggerModalClose = function() {
             return role === 'teacher' ? 'teacher' : 'student';
         }
 
-        async function ensureUserAccountRecord(authUser, requestedRole) {
-            if (!authUser || !authUser.id || !authUser.email) {
-                throw Object.assign(new Error('The authenticated user record is incomplete.'), { code: 'account_setup_failed' });
-            }
-
-            const roleToSave = normalizeRequestedRole(requestedRole || authUser.user_metadata?.requested_role);
-            const { error } = await sb.rpc('setup_new_user', {
-                _user_id: authUser.id,
-                _name: authUser.user_metadata?.name || authUser.email,
-                _email: authUser.email,
-                _requested_role: roleToSave
-            });
-            if (error) {
-                console.error('Error ensuring user account record:', error);
-                throw Object.assign(new Error(error.message || 'Could not complete account setup.'), { code: 'account_setup_failed' });
-            }
-            return true;
-        }
-
         document.addEventListener('DOMContentLoaded', function() {
             // إخفاء زر تنزيل البرنامج إذا كان المستخدم داخل تطبيق الأندرويد أو الكمبيوتر
             const isDesktop = !!(window.edallDesktop && window.edallDesktop.isDesktop);
@@ -4144,7 +4125,6 @@ window.triggerModalClose = function() {
             if (outcome !== 'signed_in') return;
             if (_activeAuthUserId === session.user.id && currentUser?.id === session.user.id) return;
 
-            await ensureUserAccountRecord(session.user);
             await loadCurrentUserFromSupabase(session.user);
             clearPendingSignupVerification(session.user.email);
             if (currentUser?.banned) {
@@ -4211,7 +4191,6 @@ window.triggerModalClose = function() {
                 if (sessionError) throw sessionError;
 
                 if (session?.user) {
-                    await ensureUserAccountRecord(session.user);
                     await loadCurrentUserFromSupabase(session.user);
                     clearPendingSignupVerification(session.user.email);
                     if (currentUser?.banned) {
@@ -4295,11 +4274,7 @@ window.triggerModalClose = function() {
                 return { profile: profileResult.data, roles: roleResult.data || [] };
             };
 
-            let { profile, roles } = await readAccount();
-            if (!profile || roles.length === 0) {
-                await ensureUserAccountRecord(authUser);
-                ({ profile, roles } = await readAccount());
-            }
+            const { profile, roles } = await readAccount();
             if (!profile || roles.length === 0) {
                 throw Object.assign(
                     new Error('Your session is valid, but your account profile or role is not ready. Refresh or contact an administrator.'),
@@ -5645,7 +5620,6 @@ window.triggerModalClose = function() {
                     return;
                 }
                 
-                await ensureUserAccountRecord(data.user);
                 await loadCurrentUserFromSupabase(data.user);
                 
                 if (currentUser && currentUser.banned) {
@@ -5726,7 +5700,6 @@ window.triggerModalClose = function() {
                     return;
                 }
                 
-                await ensureUserAccountRecord(data.user, role);
                 
                 await loadCurrentUserFromSupabase(data.user);
                 _dataLoaded = false;
