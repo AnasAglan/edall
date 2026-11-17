@@ -4542,3 +4542,28 @@ GRANT EXECUTE ON FUNCTION public.admin_mfa_verified() TO authenticated, service_
 
 COMMIT;
 
+
+
+-- ============================================================================
+-- SOURCE FILE: 20261115119000_empty_search_path_for_legacy_definers.sql
+-- ============================================================================
+
+-- Remove the writable public schema from the execution search path of
+-- the two remaining SECURITY DEFINER functions from the legacy hardening step.
+-- Their object references are already schema-qualified.
+BEGIN;
+
+ALTER FUNCTION public.protect_profile_security_fields()
+  SET search_path = '';
+
+ALTER FUNCTION public.purchase_course(uuid)
+  SET search_path = '';
+
+ALTER FUNCTION public.setup_new_user(uuid,text,text,text)
+  SET search_path = '';
+
+ALTER FUNCTION public.handle_new_user()
+  SET search_path = '';
+
+COMMIT;
+
