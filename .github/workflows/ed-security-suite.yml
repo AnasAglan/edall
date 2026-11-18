@@ -6,6 +6,8 @@ on:
     paths:
       - "supabase/migrations/**"
       - "supabase/functions/**"
+      - "supabase/config.toml"
+      - "supabase/templates/**"
       - "workers/edall-assistant/**"
       - "workers/video-media-proxy/**"
       - "public/ed_master.html"
@@ -21,6 +23,7 @@ on:
       - "src/test/ed-xlsx.test.ts"
       - "src/test/video-media-proxy-security.test.ts"
       - "supabase/tests/**"
+      - ".github/workflows/apply-supabase-auth-email-template.yml"
       - "package.json"
       - ".github/workflows/ed-security-suite.yml"
   push:
@@ -28,6 +31,8 @@ on:
     paths:
       - "supabase/migrations/**"
       - "supabase/functions/**"
+      - "supabase/config.toml"
+      - "supabase/templates/**"
       - "workers/edall-assistant/**"
       - "workers/video-media-proxy/**"
       - "public/ed_master.html"
@@ -41,6 +46,7 @@ on:
       - "src/test/ed-piped-player.test.ts"
       - "src/test/ed-learning-suite.test.ts"
       - "supabase/tests/**"
+      - ".github/workflows/apply-supabase-auth-email-template.yml"
       - "package.json"
       - ".github/workflows/ed-security-suite.yml"
   workflow_dispatch:
