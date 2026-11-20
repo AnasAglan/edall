@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-19T10:28:11.974Z",
+  "generatedAt": "2026-11-20T10:08:26.808Z",
   "refreshedDaily": true,
   "sourcesUpdated": {
     "piped": true,
@@ -13,8 +13,8 @@
         "provider": "piped",
         "official": true,
         "status": "degraded",
-        "score": 109240,
-        "responseMs": 4210,
+        "score": 109259,
+        "responseMs": 3823,
         "mediaProbe": {
           "ok": true,
           "isManifest": false,
@@ -105,8 +105,8 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-19T10:28:10.353Z",
-        "lastSuccessAt": "2026-11-19T10:28:10.353Z",
+        "lastCheckedAt": "2026-11-20T10:08:23.476Z",
+        "lastSuccessAt": "2026-11-20T10:08:23.476Z",
         "apiVerified": true,
         "error": null
       },
@@ -115,8 +115,8 @@
         "provider": "piped",
         "official": true,
         "status": "degraded",
-        "score": 109234,
-        "responseMs": 4328,
+        "score": 109244,
+        "responseMs": 4114,
         "mediaProbe": {
           "ok": true,
           "isManifest": false,
@@ -207,8 +207,8 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-19T10:28:09.900Z",
-        "lastSuccessAt": "2026-11-19T10:28:09.900Z",
+        "lastCheckedAt": "2026-11-20T10:08:23.353Z",
+        "lastSuccessAt": "2026-11-20T10:08:23.353Z",
         "apiVerified": true,
         "error": null
       },
@@ -218,7 +218,7 @@
         "official": true,
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 96,
+        "responseMs": 369,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -230,7 +230,7 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-19T10:28:05.518Z",
+        "lastCheckedAt": "2026-11-20T10:08:19.212Z",
         "lastSuccessAt": null,
         "apiVerified": false,
         "error": "API was reachable, but no sample returned a browser-playable video+audio path: HTTP 403 from https://pipedapi.kavin.rocks/streams/dQw4w9WgXcQ | HTTP 403 from https://pipedapi.kavin.rocks/streams/aqz-KE-bpKQ"
@@ -241,7 +241,7 @@
         "official": true,
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 148,
+        "responseMs": 393,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -253,7 +253,7 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-19T10:28:05.572Z",
+        "lastCheckedAt": "2026-11-20T10:08:19.239Z",
         "lastSuccessAt": null,
         "apiVerified": false,
         "error": "API was reachable, but no sample returned a browser-playable video+audio path: HTTP 403 from https://pipedapi.leptons.xyz/streams/dQw4w9WgXcQ | HTTP 403 from https://pipedapi.leptons.xyz/streams/aqz-KE-bpKQ"
@@ -264,7 +264,7 @@
         "official": true,
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 264,
+        "responseMs": 478,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -276,7 +276,7 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-19T10:28:05.689Z",
+        "lastCheckedAt": "2026-11-20T10:08:19.326Z",
         "lastSuccessAt": null,
         "apiVerified": false,
         "error": "API was reachable, but no sample returned a browser-playable video+audio path: fetch failed | fetch failed"
@@ -287,7 +287,7 @@
         "official": true,
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 522,
+        "responseMs": 674,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -299,7 +299,7 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-19T10:28:05.951Z",
+        "lastCheckedAt": "2026-11-20T10:08:19.526Z",
         "lastSuccessAt": null,
         "apiVerified": false,
         "error": "API was reachable, but no sample returned a browser-playable video+audio path: fetch failed | fetch failed"
@@ -310,7 +310,7 @@
         "official": true,
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 716,
+        "responseMs": 803,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -322,7 +322,7 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-19T10:28:06.143Z",
+        "lastCheckedAt": "2026-11-20T10:08:19.653Z",
         "lastSuccessAt": null,
         "apiVerified": false,
         "error": "API was reachable, but no sample returned a browser-playable video+audio path: fetch failed | fetch failed"
@@ -333,7 +333,7 @@
         "official": true,
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 877,
+        "responseMs": 1088,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -345,7 +345,7 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-19T10:28:06.308Z",
+        "lastCheckedAt": "2026-11-20T10:08:19.943Z",
         "lastSuccessAt": null,
         "apiVerified": false,
         "error": "API was reachable, but no sample returned a browser-playable video+audio path: fetch failed | fetch failed"
@@ -356,7 +356,7 @@
         "official": true,
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 929,
+        "responseMs": 1120,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -368,7 +368,7 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-19T10:28:06.361Z",
+        "lastCheckedAt": "2026-11-20T10:08:19.976Z",
         "lastSuccessAt": null,
         "apiVerified": false,
         "error": "API was reachable, but no sample returned a browser-playable video+audio path: fetch failed | fetch failed"
@@ -379,7 +379,7 @@
         "official": true,
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 1507,
+        "responseMs": 1644,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -391,30 +391,7 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-19T10:28:07.025Z",
-        "lastSuccessAt": null,
-        "apiVerified": false,
-        "error": "API was reachable, but no sample returned a browser-playable video+audio path: fetch failed | fetch failed"
-      },
-      {
-        "url": "https://piped-api.codespace.cz",
-        "provider": "piped",
-        "official": true,
-        "status": "unhealthy",
-        "score": 0,
-        "responseMs": 1824,
-        "mediaProbe": null,
-        "manifestProbe": null,
-        "videoCount": 0,
-        "audioCount": 0,
-        "audioAvailable": false,
-        "heights": [],
-        "sampleChecks": [],
-        "testedVideoIds": [
-          "dQw4w9WgXcQ",
-          "aqz-KE-bpKQ"
-        ],
-        "lastCheckedAt": "2026-11-19T10:28:07.513Z",
+        "lastCheckedAt": "2026-11-20T10:08:20.856Z",
         "lastSuccessAt": null,
         "apiVerified": false,
         "error": "API was reachable, but no sample returned a browser-playable video+audio path: fetch failed | fetch failed"
@@ -425,7 +402,7 @@
         "official": true,
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 1961,
+        "responseMs": 1996,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -437,7 +414,30 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-19T10:28:08.269Z",
+        "lastCheckedAt": "2026-11-20T10:08:21.939Z",
+        "lastSuccessAt": null,
+        "apiVerified": false,
+        "error": "API was reachable, but no sample returned a browser-playable video+audio path: fetch failed | fetch failed"
+      },
+      {
+        "url": "https://piped-api.codespace.cz",
+        "provider": "piped",
+        "official": true,
+        "status": "unhealthy",
+        "score": 0,
+        "responseMs": 1999,
+        "mediaProbe": null,
+        "manifestProbe": null,
+        "videoCount": 0,
+        "audioCount": 0,
+        "audioAvailable": false,
+        "heights": [],
+        "sampleChecks": [],
+        "testedVideoIds": [
+          "dQw4w9WgXcQ",
+          "aqz-KE-bpKQ"
+        ],
+        "lastCheckedAt": "2026-11-20T10:08:21.325Z",
         "lastSuccessAt": null,
         "apiVerified": false,
         "error": "API was reachable, but no sample returned a browser-playable video+audio path: fetch failed | fetch failed"
@@ -448,7 +448,7 @@
         "official": true,
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 1973,
+        "responseMs": 2111,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -460,7 +460,7 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-19T10:28:07.924Z",
+        "lastCheckedAt": "2026-11-20T10:08:21.637Z",
         "lastSuccessAt": null,
         "apiVerified": false,
         "error": "API was reachable, but no sample returned a browser-playable video+audio path: HTTP 502 from https://pipedapi.reallyaweso.me/streams/dQw4w9WgXcQ | HTTP 502 from https://pipedapi.reallyaweso.me/streams/aqz-KE-bpKQ"
@@ -471,7 +471,7 @@
         "official": true,
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 2421,
+        "responseMs": 2411,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -483,7 +483,7 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-19T10:28:08.782Z",
+        "lastCheckedAt": "2026-11-20T10:08:22.387Z",
         "lastSuccessAt": null,
         "apiVerified": false,
         "error": "API was reachable, but no sample returned a browser-playable video+audio path: HTTP 502 from https://pipedapi.orangenet.cc/streams/dQw4w9WgXcQ | HTTP 502 from https://pipedapi.orangenet.cc/streams/aqz-KE-bpKQ"
@@ -494,7 +494,7 @@
         "official": true,
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 3448,
+        "responseMs": 3640,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -506,157 +506,13 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-19T10:28:08.878Z",
+        "lastCheckedAt": "2026-11-20T10:08:22.493Z",
         "lastSuccessAt": null,
         "apiVerified": false,
         "error": "API was reachable, but no sample returned a browser-playable video+audio path: HTTP 403 from https://pipedapi.adminforge.de/streams/dQw4w9WgXcQ | HTTP 403 from https://pipedapi.adminforge.de/streams/aqz-KE-bpKQ"
       }
     ],
     "invidious": [
-      {
-        "url": "https://yt.chocolatemoo53.com",
-        "provider": "invidious",
-        "official": true,
-        "apiListed": true,
-        "directoryApiListed": true,
-        "apiProbeCandidate": true,
-        "cors": true,
-        "uptime": 99.978,
-        "monitorDown": false,
-        "listedVersion": "2026.11.19-c82d8a6",
-        "status": "degraded",
-        "score": 217273,
-        "responseMs": 6539,
-        "mediaProbe": {
-          "ok": true,
-          "isManifest": false,
-          "status": 206,
-          "cors": null,
-          "corsAllowed": false,
-          "rangeSupported": true,
-          "contentType": "video/webm",
-          "error": null
-        },
-        "manifestProbe": null,
-        "videoCount": 22,
-        "audioCount": 5,
-        "audioAvailable": true,
-        "heights": [
-          2160,
-          1440
-        ],
-        "sampleChecks": [
-          {
-            "videoId": "dQw4w9WgXcQ",
-            "playable": true,
-            "audioAvailable": true,
-            "heights": [
-              2160,
-              1440
-            ],
-            "videoCount": 22,
-            "audioCount": 5,
-            "mediaProbe": {
-              "ok": true,
-              "isManifest": false,
-              "status": 206,
-              "cors": null,
-              "corsAllowed": false,
-              "rangeSupported": true,
-              "contentType": "video/webm",
-              "error": null
-            },
-            "audioProbe": {
-              "ok": true,
-              "isManifest": false,
-              "status": 206,
-              "cors": null,
-              "corsAllowed": false,
-              "rangeSupported": true,
-              "contentType": "audio/mp4",
-              "error": null
-            },
-            "manifestProbe": {
-              "ok": false,
-              "status": 403,
-              "cors": "*",
-              "contentType": "application/dash+xml",
-              "format": "dash",
-              "heights": [],
-              "audioAvailable": false,
-              "segmentVerified": false,
-              "mediaProbe": {
-                "ok": false,
-                "isManifest": false,
-                "status": 403,
-                "cors": null,
-                "corsAllowed": false,
-                "rangeSupported": false,
-                "contentType": "text/plain",
-                "error": "Media HTTP 403"
-              },
-              "error": "Media HTTP 403"
-            }
-          },
-          {
-            "videoId": "aqz-KE-bpKQ",
-            "playable": false,
-            "audioAvailable": false,
-            "heights": [],
-            "videoCount": 22,
-            "audioCount": 10,
-            "mediaProbe": {
-              "ok": false,
-              "isManifest": false,
-              "status": 403,
-              "cors": null,
-              "corsAllowed": false,
-              "rangeSupported": false,
-              "contentType": "text/plain",
-              "error": "Media HTTP 403"
-            },
-            "audioProbe": {
-              "ok": false,
-              "isManifest": false,
-              "status": 403,
-              "cors": null,
-              "corsAllowed": false,
-              "rangeSupported": false,
-              "contentType": "text/plain",
-              "error": "Media HTTP 403"
-            },
-            "manifestProbe": {
-              "ok": false,
-              "status": 403,
-              "cors": "*",
-              "contentType": "application/dash+xml",
-              "format": "dash",
-              "heights": [],
-              "audioAvailable": false,
-              "segmentVerified": false,
-              "mediaProbe": {
-                "ok": false,
-                "isManifest": false,
-                "status": 403,
-                "cors": null,
-                "corsAllowed": false,
-                "rangeSupported": false,
-                "contentType": "text/plain",
-                "error": "Media HTTP 403"
-              },
-              "error": "Media HTTP 403"
-            }
-          }
-        ],
-        "testedVideoIds": [
-          "dQw4w9WgXcQ",
-          "aqz-KE-bpKQ"
-        ],
-        "lastCheckedAt": "2026-11-19T10:28:11.973Z",
-        "lastSuccessAt": "2026-11-19T10:28:11.973Z",
-        "apiVerified": true,
-        "error": null
-      },
       {
         "url": "https://inv.nadeko.net",
         "provider": "invidious",
@@ -670,7 +526,7 @@
         "listedVersion": "2026.11.13-23977ba",
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 1394,
+        "responseMs": 1499,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -682,7 +538,7 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-19T10:28:06.826Z",
+        "lastCheckedAt": "2026-11-20T10:08:20.356Z",
         "lastSuccessAt": null,
         "apiVerified": false,
         "error": "API was reachable, but no sample returned a browser-playable video+audio path: HTTP 403 from https://inv.nadeko.net/api/v1/videos/dQw4w9WgXcQ?fields=title,lengthSeconds,liveNow,hlsUrl,dashUrl,formatStreams,adaptiveFormats | HTTP 403 from https://inv.nadeko.net/api/v1/videos/aqz-KE-bpKQ?fields=title,lengthSeconds,liveNow,hlsUrl,dashUrl,formatStreams,adaptiveFormats"
@@ -700,7 +556,7 @@
         "listedVersion": "2026.11.16-9a5c91cf",
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 1442,
+        "responseMs": 1540,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -712,10 +568,10 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-19T10:28:06.875Z",
+        "lastCheckedAt": "2026-11-20T10:08:20.398Z",
         "lastSuccessAt": null,
         "apiVerified": false,
-        "error": "API was reachable, but no sample returned a browser-playable video+audio path: fetch failed | fetch failed"
+        "error": "API was reachable, but no sample returned a browser-playable video+audio path: HTTP 403 from https://invidious.nerdvpn.de/api/v1/videos/dQw4w9WgXcQ?fields=title,lengthSeconds,liveNow,hlsUrl,dashUrl,formatStreams,adaptiveFormats | HTTP 403 from https://invidious.nerdvpn.de/api/v1/videos/aqz-KE-bpKQ?fields=title,lengthSeconds,liveNow,hlsUrl,dashUrl,formatStreams,adaptiveFormats"
       },
       {
         "url": "https://invidious.tiekoetter.com",
@@ -730,7 +586,7 @@
         "listedVersion": "2026.11.14-fb7f4a8",
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 1903,
+        "responseMs": 1983,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -742,10 +598,40 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-19T10:28:07.339Z",
+        "lastCheckedAt": "2026-11-20T10:08:20.844Z",
         "lastSuccessAt": null,
         "apiVerified": false,
         "error": "API was reachable, but no sample returned a browser-playable video+audio path: HTTP 403 from https://invidious.tiekoetter.com/api/v1/videos/dQw4w9WgXcQ?fields=title,lengthSeconds,liveNow,hlsUrl,dashUrl,formatStreams,adaptiveFormats | HTTP 403 from https://invidious.tiekoetter.com/api/v1/videos/aqz-KE-bpKQ?fields=title,lengthSeconds,liveNow,hlsUrl,dashUrl,formatStreams,adaptiveFormats"
+      },
+      {
+        "url": "https://yt.chocolatemoo53.com",
+        "provider": "invidious",
+        "official": true,
+        "apiListed": true,
+        "directoryApiListed": true,
+        "apiProbeCandidate": true,
+        "cors": true,
+        "uptime": 99.978,
+        "monitorDown": false,
+        "listedVersion": "2026.11.19-c82d8a6",
+        "status": "unhealthy",
+        "score": 0,
+        "responseMs": 7948,
+        "mediaProbe": null,
+        "manifestProbe": null,
+        "videoCount": 0,
+        "audioCount": 0,
+        "audioAvailable": false,
+        "heights": [],
+        "sampleChecks": [],
+        "testedVideoIds": [
+          "dQw4w9WgXcQ",
+          "aqz-KE-bpKQ"
+        ],
+        "lastCheckedAt": "2026-11-20T10:08:26.808Z",
+        "lastSuccessAt": null,
+        "apiVerified": false,
+        "error": "API was reachable, but no sample returned a browser-playable video+audio path: dQw4w9WgXcQ Media HTTP 403 | aqz-KE-bpKQ Media HTTP 403"
       }
     ]
   },
