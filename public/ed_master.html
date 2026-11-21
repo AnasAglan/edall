@@ -4507,6 +4507,25 @@ window.triggerModalClose = function() {
             return currentUser;
         }
 
+        async function loadAdminUserDirectory() {
+            const pageSize = 100;
+            const allUsers = [];
+            while (true) {
+                const result = await sb.rpc('admin_list_users', {
+                    _term: '',
+                    _limit: pageSize,
+                    _offset: allUsers.length
+                });
+                if (result.error) throw result.error;
+                const page = Array.isArray(result.data) ? result.data : [];
+                allUsers.push(...page);
+                if (page.length < pageSize) return allUsers;
+                if (allUsers.length >= 10000) {
+                    throw new Error('Administrator user directory reached its pagination safety limit.');
+                }
+            }
+        }
+
         // Load every course's public metadata at startup. This is deliberately separate
         // from homepage rendering: admin pages, course management, and direct course URLs
         // must not depend on whether a visitor has scrolled through the homepage.
@@ -4546,20 +4565,24 @@ window.triggerModalClose = function() {
                 // can find every course even before the visitor scrolls the homepage.
                 const isGuest = !currentUser;
                 const isAdminUser = !!(currentUser && currentUser.roles && currentUser.roles.includes('admin'));
-                const profilesQuery = isAdminUser
-                    ? sb.from('profiles').select('*')
+                const profilesPromise = isAdminUser
+                    ? loadAdminUserDirectory().then(data => ({ data, error: null }))
                     : sb.rpc('get_course_creators_public');
                 const [
                     coursesData,
-                    { data: profilesData },
-                    { data: rolesData },
-                    { data: notifsData }
+                    profilesResult,
+                    notifsResult
                 ] = await Promise.all([
                     loadAllCourseMetadata(),
-                    profilesQuery,
-                    isAdminUser ? sb.from('user_roles').select('*') : Promise.resolve({ data: [] }),
-                    isGuest ? Promise.resolve({ data: [] }) : sb.from('notifications').select('*').order('created_at', { ascending: false }).limit(50)
+                    profilesPromise,
+                    isGuest ? Promise.resolve({ data: [], error: null }) : sb.from('notifications').select('*').order('created_at', { ascending: false }).limit(50)
                 ]);
+                if (profilesResult.error) throw profilesResult.error;
+                if (notifsResult.error) {
+                    console.warn('Could not load notifications:', notifsResult.error.message);
+                }
+                const profilesData = profilesResult.data || [];
+                const notifsData = notifsResult.data || [];
 
                 _coursesOffset = (coursesData || []).length;
                 _homeCoursesVisibleLimit = Math.min(_homeCoursesBatchSize, (coursesData || []).length);
@@ -4579,20 +4602,26 @@ window.triggerModalClose = function() {
                     created: new Date(c.created_at).getTime()
                 }));
 
-                // Build users array from profiles + roles
-                users = (profilesData || []).map(p => {
-                    const userRoles = (rolesData || []).filter(r => r.user_id === p.id).map(r => r.role);
+                // Admin rows include Auth users even when a profile/role row is missing.
+                // Public teacher cards still come from the restricted public-creators RPC.
+                users = profilesData.map(p => {
+                    const userRoles = isAdminUser
+                        ? (Array.isArray(p.roles) ? p.roles : [])
+                        : ['teacher'];
                     return {
                         id: p.id,
                         email: p.email || '',
-                        name: p.name,
+                        name: p.name || p.email || '',
                         phone: p.phone || null,
                         avatar_url: p.avatar_url || null,
                         bio: p.bio || null,
-                        banned: p.banned || false,
-                        roles: userRoles.length > 0 ? userRoles : ['teacher'],
+                        banned: !!p.banned,
+                        public_id: p.public_id || null,
+                        roles: userRoles,
+                        profile_state: p.profile_state || 'ready',
+                        role_state: p.role_state || (userRoles.length ? 'ready' : 'missing'),
                         lastActive: p.last_active ? new Date(p.last_active).getTime() : Date.now(),
-                        joined: p.joined_at ? new Date(p.joined_at).getTime() : Date.now()
+                        joined: (p.joined_at || p.created_at) ? new Date(p.joined_at || p.created_at).getTime() : Date.now()
                     };
                 });
 
