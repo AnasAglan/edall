@@ -2,7 +2,7 @@
 -- Runs inside a transaction and rolls back all fixture accounts/data.
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT plan(44);
+SELECT plan(47);
 
 INSERT INTO auth.users (
   id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -302,6 +302,24 @@ SELECT ok(
   'first-admin bootstrap recounts after a shared lock only when roles are empty'
 )
 FROM positions;
+
+SELECT ok(
+  to_regprocedure('public.set_discussion_post_pinned(uuid,boolean)') IS NOT NULL,
+  'course discussion pin RPC exists'
+);
+SELECT ok(
+  NOT has_function_privilege('anon','public.set_discussion_post_pinned(uuid,boolean)','EXECUTE'),
+  'anonymous callers cannot pin discussion answers'
+);
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_proc p
+    WHERE p.oid='public.set_discussion_post_pinned(uuid,boolean)'::regprocedure
+      AND p.prosecdef
+      AND 'search_path=""' = ANY(p.proconfig)
+  ),
+  'discussion pin RPC is SECURITY DEFINER with an empty search path'
+);
 
 SELECT * FROM finish();
 ROLLBACK;
