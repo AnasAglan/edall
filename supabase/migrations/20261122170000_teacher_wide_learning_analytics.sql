@@ -135,10 +135,8 @@ BEGIN
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.get_teacher_analytics()
-  FROM PUBLIC,anon;
-GRANT EXECUTE ON FUNCTION public.get_teacher_analytics()
-  TO authenticated;
+REVOKE ALL ON FUNCTION public.get_teacher_analytics() FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.get_teacher_analytics() TO authenticated;
 
 COMMENT ON FUNCTION public.get_teacher_analytics()
   IS 'Aggregates Learning Space metrics over only courses the caller can analyze. Global administrator reports remain on get_platform_analytics and require AAL2.';
