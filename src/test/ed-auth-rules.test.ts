@@ -172,3 +172,72 @@ describe("trusted auth account provisioning", () => {
     expect(accountTriggerMigration).not.toContain("GRANT EXECUTE ON FUNCTION public.setup_new_user");
   });
 });
+
+
+describe("administrator MFA login enforcement", () => {
+  const rules = loadRules();
+
+  it("requires a fresh TOTP challenge for an administrator at AAL1 with a verified factor", () => {
+    expect(rules.adminMfaAction(
+      { roles: ["admin"] },
+      { currentLevel: "aal1", nextLevel: "aal2" },
+      { all: [{ factor_type: "totp", status: "verified", id: "factor-1" }] }
+    )).toBe("challenge");
+  });
+
+  it("requires TOTP enrollment when an administrator has no verified TOTP factor", () => {
+    expect(rules.adminMfaAction(
+      { roles: ["admin"] },
+      { currentLevel: "aal1", nextLevel: "aal1" },
+      { all: [{ factor_type: "totp", status: "unverified", id: "pending-1" }] }
+    )).toBe("enroll");
+    expect(rules.adminMfaAction(
+      { roles: ["admin"] },
+      { currentLevel: "aal1", nextLevel: "aal1" },
+      { all: [{ factor_type: "phone", status: "verified", id: "phone-1" }] }
+    )).toBe("enroll");
+  });
+
+  it("allows administrators only after the session reaches AAL2 and leaves non-admin login unchanged", () => {
+    expect(rules.adminMfaAction(
+      { roles: ["admin"] },
+      { currentLevel: "aal2", nextLevel: "aal2" },
+      { all: [{ factor_type: "totp", status: "verified", id: "factor-1" }] }
+    )).toBe("verified");
+    expect(rules.adminMfaAction(
+      { roles: ["teacher"] },
+      { currentLevel: "aal1", nextLevel: "aal1" },
+      { all: [] }
+    )).toBe("not_required");
+    expect(rules.adminMfaAction(null, null, null)).toBe("not_required");
+  });
+
+  it("gates restored sessions, auth-state changes, password sign-in and signup before loading platform data", () => {
+    const flows = [
+      ["async function initializeApp()", "async function loadCurrentUserFromSupabase"],
+      ["async function processAuthStateChange(event, session)", "function reportAuthStateError"],
+      ["async function handleSignIn()", "async function handleSignUp()"],
+      ["async function handleSignUp()", "async function handleLogout()"]
+    ];
+    for (const [startMarker, endMarker] of flows) {
+      const start = html.indexOf(startMarker);
+      const end = html.indexOf(endMarker, start + startMarker.length);
+      expect(start, startMarker).toBeGreaterThanOrEqual(0);
+      expect(end, endMarker).toBeGreaterThan(start);
+      const flow = html.slice(start, end);
+      expect(flow).toContain("ensureAdminMfaForCurrentSession");
+      expect(flow.indexOf("ensureAdminMfaForCurrentSession")).toBeLessThan(flow.indexOf("loadData()"));
+    }
+  });
+});
+
+describe("admin user directory error handling", () => {
+  it("uses the AAL2-protected admin directory RPC instead of silently ignoring profile and role query errors", () => {
+    const start = html.indexOf("async function loadData()");
+    const end = html.indexOf("function ", start + 30);
+    const loader = html.slice(start, end);
+    expect(loader).toContain("admin_list_users");
+    expect(loader).toContain("profilesResult.error");
+    expect(loader).not.toContain("roles.length > 0 ? userRoles : ['teacher']");
+  });
+});
