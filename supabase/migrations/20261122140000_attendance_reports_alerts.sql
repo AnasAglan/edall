@@ -166,6 +166,7 @@ SET search_path = ''
 AS $function$
 DECLARE
   _course_id uuid;
+  _session_starts_at timestamptz;
   _course_owner uuid;
   _course_title text;
   _student_name text;
@@ -181,8 +182,8 @@ BEGIN
     RAISE EXCEPTION 'AUTH_REQUIRED';
   END IF;
 
-  SELECT session.course_id
-  INTO _course_id
+  SELECT session.course_id,session.starts_at
+  INTO _course_id,_session_starts_at
   FROM public.attendance_sessions AS session
   WHERE session.id = _session_id;
 
@@ -202,6 +203,7 @@ BEGIN
     FROM public.enrollments AS enrollment
     WHERE enrollment.course_id = _course_id
       AND enrollment.user_id = _student_id
+      AND enrollment.enrolled_at <= _session_starts_at
   ) THEN
     RAISE EXCEPTION 'STUDENT_NOT_ENROLLED';
   END IF;
