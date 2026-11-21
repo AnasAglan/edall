@@ -167,10 +167,8 @@ BEGIN
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.get_my_learning_history()
-  FROM PUBLIC,anon;
-GRANT EXECUTE ON FUNCTION public.get_my_learning_history()
-  TO authenticated;
+REVOKE ALL ON FUNCTION public.get_my_learning_history() FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.get_my_learning_history() TO authenticated;
 
 COMMENT ON FUNCTION public.get_my_learning_history()
   IS 'Returns only the authenticated student enrollment-scoped exam/assignment/certificate history. Never returns exam answers or answer keys.';
@@ -216,10 +214,8 @@ BEGIN
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.wallet_user_ledger(uuid,integer,integer)
-  FROM PUBLIC,anon;
-GRANT EXECUTE ON FUNCTION public.wallet_user_ledger(uuid,integer,integer)
-  TO authenticated;
+REVOKE ALL ON FUNCTION public.wallet_user_ledger(uuid,integer,integer) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.wallet_user_ledger(uuid,integer,integer) TO authenticated;
 
 COMMENT ON FUNCTION public.wallet_user_ledger(uuid,integer,integer)
   IS 'Read-only, paginated wallet transactions for a selected user. Requires administrator role and AAL2.';
