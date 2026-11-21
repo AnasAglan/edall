@@ -20,6 +20,7 @@ on:
       - "src/test/ed-security-hardening.test.ts"
       - "src/test/ed-piped-player.test.ts"
       - "src/test/ed-learning-suite.test.ts"
+      - "src/test/ed-student-history-wallet.test.ts"
       - "src/test/ed-xlsx.test.ts"
       - "src/test/video-media-proxy-security.test.ts"
       - "supabase/tests/**"
