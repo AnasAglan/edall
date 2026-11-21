@@ -167,11 +167,12 @@ describe("ED-ALL integrated learning suite", () => {
 
 describe("lesson-scoped assignments and discussions", () => {
   const ui = read("public/ed_features.js");
+  const migration = read("supabase/migrations/20261114121000_add_integrated_learning_suite.sql");
 
   it("loads the selected course's lessons before rendering assignment and discussion creation", () => {
     expect(ui).toContain('state.data.lessons = await rows("lessons"');
     expect(ui).toContain('q.eq("course_id",courseId)');
-    expect(ui).toContain('q.order("sort_order",{ascending:true})');
+    expect(ui).toContain('".order(\"sort_order\",{ascending:true})"');
   });
 
   it("offers an optional lesson selector in assignment and discussion forms", () => {
