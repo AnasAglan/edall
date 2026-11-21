@@ -207,16 +207,19 @@
       }));
     } else if (state.tab === "attendance") {
       state.data.sessions = await rows("attendance_sessions", q => q.eq("course_id",courseId).order("starts_at",{ascending:false}));
-      state.data.attendanceReport = isTeacher()
+      state.data.attendanceReport = canManageAttendance
         ? await rpc("get_attendance_report",{_course_id:courseId,_from:null,_to:null})
         : null;
       const ids = state.data.sessions.map(a => a.id);
+      const canManageAttendance = hasCourseCapability("attendance");
       state.data.attendance = ids.length ? await rows("attendance_records", q =>
-        (isTeacher() ? q.in("session_id",ids) : q.eq("student_id",state.user.id).in("session_id",ids))
+        (canManageAttendance ? q.in("session_id",ids) : q.eq("student_id",state.user.id).in("session_id",ids))
       ) : [];
-      state.data.roster = isTeacher() ? await rpc("list_course_students",{
+      const canManageAttendance = hasCourseCapability("attendance");
+      state.data.roster = canManageAttendance ? await rpc("list_course_students",{
         _course_id:courseId,_capability:"attendance"
       }) : [];
+
     } else if (state.tab === "liveClasses") {
       state.data.liveClasses = await rows("live_classes", q => q.eq("course_id",courseId).order("starts_at",{ascending:true}));
     } else if (state.tab === "certificates") {
@@ -303,15 +306,16 @@
     const sessions = state.data.sessions || [];
     const records = state.data.attendance || [];
     const report = state.data.attendanceReport || null;
+    const canManageAttendance = hasCourseCapability("attendance");
     let body = "";
-    if (isTeacher()) {
+    if (canManageAttendance) {
       body += '<form class="edf-form" data-form="create-attendance"><h3>' + esc(text("إنشاء جلسة حضور","Create attendance session")) + '</h3>' +
         '<input name="title" maxlength="180" required placeholder="' + esc(text("اسم الجلسة","Session title")) + '">' +
         '<input name="starts_at" type="datetime-local" required>' +
         attendanceLessonSelector() +
         '<button class="edf-btn edf-primary" type="submit">' + esc(text("إنشاء الجلسة","Create session")) + '</button></form>';
     }
-    if (isTeacher() && report) {
+    if (canManageAttendance && report) {
       const summaryCards = [
         [text("الجلسات","Sessions"),report.sessions],
         [text("طلاب الدورة","Enrolled students"),report.enrolled_students],
@@ -347,7 +351,7 @@
       const mine = records.filter(r => r.session_id === s.id);
       let details = '<div class="edf-meta">' + esc(fmtDate(s.starts_at)) +
         ' · ' + esc(text("الدرس: ","Lesson: ")) + esc(attendanceLessonLabel(s.lesson_id)) + '</div>';
-      if (isTeacher()) {
+      if (canManageAttendance) {
         const options = (state.data.roster || []).map(r =>
           '<option value="' + esc(r.user_id) + '">' + esc(r.student_name || r.public_id || r.user_id) + '</option>'
         ).join("");
