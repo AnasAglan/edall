@@ -11245,7 +11245,7 @@ exam.questions.forEach((question, index) => {
                                     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px;margin-top:8px;font-size:.9rem;">' +
                                     '<div><strong>' + t('وقت البدء: ','Started: ') + '</strong>' + escapeHtml(myHistoryDate(attempt.started_at)) + '</div>' +
                                     '<div><strong>' + t('وقت الانتهاء: ','Finished: ') + '</strong>' + escapeHtml(myHistoryDate(attempt.submitted_at)) + '</div>' +
-                                    '<div><strong>' + t('عدد الأسئلة: ','Questions: ') + '</strong>' + escapeHtml(exam.question_count == null ? '—' : exam.question_count) + '</div>' +
+                                    '<div><strong>' + t('عدد الأسئلة: ','Questions: ') + '</strong>' + escapeHtml(attempt.question_count == null ? (exam.question_count == null ? '—' : exam.question_count) : attempt.question_count) + '</div>' +
                                     '<div><strong>' + t('الدرجة: ','Score: ') + '</strong>' + escapeHtml(score) + '</div></div>' + essay + '</div>';
                             }).join('') : '<div style="opacity:.7;padding:8px;">' + t('لم تبدأ هذا الامتحان بعد.','You have not started this exam yet.') + '</div>';
                             return '<div style="padding:12px 0;border-bottom:1px solid var(--border,rgba(128,128,128,.15));">' +
