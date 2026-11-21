@@ -246,3 +246,14 @@ describe("admin user directory error handling", () => {
     expect(dataLoader).not.toContain("roles.length > 0 ? userRoles : ['teacher']");
   });
 });
+
+
+describe("admin directory account-integrity states", () => {
+  it("clearly flags missing profiles and roles without assigning a default role", () => {
+    expect(html).toContain("profile_state === 'missing'");
+    expect(html).toContain("role_state === 'missing'");
+    expect(html).toContain("Account data needs review");
+    expect(html).toContain("لا توجد صلاحية مسجلة");
+    expect(html).toContain("لم تُمنح له صلاحية افتراضية");
+  });
+});
