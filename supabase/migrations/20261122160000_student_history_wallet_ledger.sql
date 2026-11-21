@@ -3,6 +3,40 @@
 
 BEGIN;
 
+-- Preserve the number of questions at the start of each attempt. Older attempts
+-- remain readable and use their current exam question count as a fallback.
+ALTER TABLE public.exam_attempts
+  ADD COLUMN IF NOT EXISTS question_count integer
+  CHECK (question_count IS NULL OR question_count >= 0);
+
+CREATE OR REPLACE FUNCTION public.snapshot_exam_attempt_question_count()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+BEGIN
+  IF NEW.question_count IS NULL
+     OR (TG_OP = 'UPDATE' AND NEW.exam_id IS DISTINCT FROM OLD.exam_id) THEN
+    SELECT count(*)::integer
+    INTO NEW.question_count
+    FROM public.exam_questions AS question
+    WHERE question.exam_id = NEW.exam_id;
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.snapshot_exam_attempt_question_count()
+  FROM PUBLIC,anon,authenticated;
+
+DROP TRIGGER IF EXISTS snapshot_exam_attempt_question_count ON public.exam_attempts;
+CREATE TRIGGER snapshot_exam_attempt_question_count
+BEFORE INSERT OR UPDATE OF exam_id
+ON public.exam_attempts
+FOR EACH ROW
+EXECUTE FUNCTION public.snapshot_exam_attempt_question_count();
+
 CREATE OR REPLACE FUNCTION public.get_my_learning_history()
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -41,6 +75,7 @@ BEGIN
                   jsonb_build_object(
                     'attempt_id',attempt_row.attempt_id,
                     'started_at',attempt_row.started_at,
+                    'question_count',attempt_row.question_count,
                     'submitted_at',attempt_row.completed_at,
                     'score',attempt_row.score,
                     'passed',attempt_row.passed,
@@ -67,7 +102,8 @@ BEGIN
                     result.score,
                     result.passed,
                     result.has_essay,
-                    result.essay_graded
+                    result.essay_graded,
+                    COALESCE(attempt.question_count,(SELECT count(*)::integer FROM public.exam_questions AS question WHERE question.exam_id=exam.id)) AS question_count
                   FROM public.exam_attempts AS attempt
                   LEFT JOIN public.exam_results AS result
                     ON result.id = attempt.result_id
@@ -83,7 +119,8 @@ BEGIN
                     result.score,
                     result.passed,
                     result.has_essay,
-                    result.essay_graded
+                    result.essay_graded,
+                    (SELECT count(*)::integer FROM public.exam_questions AS question WHERE question.exam_id=exam.id) AS question_count
                   FROM public.exam_results AS result
                   WHERE result.exam_id = exam.id
                     AND result.user_id = _student_id
