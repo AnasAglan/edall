@@ -2,7 +2,7 @@
 -- Runs inside a transaction and rolls back all fixture accounts/data.
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT plan(44);
+SELECT plan(49);
 
 INSERT INTO auth.users (
   id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -302,6 +302,37 @@ SELECT ok(
   'first-admin bootstrap recounts after a shared lock only when roles are empty'
 )
 FROM positions;
+
+SELECT ok(
+  to_regprocedure('public.get_teacher_analytics()') IS NOT NULL,
+  'teacher-wide learning analytics RPC exists'
+);
+SELECT ok(
+  NOT has_function_privilege('anon','public.get_teacher_analytics()','EXECUTE'),
+  'anonymous callers cannot invoke teacher analytics'
+);
+SELECT ok(
+  has_function_privilege('authenticated','public.get_teacher_analytics()','EXECUTE'),
+  'authenticated callers can invoke scoped teacher analytics subject to the internal capability check'
+);
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_proc p
+    WHERE p.oid='public.get_teacher_analytics()'::regprocedure
+      AND p.prosecdef
+      AND 'search_path=""' = ANY(p.proconfig)
+      AND position('has_course_capability' in p.prosrc) > 0
+  ),
+  'teacher analytics RPC is SECURITY DEFINER and enforces course-scoped analytics capabilities'
+);
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_proc p
+    WHERE p.oid='public.get_teacher_analytics()'::regprocedure
+      AND position('admin_mfa_verified' in p.prosrc) > 0
+  ),
+  'administrator access through teacher analytics requires AAL2'
+);
 
 SELECT * FROM finish();
 ROLLBACK;
