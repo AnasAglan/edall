@@ -149,8 +149,7 @@ BEGIN
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.set_course_absence_threshold(uuid,numeric)
-  FROM PUBLIC,anon;
+REVOKE ALL ON FUNCTION public.set_course_absence_threshold(uuid,numeric) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.set_course_absence_threshold(uuid,numeric)
   TO authenticated;
 
@@ -463,9 +462,10 @@ BEGIN
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.get_attendance_report(uuid,timestamptz,timestamptz)
-  FROM PUBLIC,anon;
+REVOKE ALL ON FUNCTION public.get_attendance_report(uuid,timestamptz,timestamptz) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.get_attendance_report(uuid,timestamptz,timestamptz)
   TO authenticated;
+
+NOTIFY pgrst, 'reload schema';
 
 COMMIT;
