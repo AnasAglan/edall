@@ -2,7 +2,7 @@
 -- Runs inside a transaction and rolls back all fixture accounts/data.
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT plan(44);
+SELECT plan(48);
 
 INSERT INTO auth.users (
   id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -302,6 +302,28 @@ SELECT ok(
   'first-admin bootstrap recounts after a shared lock only when roles are empty'
 )
 FROM positions;
+
+SELECT ok(
+  to_regprocedure('public.admin_list_users(text,integer,integer)') IS NOT NULL,
+  'administrator user directory RPC exists'
+);
+SELECT ok(
+  NOT has_function_privilege('anon','public.admin_list_users(text,integer,integer)','EXECUTE'),
+  'anonymous callers cannot list authenticated user accounts'
+);
+SELECT ok(
+  has_function_privilege('authenticated','public.admin_list_users(text,integer,integer)','EXECUTE'),
+  'authenticated callers can invoke the RPC subject to its internal administrator and AAL2 gate'
+);
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_proc p
+    WHERE p.oid='public.admin_list_users(text,integer,integer)'::regprocedure
+      AND p.prosecdef
+      AND 'search_path=""' = ANY(p.proconfig)
+  ),
+  'administrator directory RPC is SECURITY DEFINER with an empty search path'
+);
 
 SELECT * FROM finish();
 ROLLBACK;
