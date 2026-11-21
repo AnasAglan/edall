@@ -1762,6 +1762,14 @@ word-spacing: normal !important;
                         <i class="fas fa-book-open"></i>
                         <span id="myCoursesText">كورساتي</span>
                     </div>
+                    <div class="user-dropdown-item" id="myLearningRecordsBtn">
+                        <i class="fas fa-clipboard-list"></i>
+                        <span>امتحاناتي وواجباتي</span>
+                    </div>
+                    <div class="user-dropdown-item" id="myCertificatesBtn">
+                        <i class="fas fa-certificate"></i>
+                        <span>شهاداتي</span>
+                    </div>
                     <div class="user-dropdown-item" id="favoritesBtn">
                         <i class="fas fa-heart"></i>
                         <span id="favoritesText">المفضلة</span>
@@ -2212,6 +2220,28 @@ word-spacing: normal !important;
             </div>
             <div id="walletTopupUsersList"></div>
         </div>
+    </div>
+    <div id="myLearningRecordsPage" class="page">
+        <div class="header">
+            <div class="logo" onclick="showPage('mainPage')">ED</div>
+            <div class="header-title">امتحاناتي وواجباتي</div>
+            <div class="header-desc">سجل محاولاتك ونتائجك وتسليماتك حسب الدورة</div>
+            <div class="actions">
+                <button class="btn" onclick="showPage('mainPage')"><i class="fas fa-arrow-right"></i> <span>العودة</span></button>
+            </div>
+        </div>
+        <div id="myLearningRecordsBody" style="padding:20px;max-width:1100px;margin:0 auto;"></div>
+    </div>
+    <div id="myCertificatesPage" class="page">
+        <div class="header">
+            <div class="logo" onclick="showPage('mainPage')">ED</div>
+            <div class="header-title">شهاداتي</div>
+            <div class="header-desc">شهاداتك وروابط التحقق والتنزيل</div>
+            <div class="actions">
+                <button class="btn" onclick="showPage('mainPage')"><i class="fas fa-arrow-right"></i> <span>العودة</span></button>
+            </div>
+        </div>
+        <div id="myCertificatesBody" style="padding:20px;max-width:1100px;margin:0 auto;"></div>
     </div>
 
     <footer>
@@ -4801,6 +4831,18 @@ window.triggerModalClose = function() {
                     e.preventDefault();
                     showPage('enrolledPage');
                     renderEnrolledCourses();
+                    hideUserMenu();
+                });
+                document.getElementById('myLearningRecordsBtn').addEventListener('click', (e) => {
+                    e.preventDefault();
+                    showPage('myLearningRecordsPage');
+                    renderMyLearningRecordsPage();
+                    hideUserMenu();
+                });
+                document.getElementById('myCertificatesBtn').addEventListener('click', (e) => {
+                    e.preventDefault();
+                    showPage('myCertificatesPage');
+                    renderMyCertificatesPage();
                     hideUserMenu();
                 });
                 document.getElementById('favoritesBtn').addEventListener('click', (e) => {
