@@ -305,8 +305,10 @@ FROM positions;
 
 SELECT ok(
   EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema='public' AND table_name='attendance_sessions' AND column_name='lesson_id'
+    SELECT 1 FROM pg_attribute
+    WHERE attrelid='public.attendance_sessions'::regclass
+      AND attname='lesson_id'
+      AND NOT attisdropped
   ),
   'attendance sessions can be linked to a lesson'
 );
