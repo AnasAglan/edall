@@ -169,7 +169,8 @@ DECLARE
   _course_owner uuid;
   _course_title text;
   _student_name text;
-  _id uuid;
+  _record_id uuid;
+  _notification_id uuid;
   _alert_id uuid;
   _threshold numeric(5,2);
   _absent_count integer;
@@ -213,12 +214,12 @@ BEGIN
     note = EXCLUDED.note,
     marked_by = EXCLUDED.marked_by,
     marked_at = now()
-  RETURNING id INTO _id;
+  RETURNING id INTO _record_id;
 
   PERFORM public.write_platform_audit_event(
     'attendance_marked',
     'attendance_records',
-    _id,
+    _record_id,
     _course_id,
     jsonb_build_object('session_id',_session_id,'student_id',_student_id,'status',_status)
   );
@@ -271,10 +272,10 @@ BEGIN
                 _absence_rate::text || '% في دورة ' || COALESCE(_course_title,''),
               'warning'
             )
-            RETURNING id INTO _id;
+            RETURNING id INTO _notification_id;
 
             UPDATE public.attendance_alert_events
-            SET notification_id = _id
+            SET notification_id = _notification_id
             WHERE id = _alert_id;
           END IF;
 
@@ -296,12 +297,7 @@ BEGIN
     END IF;
   END IF;
 
-  RETURN (
-    SELECT record.id
-    FROM public.attendance_records AS record
-    WHERE record.session_id = _session_id
-      AND record.student_id = _student_id
-  );
+  RETURN _record_id;
 END;
 $function$;
 
