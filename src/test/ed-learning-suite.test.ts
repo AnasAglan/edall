@@ -191,7 +191,8 @@ describe("attendance reporting, lesson links, and configurable absence alerts", 
   it("keeps absence alerts disabled until a course owner or authorized staff sets a threshold", () => {
     expect(migration).toContain("absence_threshold_percent numeric");
     expect(migration).toContain("set_course_absence_threshold");
-    expect(migration).toContain("threshold_percent IS NULL");
+    expect(migration).toContain("DELETE FROM public.attendance_alert_settings");
+    expect(migration).toContain("IF _threshold IS NOT NULL THEN");
     expect(ui).toContain('data-form="set-attendance-threshold"');
     expect(ui).toContain('rpc("set_course_absence_threshold"');
   });
