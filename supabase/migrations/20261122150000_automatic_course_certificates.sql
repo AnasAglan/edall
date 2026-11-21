@@ -10,6 +10,58 @@ CREATE UNIQUE INDEX IF NOT EXISTS lessons_one_final_per_course_idx
   ON public.lessons(course_id)
   WHERE is_final = true;
 
+
+CREATE OR REPLACE FUNCTION public.audit_course_final_lesson_change()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  _event_type text;
+  _course_id uuid;
+  _lesson_id uuid;
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.is_final IS NOT TRUE THEN
+      RETURN NEW;
+    END IF;
+    _event_type := 'course_final_lesson_set';
+    _course_id := NEW.course_id;
+    _lesson_id := NEW.id;
+  ELSE
+    IF NEW.is_final IS NOT DISTINCT FROM OLD.is_final THEN
+      RETURN NEW;
+    END IF;
+    _course_id := NEW.course_id;
+    _lesson_id := NEW.id;
+    _event_type := CASE
+      WHEN NEW.is_final THEN 'course_final_lesson_set'
+      ELSE 'course_final_lesson_cleared'
+    END;
+  END IF;
+
+  PERFORM public.write_platform_audit_event(
+    _event_type,
+    'lessons',
+    _lesson_id,
+    _course_id,
+    jsonb_build_object('is_final',NEW.is_final)
+  );
+  RETURN NEW;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.audit_course_final_lesson_change()
+  FROM PUBLIC,anon,authenticated;
+
+DROP TRIGGER IF EXISTS audit_course_final_lesson_change ON public.lessons;
+CREATE TRIGGER audit_course_final_lesson_change
+AFTER INSERT OR UPDATE OF is_final
+ON public.lessons
+FOR EACH ROW
+EXECUTE FUNCTION public.audit_course_final_lesson_change();
+
 CREATE OR REPLACE FUNCTION public.issue_course_certificate_internal(
   _course_id uuid,
   _student_id uuid,
@@ -274,7 +326,8 @@ BEGIN
   UPDATE public.lessons
   SET is_final = false
   WHERE course_id = _course_id
-    AND is_final = true;
+    AND is_final = true
+    AND (_lesson_id IS NULL OR id <> _lesson_id);
 
   IF _lesson_id IS NOT NULL THEN
     UPDATE public.lessons
@@ -282,14 +335,6 @@ BEGIN
     WHERE id = _lesson_id
       AND course_id = _course_id;
   END IF;
-
-  PERFORM public.write_platform_audit_event(
-    CASE WHEN _lesson_id IS NULL THEN 'course_final_lesson_cleared' ELSE 'course_final_lesson_set' END,
-    'lessons',
-    _lesson_id,
-    _course_id,
-    jsonb_build_object('final_lesson_id',_lesson_id)
-  );
 
   -- If the final lesson is designated after students already completed the
   -- course, evaluate those students immediately rather than waiting for a new event.
