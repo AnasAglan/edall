@@ -205,5 +205,12 @@ describe("automatic course certificate issuance from final lesson completion", (
     expect(ui).toContain('name="lesson_id"');
     expect(ui).toContain('rpc("set_course_final_lesson"');
     expect(ui).toContain("is_final");
+    expect(ui).toContain("function certificateSvg");
+    expect(ui).toContain("function downloadCertificateImage");
+    expect(ui).toContain("function printCertificatePdf");
+    expect(ui).toContain('data-action="certificate-image"');
+    expect(ui).toContain('data-action="certificate-pdf"');
+    expect(migration).toContain("audit_course_final_lesson_change");
+    expect(migration).toContain("COALESCE(_automatic,true)");
   });
 });
