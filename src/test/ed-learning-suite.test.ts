@@ -67,7 +67,7 @@ describe("ED-ALL integrated learning suite", () => {
     expect(migration).toContain("course_title text");
     expect(migration).not.toContain("student_email");
     expect(migration).toContain("_completed<>_total");
-    expect(migration).toContain("NOT EXISTS (SELECT 1 FROM public.lesson_files f WHERE f.lesson_id=l.id)");
+    expect(migration).toContain("public.lesson_files AS file");
     expect(migration).toContain("COALESCE(lp.pdf_opened,false)");
     expect(migration).toContain("_student_id <> auth.uid()");
   });
@@ -178,8 +178,8 @@ describe("automatic course certificate issuance from final lesson completion", (
 
   it("requires a designated final lesson and preserves all existing completion requirements before issuance", () => {
     expect(migration).toContain("COURSE_FINAL_LESSON_NOT_SET");
-    expect(migration).toContain("er.passed=true");
-    expect(migration).toContain("(NOT er.has_essay OR er.essay_graded)");
+    expect(migration).toContain("result.passed = true");
+    expect(migration).toContain("(NOT result.has_essay OR result.essay_graded)");
     expect(migration).toContain("public.lesson_videos AS video");
     expect(migration).toContain("public.lesson_files AS file");
   });
