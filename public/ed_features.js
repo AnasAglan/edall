@@ -293,7 +293,7 @@
 
   function attendanceLessonSelector() {
     const lessons = state.data.lessons || [];
-    return '<label class="edf-lesson-select"><span>' + esc(text("ربط الجلسة بدرس (اختياري)","Link session to a lesson (optional)")) + '</span>' +
+    return '<label class="edf-course-select"><span>' + esc(text("ربط الجلسة بدرس (اختياري)","Link session to a lesson (optional)")) + '</span>' +
       '<select name="lesson_id"><option value="">' + esc(text("جلسة عامة","General session")) + '</option>' +
       lessons.map(lesson => '<option value="' + esc(lesson.id) + '">' + esc(lesson.title || text("درس بدون عنوان","Untitled lesson")) + '</option>').join("") +
       '</select></label>';
