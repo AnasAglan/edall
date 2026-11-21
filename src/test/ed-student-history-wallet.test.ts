@@ -36,8 +36,8 @@ describe("student exam, assignment, and certificate history", () => {
     expect(migration).toContain("result.score");
     expect(migration).toContain("result.has_essay");
     expect(migration).toContain("result.essay_graded");
-    expect(html).toContain("وقت بدء المحاولة");
-    expect(html).toContain("عدد الأسئلة");
+    expect(html).toContain("وقت البدء: ");
+    expect(html).toContain("عدد الأسئلة: ");
     expect(html).toContain("بانتظار تصحيح المقال");
   });
 
