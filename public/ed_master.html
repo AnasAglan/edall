@@ -11540,6 +11540,8 @@ exam.questions.forEach((question, index) => {
                     var r = await sb.rpc('admin_search_users', { _term: term || '', _limit: 50, _offset: 0 });
                     if (r.error) throw r.error;
                     var users = r.data || [];
+                    window._walletAdminUsersById = window._walletAdminUsersById || {};
+                    users.forEach(function(user){ window._walletAdminUsersById[user.id] = user; });
                     if (users.length === 0) { listEl.innerHTML = '<div style="padding:16px;opacity:.75;">' + t('لا يوجد نتائج','No results') + '</div>'; return; }
                     listEl.innerHTML = users.map(function(u){
                         var safeName = escapeHtml((u.name || u.email || '').replace(/\x27/g,"&#39;"));
@@ -11551,6 +11553,7 @@ exam.questions.forEach((question, index) => {
                             + '</div>'
                             + '<div style="display:flex;align-items:center;gap:8px;">'
                             + '<span style="font-weight:900;color:#22d3ee;">' + fmt(u.balance) + '</span>'
+                            + '<button class="btn btn-outline" onclick="openWalletUserTransactions(\'' + u.id + '\')" title="' + t('سجل العمليات','Transaction history') + '"><i class="fas fa-list-alt"></i></button>'
                             + '<button class="btn btn-accent" onclick="openCreditUserModal(\'' + u.id + '\',\'' + safeName + '\', 1)" title="' + t('شحن','Top up') + '"><i class="fas fa-plus"></i></button>'
                             + '<button class="btn btn-danger" onclick="openCreditUserModal(\'' + u.id + '\',\'' + safeName + '\', -1)" title="' + t('خصم','Debit') + '"><i class="fas fa-minus"></i></button>'
                             + '</div>'
@@ -11562,6 +11565,62 @@ exam.questions.forEach((question, index) => {
                 }
             }
             window.runWalletUserSearch = runWalletUserSearch;
+
+            window.openWalletUserTransactions = async function(userId){
+                if (!isAdmin()) {
+                    showToast(t('صلاحيات غير كافية','Not authorized'),'error');
+                    return;
+                }
+                var selected = (window._walletAdminUsersById || {})[userId] || {};
+                var userName = selected.name || selected.email || userId;
+                showModal('<div style="text-align:center;padding:26px;"><div class="loading-spinner"></div><p>' +
+                    t('جارٍ تحميل سجل معاملات ','Loading transactions for ') + escapeHtml(userName) + '</p></div>');
+                try {
+                    var result = await sb.rpc('wallet_user_ledger',{
+                        _user_id:userId,_limit:100,_offset:0
+                    });
+                    if (result.error) throw result.error;
+                    var transactions = Array.isArray(result.data) ? result.data : [];
+                    var rows = transactions.length ? transactions.map(function(transaction){
+                        var amount = Number(transaction.amount || 0);
+                        var positive = amount >= 0;
+                        var when = transaction.created_at
+                            ? new Date(transaction.created_at).toLocaleString(currentLanguage === 'ar' ? 'ar-EG' : 'en-US')
+                            : '—';
+                        var typeLabel = transaction.type === 'purchase'
+                            ? t('شراء دورة','Course purchase')
+                            : transaction.type === 'admin_adjustment'
+                                ? t('تعديل إداري','Admin adjustment')
+                                : (transaction.type || t('عملية محفظة','Wallet transaction'));
+                        return '<tr><td>' + escapeHtml(when) + '</td>' +
+                            '<td>' + escapeHtml(typeLabel) + '</td>' +
+                            '<td>' + escapeHtml(transaction.note || '—') + '</td>' +
+                            '<td style="font-weight:900;white-space:nowrap;color:' + (positive ? '#16a34a' : '#ef4444') + ';" dir="ltr">' +
+                            escapeHtml(fmtSigned(amount)) + '</td></tr>';
+                    }).join('') : '<tr><td colspan="4" style="text-align:center;padding:24px;opacity:.7;">' +
+                        t('لا توجد معاملات لهذا المستخدم.','No transactions found for this user.') + '</td></tr>';
+                    var html = '<div style="max-width:850px;margin:0 auto;">' +
+                        '<h3 style="margin:0 0 4px;text-align:center;">' + t('سجل معاملات المستخدم','User transaction history') + '</h3>' +
+                        '<div style="text-align:center;opacity:.7;margin-bottom:16px;">' + escapeHtml(userName) + '</div>' +
+                        '<div style="overflow-x:auto;border:1px solid var(--border,rgba(128,128,128,.18));border-radius:12px;">' +
+                        '<table style="width:100%;border-collapse:collapse;min-width:590px;"><thead><tr>' +
+                        '<th style="padding:10px;text-align:start;">' + t('التاريخ','Date') + '</th>' +
+                        '<th style="padding:10px;text-align:start;">' + t('النوع','Type') + '</th>' +
+                        '<th style="padding:10px;text-align:start;">' + t('ملاحظة','Note') + '</th>' +
+                        '<th style="padding:10px;text-align:start;">' + t('المبلغ','Amount') + '</th>' +
+                        '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+                        '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap;">' +
+                        '<small style="opacity:.7;">' + t('آخر 100 عملية كحد أقصى.','Up to the latest 100 transactions.') + '</small>' +
+                        '<button class="btn btn-outline" onclick="closeModal()">' + t('إغلاق','Close') + '</button></div></div>';
+                    showModal(html);
+                } catch(error) {
+                    console.error('openWalletUserTransactions',error);
+                    showModal('<div style="text-align:center;padding:22px;">' +
+                        '<h3>' + t('تعذر تحميل سجل المعاملات','Could not load transaction history') + '</h3>' +
+                        '<p style="color:#ef4444;">' + escapeHtml(error && error.message || '') + '</p>' +
+                        '<button class="btn btn-outline" onclick="closeModal()">' + t('إغلاق','Close') + '</button></div>');
+                }
+            };
 
             window.openCreditUserModal = function(userId, userName, sign){
                 sign = (sign === -1) ? -1 : 1;
