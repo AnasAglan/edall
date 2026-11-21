@@ -206,16 +206,15 @@
         return {...submission,attachments:signed};
       }));
     } else if (state.tab === "attendance") {
+      const canManageAttendance = hasCourseCapability("attendance");
       state.data.sessions = await rows("attendance_sessions", q => q.eq("course_id",courseId).order("starts_at",{ascending:false}));
       state.data.attendanceReport = canManageAttendance
         ? await rpc("get_attendance_report",{_course_id:courseId,_from:null,_to:null})
         : null;
       const ids = state.data.sessions.map(a => a.id);
-      const canManageAttendance = hasCourseCapability("attendance");
       state.data.attendance = ids.length ? await rows("attendance_records", q =>
         (canManageAttendance ? q.in("session_id",ids) : q.eq("student_id",state.user.id).in("session_id",ids))
       ) : [];
-      const canManageAttendance = hasCourseCapability("attendance");
       state.data.roster = canManageAttendance ? await rpc("list_course_students",{
         _course_id:courseId,_capability:"attendance"
       }) : [];
