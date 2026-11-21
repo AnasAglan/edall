@@ -194,7 +194,7 @@ describe("automatic course certificate issuance from final lesson completion", (
 
   it("uses a private idempotent issuance helper and keeps the public RPC permission-gated", () => {
     expect(migration).toContain("issue_course_certificate_internal");
-    expect(migration).toContain("ON CONFLICT");
+    expect(migration).toContain("pg_advisory_xact_lock");
     expect(migration).toContain("REVOKE ALL ON FUNCTION public.issue_course_certificate_internal(uuid,uuid,uuid) FROM PUBLIC,anon,authenticated");
     expect(migration).toContain("public.has_course_capability(_course_id,'certificates')");
     expect(migration).toContain("public.admin_mfa_verified()");
