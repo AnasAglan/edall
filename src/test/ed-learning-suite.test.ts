@@ -204,6 +204,14 @@ describe("attendance reporting, lesson links, and configurable absence alerts", 
     expect(migration).toContain("INSERT INTO public.notifications(user_id,title,message,type)");
   });
 
+
+
+  it("shows attendance controls only to course staff who have the attendance capability", () => {
+    expect(ui).toContain('const canManageAttendance = hasCourseCapability("attendance")');
+    expect(ui).toContain('state.data.attendanceReport = canManageAttendance');
+    expect(ui).toContain('(canManageAttendance ? q.in("session_id",ids)');
+  });
+
   it("protects attendance reports and threshold writes by course capability and administrator AAL2", () => {
     expect(migration).toContain("public.has_course_capability(_course_id,'attendance')");
     expect(migration).toContain("public.admin_mfa_verified()");
