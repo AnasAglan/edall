@@ -10,7 +10,7 @@
 
 | Item | Production | Staging |
 |---|---:|---:|
-| Database | Supabase / PostgreSQL 17.6 | Supabase / PostgreSQL 17.11 |
+| Database | Supabase / PostgreSQL 17.x (minor version not confirmed) | Supabase / PostgreSQL 17.x (minor version not confirmed) |
 | Database enabled | Yes | Yes |
 | Public base tables | 35 | 35 |
 | Public columns | 255 | 255 |
