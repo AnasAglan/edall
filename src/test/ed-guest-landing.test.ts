@@ -38,6 +38,8 @@ describe("public ED-ALL guest landing experience", () => {
   it("does not require a student session just to load the public course catalogue", () => {
     expect(html).toContain("const isGuest = !currentUser");
     expect(html).toContain("loadAllCourseMetadata()");
-    expect(html).toContain("isGuest ? Promise.resolve({ data: [], error: null })");
+    expect(html).toContain("isGuest ? Promise.resolve");
+    expect(html).toContain("notifications");
+    expect(html).toContain("Promise.resolve({ data: [], error: null })");
   });
 });
