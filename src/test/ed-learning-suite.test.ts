@@ -163,3 +163,50 @@ describe("ED-ALL integrated learning suite", () => {
     expect(ui).toContain('const isTeacher = () => isAdmin() || isCourseOwner() || !!currentStaffRole()');
   });
 });
+
+
+describe("attendance reporting, lesson links, and configurable absence alerts", () => {
+  const ui = read("public/ed_features.js");
+  const migration = read("supabase/migrations/20261122140000_attendance_reports_alerts.sql");
+
+  it("supports optional lesson-linked attendance sessions", () => {
+    expect(migration).toContain("ADD COLUMN IF NOT EXISTS lesson_id uuid");
+    expect(migration).toContain("LESSON_NOT_IN_COURSE");
+    expect(ui).toContain('data-form="create-attendance"');
+    expect(ui).toContain('_lesson_id:v.lesson_id || null');
+  });
+
+  it("reports present, late, absent and excused separately with explicit absence denominators", () => {
+    expect(migration).toContain("CREATE OR REPLACE FUNCTION public.get_attendance_report");
+    expect(migration).toContain("'present'");
+    expect(migration).toContain("'late'");
+    expect(migration).toContain("'absent'");
+    expect(migration).toContain("'excused'");
+    expect(migration).toContain("'absence_denominator'");
+    expect(migration).toContain("'absence_rate_percent'");
+    expect(ui).toContain("attendanceReport");
+    expect(ui).toContain("غياب");
+  });
+
+  it("keeps absence alerts disabled until a course owner or authorized staff sets a threshold", () => {
+    expect(migration).toContain("absence_threshold_percent numeric");
+    expect(migration).toContain("set_course_absence_threshold");
+    expect(migration).toContain("threshold_percent IS NULL");
+    expect(ui).toContain('data-form="set-attendance-threshold"');
+    expect(ui).toContain('rpc("set_course_absence_threshold"');
+  });
+
+  it("deduplicates threshold alerts and writes in-app notifications only once per student/course/threshold", () => {
+    expect(migration).toContain("attendance_alert_events");
+    expect(migration).toContain("UNIQUE(course_id,student_id,threshold_percent)");
+    expect(migration).toContain("ON CONFLICT (course_id,student_id,threshold_percent) DO NOTHING");
+    expect(migration).toContain("INSERT INTO public.notifications(user_id,title,message,type)");
+  });
+
+  it("protects attendance reports and threshold writes by course capability and administrator AAL2", () => {
+    expect(migration).toContain("public.has_course_capability(_course_id,'attendance')");
+    expect(migration).toContain("public.admin_mfa_verified()");
+    expect(migration).toContain("REVOKE ALL ON FUNCTION public.get_attendance_report(uuid,timestamptz,timestamptz) FROM PUBLIC,anon");
+    expect(migration).toContain("REVOKE ALL ON FUNCTION public.set_course_absence_threshold(uuid,numeric) FROM PUBLIC,anon");
+  });
+});
