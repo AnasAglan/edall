@@ -9577,14 +9577,21 @@ exam.questions.forEach((question, index) => {
         function renderUserSingleCard(user) {
             const isAdmin = user.roles && user.roles.includes('admin');
             const isBanned = user.banned;
+            const profileMissing = user.profile_state === 'missing';
+            const roleMissing = user.role_state === 'missing' || !Array.isArray(user.roles) || user.roles.length === 0;
+            const accountNeedsRepair = profileMissing || roleMissing;
+            const roleText = Array.isArray(user.roles) && user.roles.length ? user.roles.join(', ') : (currentLanguage === 'ar' ? 'لا توجد صلاحية مسجلة' : 'No role assigned');
             return `
             <div class="list-item" ${isBanned ? 'style="opacity:0.6;border-right:4px solid var(--danger);"' : ''}>
                 <div>
                     <strong>${edEsc(user.name || user.email)}</strong>
                     ${isBanned ? '<span class="badge" style="background:var(--danger);color:white;margin-right:8px;">' + (currentLanguage === 'ar' ? 'محظور' : 'Banned') + '</span>' : ''}
+                    ${accountNeedsRepair ? '<span class="badge" style="background:var(--warning);color:#111;margin-inline-start:8px;">' + (currentLanguage === 'ar' ? 'يحتاج مراجعة بيانات الحساب' : 'Account data needs review') + '</span>' : ''}
                     <div style="color: var(--text-muted); font-size: 0.9rem;">
-                        ${edEsc(user.email)} | ${user.roles ? user.roles.join(', ') : 'student'}
+                        ${edEsc(user.email)} | ${edEsc(roleText)}
                     </div>
+                    ${profileMissing ? '<small style="display:block;color:var(--warning);margin-top:4px;">' + (currentLanguage === 'ar' ? 'لا يوجد ملف مستخدم مرتبط بحساب المصادقة.' : 'No profile is linked to this Auth account.') + '</small>' : ''}
+                    ${roleMissing ? '<small style="display:block;color:var(--warning);margin-top:4px;">' + (currentLanguage === 'ar' ? 'لم تُسجّل صلاحية لهذا الحساب؛ لم تُمنح له صلاحية افتراضية.' : 'No role is recorded; no default role has been assigned.') + '</small>' : ''}
                 </div>
                 <div style="display: flex; gap: 8px; flex-wrap:wrap;">
                     <button class="btn btn-sm view-user-btn" data-user-id="${user.id}">
@@ -9747,6 +9754,10 @@ exam.questions.forEach((question, index) => {
                         <div class="user-detail-card">
                             <h4>${currentLanguage === 'ar' ? 'الصلاحيات' : 'Roles'}</h4>
                             <p>${user.roles ? user.roles.join(', ') : (currentLanguage === 'ar' ? 'طالب' : 'student')}</p>
+                        </div>
+                        <div class="user-detail-card">
+                            <h4>${currentLanguage === 'ar' ? 'حالة بيانات الحساب' : 'Account data state'}</h4>
+                            <p>${user.profile_state === 'missing' ? (currentLanguage === 'ar' ? 'ملف المستخدم مفقود' : 'Profile missing') : (currentLanguage === 'ar' ? 'الملف موجود' : 'Profile available')} · ${user.role_state === 'missing' ? (currentLanguage === 'ar' ? 'الصلاحية مفقودة' : 'Role missing') : (currentLanguage === 'ar' ? 'الصلاحية مسجلة' : 'Role recorded')}</p>
                         </div>
                         <div class="user-detail-card">
                             <h4>${currentLanguage === 'ar' ? 'تاريخ التسجيل' : 'Joined'}</h4>
