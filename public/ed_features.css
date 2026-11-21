@@ -44,6 +44,11 @@
 .edf-json{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.78rem;color:var(--edf-muted)}
 .edf-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
 .edf-metrics .edf-card{margin:0}
+.edf-table-wrap{width:100%;overflow-x:auto;border:1px solid var(--edf-line);border-radius:12px;margin:10px 0 16px}
+.edf-table{width:100%;min-width:620px;border-collapse:collapse;font-size:.9rem}
+.edf-table th,.edf-table td{padding:10px 12px;border-bottom:1px solid var(--edf-line);text-align:start;white-space:nowrap}
+.edf-table th{background:var(--edf-panel);color:var(--edf-muted);font-weight:800}
+.edf-table tbody tr:last-child td{border-bottom:0}
 .edf-mfa-qr{display:grid;justify-items:center;gap:10px;padding:15px;background:var(--edf-panel);border-radius:12px}
 .edf-mfa-qr img{width:min(220px,100%);background:white;padding:8px;border-radius:8px}
 @media(max-width:640px){.edf-shell{padding:12px}.edf-top h1{font-size:1.35rem}.edf-form-grid{grid-template-columns:1fr}.edf-course-select{align-items:stretch;flex-direction:column}.edf-top-actions{width:100%}.edf-top-actions .edf-btn{flex:1}}
