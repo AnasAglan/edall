@@ -32,7 +32,7 @@ describe("student exam, assignment, and certificate history", () => {
   it("includes real attempt start and submit times, question counts, grading and essay-pending states", () => {
     expect(migration).toContain("attempt.started_at");
     expect(migration).toContain("attempt.submitted_at");
-    expect(migration).toContain("count(*) FROM public.exam_questions");
+    expect(migration).toContain("FROM public.exam_questions AS question");
     expect(migration).toContain("result.score");
     expect(migration).toContain("result.has_essay");
     expect(migration).toContain("result.essay_graded");
