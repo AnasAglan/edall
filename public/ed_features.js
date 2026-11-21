@@ -177,6 +177,9 @@
      }
     if (!state.courseId) return;
     const courseId = state.courseId;
+    if (state.tab === "attendance") {
+      state.data.lessons = await rows("lessons", q => q.eq("course_id",courseId).order("sort_order",{ascending:true}));
+    }
     if (state.tab === "assignments") {
       state.data.assignments = await rows("assignments", q => q.eq("course_id",courseId).order("due_at",{ascending:true}));
       const ids = state.data.assignments.map(a => a.id);
@@ -204,6 +207,9 @@
       }));
     } else if (state.tab === "attendance") {
       state.data.sessions = await rows("attendance_sessions", q => q.eq("course_id",courseId).order("starts_at",{ascending:false}));
+      state.data.attendanceReport = isTeacher()
+        ? await rpc("get_attendance_report",{_course_id:courseId,_from:null,_to:null})
+        : null;
       const ids = state.data.sessions.map(a => a.id);
       state.data.attendance = ids.length ? await rows("attendance_records", q =>
         (isTeacher() ? q.in("session_id",ids) : q.eq("student_id",state.user.id).in("session_id",ids))
@@ -279,19 +285,68 @@
     return body;
   }
 
+  function attendanceLessonLabel(lessonId) {
+    if (!lessonId) return text("جلسة عامة","General session");
+    const lesson = (state.data.lessons || []).find(item => item.id === lessonId);
+    return lesson ? lesson.title : text("درس غير متاح","Lesson unavailable");
+  }
+
+  function attendanceLessonSelector() {
+    const lessons = state.data.lessons || [];
+    return '<label class="edf-lesson-select"><span>' + esc(text("ربط الجلسة بدرس (اختياري)","Link session to a lesson (optional)")) + '</span>' +
+      '<select name="lesson_id"><option value="">' + esc(text("جلسة عامة","General session")) + '</option>' +
+      lessons.map(lesson => '<option value="' + esc(lesson.id) + '">' + esc(lesson.title || text("درس بدون عنوان","Untitled lesson")) + '</option>').join("") +
+      '</select></label>';
+  }
+
   function renderAttendanceTab() {
     const sessions = state.data.sessions || [];
     const records = state.data.attendance || [];
+    const report = state.data.attendanceReport || null;
     let body = "";
     if (isTeacher()) {
       body += '<form class="edf-form" data-form="create-attendance"><h3>' + esc(text("إنشاء جلسة حضور","Create attendance session")) + '</h3>' +
         '<input name="title" maxlength="180" required placeholder="' + esc(text("اسم الجلسة","Session title")) + '">' +
         '<input name="starts_at" type="datetime-local" required>' +
+        attendanceLessonSelector() +
         '<button class="edf-btn edf-primary" type="submit">' + esc(text("إنشاء الجلسة","Create session")) + '</button></form>';
+    }
+    if (isTeacher() && report) {
+      const summaryCards = [
+        [text("الجلسات","Sessions"),report.sessions],
+        [text("طلاب الدورة","Enrolled students"),report.enrolled_students],
+        [text("حاضر","Present"),report.present],
+        [text("متأخر","Late"),report.late],
+        [text("غائب","Absent"),report.absent],
+        [text("بعذر","Excused"),report.excused],
+        [text("غير مسجل","Unmarked"),report.unmarked],
+        [text("نسبة الغياب","Absence rate"),report.absence_rate_percent == null ? "—" : Number(report.absence_rate_percent).toFixed(1) + "%"]
+      ];
+      body += '<div class="edf-metrics">' + summaryCards.map(([label,value]) =>
+        card(label,'<strong>' + esc(value == null ? "0" : value) + '</strong>')
+      ).join("") + '</div>';
+      const threshold = report.absence_threshold_percent == null ? "" : report.absence_threshold_percent;
+      body += '<form class="edf-inline-form" data-form="set-attendance-threshold">' +
+        '<label>' + esc(text("تنبيه عند وصول غياب الطالب إلى نسبة (%)","Alert when a student absence rate reaches (%)")) +
+        '<input name="threshold_percent" type="number" min="0.1" max="100" step="0.1" value="' + esc(threshold) + '" placeholder="' + esc(text("فارغ = تعطيل التنبيه","Blank = disable alerts")) + '"></label>' +
+        '<button class="edf-btn" type="submit">' + esc(text("حفظ حد التنبيه","Save alert threshold")) + '</button></form>';
+      const students = Array.isArray(report.students) ? report.students : [];
+      body += '<h3>' + esc(text("تقرير الحضور حسب الطالب","Attendance by student")) + '</h3>' +
+        (students.length ? '<div class="edf-table-wrap"><table class="edf-table"><thead><tr>' +
+          '<th>' + esc(text("الطالب","Student")) + '</th><th>' + esc(text("حاضر","Present")) + '</th>' +
+          '<th>' + esc(text("متأخر","Late")) + '</th><th>' + esc(text("غائب","Absent")) + '</th>' +
+          '<th>' + esc(text("بعذر","Excused")) + '</th><th>' + esc(text("نسبة الغياب","Absence rate")) + '</th>' +
+          '</tr></thead><tbody>' + students.map(student =>
+            '<tr><td>' + esc(student.student_name || student.public_id || student.student_id) + '</td>' +
+            '<td>' + esc(student.present) + '</td><td>' + esc(student.late) + '</td>' +
+            '<td>' + esc(student.absent) + '</td><td>' + esc(student.excused) + '</td>' +
+            '<td>' + esc(student.absence_rate_percent == null ? "—" : Number(student.absence_rate_percent).toFixed(1) + "%") + '</td></tr>'
+          ).join("") + '</tbody></table></div>' : empty(text("لا توجد سجلات حضور كافية للتقرير بعد.","There are not enough attendance records for a report yet.")));
     }
     body += sessions.map(s => {
       const mine = records.filter(r => r.session_id === s.id);
-      let details = '<div class="edf-meta">' + esc(fmtDate(s.starts_at)) + '</div>';
+      let details = '<div class="edf-meta">' + esc(fmtDate(s.starts_at)) +
+        ' · ' + esc(text("الدرس: ","Lesson: ")) + esc(attendanceLessonLabel(s.lesson_id)) + '</div>';
       if (isTeacher()) {
         const options = (state.data.roster || []).map(r =>
           '<option value="' + esc(r.user_id) + '">' + esc(r.student_name || r.public_id || r.user_id) + '</option>'
@@ -606,8 +661,20 @@
           await rpc("grade_assignment_submission",{_submission_id:id,_score:Number(v.score),_feedback:v.feedback || ""});
           break;
         case "create-attendance":
-          await rpc("create_attendance_session",{_course_id:course,_title:v.title,_starts_at:new Date(v.starts_at).toISOString()});
+          await rpc("create_attendance_session",{
+            _course_id:course,_title:v.title,_starts_at:new Date(v.starts_at).toISOString(),
+            _lesson_id:v.lesson_id || null
+          });
           break;
+        case "set-attendance-threshold": {
+          const rawThreshold = String(v.threshold_percent || "").trim();
+          const threshold = rawThreshold ? Number(rawThreshold) : null;
+          if (threshold !== null && (!Number.isFinite(threshold) || threshold <= 0 || threshold > 100)) {
+            throw new Error(text("أدخل نسبة بين 0.1 و100 أو اترك الحقل فارغًا لتعطيل التنبيهات.","Enter a percentage from 0.1 to 100 or leave blank to disable alerts."));
+          }
+          await rpc("set_course_absence_threshold",{_course_id:course,_threshold_percent:threshold});
+          break;
+        }
         case "mark-attendance":
           await rpc("mark_attendance",{_session_id:id,_student_id:v.student_id,_status:v.status,_note:v.note || ""});
           break;
