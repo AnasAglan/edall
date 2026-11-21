@@ -1764,11 +1764,11 @@ word-spacing: normal !important;
                     </div>
                     <div class="user-dropdown-item" id="myLearningRecordsBtn">
                         <i class="fas fa-clipboard-list"></i>
-                        <span>امتحاناتي وواجباتي</span>
+                        <span id="myLearningRecordsText">امتحاناتي وواجباتي</span>
                     </div>
                     <div class="user-dropdown-item" id="myCertificatesBtn">
                         <i class="fas fa-certificate"></i>
-                        <span>شهاداتي</span>
+                        <span id="myCertificatesText">شهاداتي</span>
                     </div>
                     <div class="user-dropdown-item" id="favoritesBtn">
                         <i class="fas fa-heart"></i>
@@ -2224,8 +2224,8 @@ word-spacing: normal !important;
     <div id="myLearningRecordsPage" class="page">
         <div class="header">
             <div class="logo" onclick="showPage('mainPage')">ED</div>
-            <div class="header-title">امتحاناتي وواجباتي</div>
-            <div class="header-desc">سجل محاولاتك ونتائجك وتسليماتك حسب الدورة</div>
+            <div class="header-title" id="myLearningRecordsTitle">امتحاناتي وواجباتي</div>
+            <div class="header-desc" id="myLearningRecordsDesc">سجل محاولاتك ونتائجك وتسليماتك حسب الدورة</div>
             <div class="actions">
                 <button class="btn" onclick="showPage('mainPage')"><i class="fas fa-arrow-right"></i> <span>العودة</span></button>
             </div>
@@ -2235,8 +2235,8 @@ word-spacing: normal !important;
     <div id="myCertificatesPage" class="page">
         <div class="header">
             <div class="logo" onclick="showPage('mainPage')">ED</div>
-            <div class="header-title">شهاداتي</div>
-            <div class="header-desc">شهاداتك وروابط التحقق والتنزيل</div>
+            <div class="header-title" id="myCertificatesTitle">شهاداتي</div>
+            <div class="header-desc" id="myCertificatesDesc">شهاداتك وروابط التحقق والتنزيل</div>
             <div class="actions">
                 <button class="btn" onclick="showPage('mainPage')"><i class="fas fa-arrow-right"></i> <span>العودة</span></button>
             </div>
@@ -5120,6 +5120,12 @@ window.triggerModalClose = function() {
                 profileText: 'الملف الشخصي',
                 notificationsText: 'الإشعارات',
                 myCoursesText: 'كورساتي',
+                myLearningRecordsText: 'امتحاناتي وواجباتي',
+                myCertificatesText: 'شهاداتي',
+                myLearningRecordsTitle: 'امتحاناتي وواجباتي',
+                myLearningRecordsDesc: 'سجل محاولاتك ونتائجك وتسليماتك حسب الدورة',
+                myCertificatesTitle: 'شهاداتي',
+                myCertificatesDesc: 'شهاداتك وروابط التحقق والتنزيل',
                 favoritesText: 'المفضلة',
                 manageCoursesText: 'إدارة الكورسات',
                 settingsText: 'الإعدادات',
@@ -5177,6 +5183,12 @@ window.triggerModalClose = function() {
                 profileText: 'Profile',
                 notificationsText: 'Notifications',
                 myCoursesText: 'My Courses',
+                myLearningRecordsText: 'My Exams & Assignments',
+                myCertificatesText: 'My Certificates',
+                myLearningRecordsTitle: 'My Exams & Assignments',
+                myLearningRecordsDesc: 'Your exam attempts, grades and assignment submissions by course',
+                myCertificatesTitle: 'My Certificates',
+                myCertificatesDesc: 'Your earned certificates, verification links and downloads',
                 favoritesText: 'Favorites',
                 manageCoursesText: 'Manage Courses',
                 settingsText: 'Settings',
@@ -5252,6 +5264,12 @@ window.triggerModalClose = function() {
                 'profileText': t.profileText,
                 'notificationsText': t.notificationsText,
                 'myCoursesText': t.myCoursesText,
+                'myLearningRecordsText': t.myLearningRecordsText,
+                'myCertificatesText': t.myCertificatesText,
+                'myLearningRecordsTitle': t.myLearningRecordsTitle,
+                'myLearningRecordsDesc': t.myLearningRecordsDesc,
+                'myCertificatesTitle': t.myCertificatesTitle,
+                'myCertificatesDesc': t.myCertificatesDesc,
                 'favoritesText': t.favoritesText,
                 'manageCoursesText': t.manageCoursesText,
                 'settingsText': t.settingsText,
