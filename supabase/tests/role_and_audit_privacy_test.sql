@@ -2,7 +2,7 @@
 -- Runs inside a transaction and rolls back all fixture accounts/data.
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT plan(44);
+SELECT plan(51);
 
 INSERT INTO auth.users (
   id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -302,6 +302,44 @@ SELECT ok(
   'first-admin bootstrap recounts after a shared lock only when roles are empty'
 )
 FROM positions;
+
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='attendance_sessions' AND column_name='lesson_id'
+  ),
+  'attendance sessions can be linked to a lesson'
+);
+SELECT ok(
+  to_regclass('public.attendance_alert_settings') IS NOT NULL
+  AND to_regclass('public.attendance_alert_events') IS NOT NULL,
+  'attendance threshold settings and alert deduplication tables exist'
+);
+SELECT ok(
+  to_regprocedure('public.get_attendance_report(uuid,timestamptz,timestamptz)') IS NOT NULL,
+  'scoped attendance report RPC exists'
+);
+SELECT ok(
+  NOT has_function_privilege('anon','public.get_attendance_report(uuid,timestamptz,timestamptz)','EXECUTE'),
+  'anonymous callers cannot read attendance reports'
+);
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_proc p
+    WHERE p.oid='public.get_attendance_report(uuid,timestamptz,timestamptz)'::regprocedure
+      AND p.prosecdef
+      AND 'search_path=""' = ANY(p.proconfig)
+  ),
+  'attendance report RPC is SECURITY DEFINER with an empty search path'
+);
+SELECT ok(
+  NOT has_function_privilege('anon','public.set_course_absence_threshold(uuid,numeric)','EXECUTE'),
+  'anonymous callers cannot change attendance alert thresholds'
+);
+SELECT ok(
+  has_function_privilege('authenticated','public.create_attendance_session(uuid,text,timestamptz,uuid)','EXECUTE'),
+  'authenticated callers can create attendance sessions subject to the internal course permission gate'
+);
 
 SELECT * FROM finish();
 ROLLBACK;
