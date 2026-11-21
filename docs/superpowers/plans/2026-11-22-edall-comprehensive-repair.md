@@ -43,6 +43,7 @@
 
 **Files:**
 - Create: docs/operations/edall-schema-and-release-inventory.md
+- Create: docs/operations/edall-source-audit-ledger.md
 - Review: supabase/migrations/*.sql
 - Review: supabase/tests/role_and_audit_privacy_test.sql
 - Review: docs/operations/backups-monitoring-restore.md
@@ -53,12 +54,13 @@
 - Produces: a schema-object inventory for tables, columns, constraints, indexes, policies, triggers, functions, grants, buckets, and Storage policies.
 
 - [ ] **Step 1: Capture current evidence without writing to either database.** Record project refs, app commits, 43 repository migration filenames, remote migration history, schema-only diff, and Storage bucket names. Do not print credentials or data rows.
-- [ ] **Step 2: Compare remote history and schema.** Use the installed Supabase CLI's migration-list and db-diff workflows for each project independently. Do not run migration repair or db push as a shortcut.
-- [ ] **Step 3: Write the drift matrix.** Mark migrations whose effects exist but whose ledger row is missing as partially applied/unknown until the exact objects are verified.
-- [ ] **Step 4: Verify backup capabilities.** Confirm current provider retention, PITR availability, Storage backup method, external encrypted copy destination, and restore permissions. A written runbook alone is not a pass.
-- [ ] **Step 5: Restore a backup into the dedicated Staging project.** Verify auth, profiles, roles, courses, enrollments, lesson assets, exams, assignment submissions, attendance, certificates, wallets, and required Storage objects. Record achieved RPO and RTO.
-- [ ] **Step 6: Remove tracked local configuration safely.** Replace tracked .env with a placeholder .env.example and remove .env from Git tracking. Inspect repository history for actual private keys; rotate only confirmed exposed secrets through their provider dashboards.
-- [ ] **Step 7: Commit the inventory and recovery evidence.**
+- [ ] **Step 2: Perform the complete source audit line-by-line in bounded file groups.** Review every tracked source, SQL, script, workflow, configuration, and test file that affects runtime behavior: the active web shell/modules, auth/account setup, exams and grading, wallet/payments, Learning Space, assistant Worker, video extractor/proxy/player, Electron app, PWA, CI, and release scripts. Record each file and reviewed commit in edall-source-audit-ledger.md with findings scored P0–P3, evidence, affected roles, and a regression-test requirement. Mark Android as unavailable until its repository is connected. Do not claim a file is reviewed merely because its directory was listed.
+- [ ] **Step 3: Compare remote history and schema.** Use the installed Supabase CLI's migration-list and db-diff workflows for each project independently. Do not run migration repair or db push as a shortcut.
+- [ ] **Step 4: Write the drift matrix.** Mark migrations whose effects exist but whose ledger row is missing as partially applied/unknown until the exact objects are verified.
+- [ ] **Step 5: Verify backup capabilities.** Confirm current provider retention, PITR availability, Storage backup method, external encrypted copy destination, and restore permissions. A written runbook alone is not a pass.
+- [ ] **Step 6: Restore a backup into the dedicated Staging project.** Verify auth, profiles, roles, courses, enrollments, lesson assets, exams, assignment submissions, attendance, certificates, wallets, and required Storage objects. Record achieved RPO and RTO.
+- [ ] **Step 7: Remove tracked local configuration safely.** Replace tracked .env with a placeholder .env.example and remove .env from Git tracking. Inspect repository history for actual private keys; rotate only confirmed exposed secrets through their provider dashboards.
+- [ ] **Step 8: Commit the source-audit ledger, inventory, and recovery evidence.**
 
 **Verification:**
 - Read-only migration/schema comparison succeeds for both environments.
