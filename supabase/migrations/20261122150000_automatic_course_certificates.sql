@@ -13,7 +13,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS lessons_one_final_per_course_idx
 CREATE OR REPLACE FUNCTION public.issue_course_certificate_internal(
   _course_id uuid,
   _student_id uuid,
-  _issued_by uuid
+  _issued_by uuid,
+  _automatic boolean DEFAULT true
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -139,7 +140,7 @@ BEGIN
     jsonb_build_object(
       'student_id',_student_id,
       'certificate_number',_number,
-      'automatic',true
+      'automatic',COALESCE(_automatic,true)
     )
   );
 
@@ -152,7 +153,7 @@ BEGIN
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.issue_course_certificate_internal(uuid,uuid,uuid) FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON FUNCTION public.issue_course_certificate_internal(uuid,uuid,uuid,boolean) FROM PUBLIC,anon,authenticated;
 
 CREATE OR REPLACE FUNCTION public.try_auto_issue_course_certificate(
   _course_id uuid,
@@ -186,7 +187,8 @@ EXCEPTION
     IF _message IN (
       'COURSE_NOT_COMPLETED',
       'COURSE_FINAL_LESSON_NOT_SET',
-      'CERTIFICATE_REVOKED'
+      'CERTIFICATE_REVOKED',
+      'STUDENT_NOT_ENROLLED'
     ) THEN
       RETURN false;
     END IF;
@@ -222,7 +224,7 @@ BEGIN
     RAISE EXCEPTION 'ADMIN_MFA_REQUIRED';
   END IF;
 
-  RETURN public.issue_course_certificate_internal(_course_id,_student_id,auth.uid());
+  RETURN public.issue_course_certificate_internal(_course_id,_student_id,auth.uid(),false);
 END;
 $function$;
 
