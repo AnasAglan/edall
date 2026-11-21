@@ -62,8 +62,7 @@ BEGIN
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.set_discussion_post_pinned(uuid,boolean)
-  FROM PUBLIC,anon;
+REVOKE ALL ON FUNCTION public.set_discussion_post_pinned(uuid,boolean) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.set_discussion_post_pinned(uuid,boolean)
   TO authenticated;
 
@@ -146,8 +145,7 @@ BEGIN
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.get_course_discussion_feed(uuid)
-  FROM PUBLIC,anon;
+REVOKE ALL ON FUNCTION public.get_course_discussion_feed(uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.get_course_discussion_feed(uuid)
   TO authenticated;
 
