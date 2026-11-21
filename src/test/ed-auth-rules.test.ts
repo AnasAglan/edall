@@ -233,11 +233,16 @@ describe("administrator MFA login enforcement", () => {
 
 describe("admin user directory error handling", () => {
   it("uses the AAL2-protected admin directory RPC instead of silently ignoring profile and role query errors", () => {
-    const start = html.indexOf("async function loadData()");
-    const end = html.indexOf("function ", start + 30);
-    const loader = html.slice(start, end);
-    expect(loader).toContain("admin_list_users");
-    expect(loader).toContain("profilesResult.error");
-    expect(loader).not.toContain("roles.length > 0 ? userRoles : ['teacher']");
+    const directoryStart = html.indexOf("async function loadAdminUserDirectory()");
+    const directoryEnd = html.indexOf("async function loadAllCourseMetadata()", directoryStart);
+    const dataStart = html.indexOf("async function loadData()");
+    const dataEnd = html.indexOf("function ", dataStart + 30);
+    const directoryLoader = html.slice(directoryStart, directoryEnd);
+    const dataLoader = html.slice(dataStart, dataEnd);
+    expect(directoryLoader).toContain("admin_list_users");
+    expect(directoryLoader).toContain("result.error");
+    expect(dataLoader).toContain("if (profilesResult.error) throw profilesResult.error;");
+    expect(dataLoader).toContain("roles: userRoles,");
+    expect(dataLoader).not.toContain("roles.length > 0 ? userRoles : ['teacher']");
   });
 });
