@@ -163,3 +163,47 @@ describe("ED-ALL integrated learning suite", () => {
     expect(ui).toContain('const isTeacher = () => isAdmin() || isCourseOwner() || !!currentStaffRole()');
   });
 });
+
+
+describe("lesson-scoped assignments and discussions", () => {
+  const ui = read("public/ed_features.js");
+
+  it("loads the selected course's lessons before rendering assignment and discussion creation", () => {
+    expect(ui).toContain('state.data.lessons = await rows("lessons"');
+    expect(ui).toContain('q.eq("course_id",courseId)');
+    expect(ui).toContain('q.order("sort_order",{ascending:true})');
+  });
+
+  it("offers an optional lesson selector in assignment and discussion forms", () => {
+    expect(ui).toContain('name="lesson_id"');
+    expect(ui).toContain('data-form="create-assignment"');
+    expect(ui).toContain('data-form="create-topic"');
+    expect(ui).toContain('كل الدورة');
+    expect(ui).toContain('Entire course');
+  });
+
+  it("passes the selected lesson id to both server RPCs and preserves course-level creation when blank", () => {
+    expect(ui).toContain('_lesson_id:v.lesson_id || null');
+    expect(ui).not.toContain('_lesson_id:null');
+    expect(ui).toContain('rpc("create_assignment"');
+    expect(ui).toContain('rpc("create_discussion_topic"');
+  });
+
+  it("shows the lesson label on each assignment and discussion topic", () => {
+    expect(ui).toContain('function lessonLabel(');
+    expect(ui).toContain('lessonLabel(a.lesson_id)');
+    expect(ui).toContain('lessonLabel(t.lesson_id)');
+  });
+
+  it("validates lesson/course ownership in the trusted database functions", () => {
+    expect(migration).toContain("LESSON_NOT_IN_COURSE");
+    const assignmentStart = migration.indexOf("CREATE OR REPLACE FUNCTION public.create_assignment");
+    const assignmentEnd = migration.indexOf("$function$;", assignmentStart);
+    const assignment = migration.slice(assignmentStart, assignmentEnd);
+    expect(assignment).toContain("l.id = _lesson_id AND l.course_id = _course_id");
+    const discussionStart = migration.indexOf("CREATE OR REPLACE FUNCTION public.create_discussion_topic");
+    const discussionEnd = migration.indexOf("$function$;", discussionStart);
+    const discussion = migration.slice(discussionStart, discussionEnd);
+    expect(discussion).toContain("l.id=_lesson_id AND l.course_id=_course_id");
+  });
+});
