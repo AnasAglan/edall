@@ -163,3 +163,47 @@ describe("ED-ALL integrated learning suite", () => {
     expect(ui).toContain('const isTeacher = () => isAdmin() || isCourseOwner() || !!currentStaffRole()');
   });
 });
+
+
+describe("automatic course certificate issuance from final lesson completion", () => {
+  const ui = read("public/ed_features.js");
+  const migration = read("supabase/migrations/20261122150000_automatic_course_certificates.sql");
+
+  it("allows only one designated final lesson per course and validates course ownership", () => {
+    expect(migration).toContain("ADD COLUMN IF NOT EXISTS is_final boolean NOT NULL DEFAULT false");
+    expect(migration).toContain("CREATE UNIQUE INDEX IF NOT EXISTS lessons_one_final_per_course_idx");
+    expect(migration).toContain("CREATE OR REPLACE FUNCTION public.set_course_final_lesson");
+    expect(migration).toContain("LESSON_NOT_IN_COURSE");
+  });
+
+  it("requires a designated final lesson and preserves all existing completion requirements before issuance", () => {
+    expect(migration).toContain("COURSE_FINAL_LESSON_NOT_SET");
+    expect(migration).toContain("er.passed=true");
+    expect(migration).toContain("(NOT er.has_essay OR er.essay_graded)");
+    expect(migration).toContain("NOT EXISTS (SELECT 1 FROM public.lesson_videos");
+    expect(migration).toContain("NOT EXISTS (SELECT 1 FROM public.lesson_files");
+  });
+
+  it("attempts issuance after lesson progress and exam essay grading changes without blocking incomplete courses", () => {
+    expect(migration).toContain("auto_issue_course_certificate_from_lesson_progress");
+    expect(migration).toContain("auto_issue_course_certificate_from_exam_result");
+    expect(migration).toContain("AFTER INSERT OR UPDATE OF video_watched,pdf_opened,exam_completed");
+    expect(migration).toContain("AFTER INSERT OR UPDATE OF passed,has_essay,essay_graded");
+    expect(migration).toContain("COURSE_NOT_COMPLETED");
+  });
+
+  it("uses a private idempotent issuance helper and keeps the public RPC permission-gated", () => {
+    expect(migration).toContain("issue_course_certificate_internal");
+    expect(migration).toContain("ON CONFLICT");
+    expect(migration).toContain("REVOKE ALL ON FUNCTION public.issue_course_certificate_internal(uuid,uuid,uuid) FROM PUBLIC,anon,authenticated");
+    expect(migration).toContain("public.has_course_capability(_course_id,'certificates')");
+    expect(migration).toContain("public.admin_mfa_verified()");
+  });
+
+  it("allows course staff to designate the final lesson through the existing certificates tab", () => {
+    expect(ui).toContain('data-form="set-final-lesson"');
+    expect(ui).toContain('name="lesson_id"');
+    expect(ui).toContain('rpc("set_course_final_lesson"');
+    expect(ui).toContain("is_final");
+  });
+});
