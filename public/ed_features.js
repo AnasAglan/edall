@@ -245,7 +245,7 @@
 
   function lessonSelector(label) {
     const lessons = state.data.lessons || [];
-    return '<label class="edf-form-grid-field"><span>' + esc(label) + '</span><select name="lesson_id">' +
+    return '<label class="edf-lesson-select"><span>' + esc(label) + '</span><select name="lesson_id">' +
       '<option value="">' + esc(text("كل الدورة","Entire course")) + '</option>' +
       lessons.map(lesson => '<option value="' + esc(lesson.id) + '">' + esc(lesson.title || text("درس بدون عنوان","Untitled lesson")) + '</option>').join("") +
       '</select></label>';
