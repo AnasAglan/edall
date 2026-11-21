@@ -152,8 +152,7 @@ BEGIN
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.issue_course_certificate_internal(uuid,uuid,uuid)
-  FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON FUNCTION public.issue_course_certificate_internal(uuid,uuid,uuid) FROM PUBLIC,anon,authenticated;
 
 CREATE OR REPLACE FUNCTION public.try_auto_issue_course_certificate(
   _course_id uuid,
