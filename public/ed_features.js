@@ -159,6 +159,10 @@
     state.data = {};
     if (state.publicToken) return loadPublicCertificate();
     if (!state.user || !state.user.id) return;
+    if (state.tab === "analytics" && !isAdmin()) {
+      state.data.teacherAnalytics = await rpc("get_teacher_analytics",{});
+      return;
+    }
     if (state.tab === "mfa" || state.tab === "audit" || state.tab === "staff" || (state.tab === "analytics" && isAdmin())) {
       if (state.tab === "mfa") return;
       if (state.tab === "audit") {
@@ -221,13 +225,11 @@
     } else if (state.tab === "discussions") {
       state.data.topics = await rpc("get_course_discussion_feed",{_course_id:courseId}) || [];
       state.data.posts = [];
-    } else if (state.tab === "analytics") {
-      state.data.analytics = await rpc("get_course_analytics", { _course_id: courseId });
     }
   }
 
   function courseSelector() {
-    if (state.tab === "analytics" && isAdmin()) return "";
+    if (state.tab === "analytics") return "";
     if (!state.courses.length) return "";
     return '<label class="edf-course-select"><span>' + esc(text("الدورة", "Course")) + '</span><select data-field="course">' +
       state.courses.map(c => '<option value="' + esc(c.id) + '"' + (c.id === state.courseId ? " selected" : "") + '>' + esc(c.title) + '</option>').join("") +
@@ -391,12 +393,68 @@
   }
 
   function renderAnalyticsTab() {
-    const data = state.data.analytics;
-    if (!data) return empty(text("لا توجد بيانات تحليلية متاحة.","Analytics are not available."));
-    const keys = Object.keys(data);
-    const body = '<div class="edf-metrics">' + keys.map(k => card(k.replace(/_/g," "),'<strong>' + esc(typeof data[k] === "object" ? JSON.stringify(data[k]) : data[k]) + '</strong>')).join("") + '</div>' +
-      '<div class="edf-actions">' + makeBtn(text("تصدير Excel (XLSX)","Download Excel (XLSX)"),"export") + makeBtn(text("طباعة / حفظ PDF","Print / Save PDF"),"print") + '</div>';
-    state.exportRows = [data];
+    if (isAdmin()) {
+      const data = state.data.analytics;
+      if (!data) return empty(text("لا توجد بيانات تحليلية متاحة.","Analytics are not available."));
+      const keys = Object.keys(data);
+      const body = '<div class="edf-metrics">' + keys.map(k => card(k.replace(/_/g," "),'<strong>' + esc(typeof data[k] === "object" ? JSON.stringify(data[k]) : data[k]) + '</strong>')).join("") + '</div>' +
+        '<div class="edf-actions">' + makeBtn(text("تصدير Excel (XLSX)","Download Excel (XLSX)"),"export") + makeBtn(text("طباعة / حفظ PDF","Print / Save PDF"),"print") + '</div>';
+      state.exportRows = [data];
+      return body;
+    }
+
+    const analytics = state.data.teacherAnalytics;
+    if (!analytics || !analytics.totals) return empty(text("لا توجد بيانات تحليلية متاحة للدورات المسندة إليك.","No analytics are available for your assigned courses."));
+    const totals = analytics.totals;
+    const metricDefinitions = [
+      ["courses",text("الدورات","Courses")],
+      ["enrolled",text("الطلاب المسجلون","Enrolled students")],
+      ["assignments",text("الواجبات","Assignments")],
+      ["submissions",text("التسليمات","Submissions")],
+      ["graded_submissions",text("الواجبات المصححة","Graded submissions")],
+      ["exams",text("الامتحانات","Exams")],
+      ["exam_results",text("نتائج الامتحانات","Exam results")],
+      ["attendance_sessions",text("جلسات الحضور","Attendance sessions")],
+      ["present",text("حاضر","Present")],
+      ["late",text("متأخر","Late")],
+      ["absent",text("غائب","Absent")],
+      ["excused",text("بعذر","Excused")],
+      ["valid_certificates",text("الشهادات السارية","Valid certificates")]
+    ];
+    let body = '<h3>' + esc(text("ملخص جميع دوراتك","Overview of all your courses")) + '</h3>' +
+      '<div class="edf-metrics">' + metricDefinitions.map(([key,label]) =>
+        card(label,'<strong>' + esc(totals[key] == null ? 0 : totals[key]) + '</strong>')
+      ).join("") + '</div>';
+    const courses = Array.isArray(analytics.courses) ? analytics.courses : [];
+    body += '<h3 style="margin-top:22px;">' + esc(text("التحليلات حسب الدورة","Analytics by course")) + '</h3>';
+    if (!courses.length) {
+      body += empty(text("لا توجد دورات تملك صلاحية تحليلها بعد.","There are no courses you can analyze yet."));
+    } else {
+      body += '<div class="edf-course-analytics">' + courses.map(course => {
+        const rows = [
+          [text("الطلاب","Students"),course.enrolled],
+          [text("الواجبات","Assignments"),course.assignments],
+          [text("التسليمات","Submissions"),course.submissions],
+          [text("تم التصحيح","Graded"),course.graded_submissions],
+          [text("الامتحانات","Exams"),course.exams],
+          [text("نتائج الامتحانات","Exam results"),course.exam_results],
+          [text("جلسات الحضور","Attendance sessions"),course.attendance_sessions],
+          [text("حاضر","Present"),course.present],
+          [text("متأخر","Late"),course.late],
+          [text("غائب","Absent"),course.absent],
+          [text("بعذر","Excused"),course.excused],
+          [text("الشهادات السارية","Certificates"),course.valid_certificates]
+        ];
+        return card(course.course_title || course.course_id,
+          '<div class="edf-metrics">' + rows.map(([label,value]) =>
+            '<div class="edf-metric"><span>' + esc(label) + '</span><strong>' + esc(value == null ? 0 : value) + '</strong></div>'
+          ).join("") + '</div>'
+        );
+      }).join("") + '</div>';
+    }
+    body += '<div class="edf-actions">' + makeBtn(text("تصدير Excel (XLSX)","Download Excel (XLSX)"),"export") +
+      makeBtn(text("طباعة / حفظ PDF","Print / Save PDF"),"print") + '</div>';
+    state.exportRows = [{scope:analytics.scope,totals},...courses];
     return body;
   }
 
