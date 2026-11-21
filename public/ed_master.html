@@ -11553,7 +11553,7 @@ exam.questions.forEach((question, index) => {
                             + '</div>'
                             + '<div style="display:flex;align-items:center;gap:8px;">'
                             + '<span style="font-weight:900;color:#22d3ee;">' + fmt(u.balance) + '</span>'
-                            + '<button class="btn btn-outline" onclick="openWalletUserTransactions(\'' + u.id + '\')" title="' + t('سجل العمليات','Transaction history') + '"><i class="fas fa-list-alt"></i></button>'
+                            + '<button class="btn btn-outline admin-user-transactions" onclick="openWalletUserTransactions(\'' + u.id + '\')" title="' + t('سجل العمليات','Transaction history') + '"><i class="fas fa-list-alt"></i></button>'
                             + '<button class="btn btn-accent" onclick="openCreditUserModal(\'' + u.id + '\',\'' + safeName + '\', 1)" title="' + t('شحن','Top up') + '"><i class="fas fa-plus"></i></button>'
                             + '<button class="btn btn-danger" onclick="openCreditUserModal(\'' + u.id + '\',\'' + safeName + '\', -1)" title="' + t('خصم','Debit') + '"><i class="fas fa-minus"></i></button>'
                             + '</div>'
