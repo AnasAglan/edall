@@ -63,6 +63,10 @@ BEGIN
      OR NOT public.has_course_capability(_course_id,'attendance') THEN
     RAISE EXCEPTION 'NOT_ALLOWED';
   END IF;
+  IF public.has_role(auth.uid(),'admin'::public.app_role)
+     AND NOT public.admin_mfa_verified() THEN
+    RAISE EXCEPTION 'ADMIN_MFA_REQUIRED';
+  END IF;
   IF length(btrim(COALESCE(_title,''))) NOT BETWEEN 1 AND 180
      OR _starts_at IS NULL THEN
     RAISE EXCEPTION 'INVALID_ATTENDANCE_SESSION';
@@ -184,6 +188,10 @@ BEGIN
 
   IF NOT FOUND OR NOT public.has_course_capability(_course_id,'attendance') THEN
     RAISE EXCEPTION 'NOT_ALLOWED';
+  END IF;
+  IF public.has_role(auth.uid(),'admin'::public.app_role)
+     AND NOT public.admin_mfa_verified() THEN
+    RAISE EXCEPTION 'ADMIN_MFA_REQUIRED';
   END IF;
   IF _status NOT IN ('present','absent','late','excused')
      OR length(COALESCE(_note,'')) > 500 THEN
