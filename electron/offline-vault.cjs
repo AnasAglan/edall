@@ -86,6 +86,7 @@ async function encryptMediaStream({ source, filePath, safeStorage, contentType }
     fileOffset += RECORD_HEADER_BYTES + encrypted.length;
     plainOffset += plain.length;
     encrypted.fill(0);
+    plain.fill(0);
   };
 
   try {
