@@ -327,3 +327,14 @@ test("platform statistics never present an untracked exam-attempt count as zero"
   assert.match(reply, /محاولات الاختبار: غير متاح/);
   assert.ok(!reply.includes("محاولات الاختبار: **0**"));
 });
+
+
+test("platform statistics explain when the database migration is still pending", () => {
+  const reply = buildVerifiedReadReply([{
+    tool: "get_platform_stats",
+    verified: true,
+    data: { statistics_migration_required: true }
+  }], [{ role: "user", content: "إحصائيات المنصة" }]);
+  assert.match(reply, /قاعدة البيانات لم تُحدّث بعد/);
+  assert.match(reply, /لم أعرض أرقامًا قديمة أو غير دقيقة/);
+});
