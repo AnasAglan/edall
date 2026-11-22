@@ -16,8 +16,11 @@ SECURITY DEFINER
 SET search_path = ''
 AS $function$
 BEGIN
-  IF NEW.question_count IS NULL
-     OR (TG_OP = 'UPDATE' AND NEW.exam_id IS DISTINCT FROM OLD.exam_id) THEN
+  -- Never trust a client-supplied question count. Capture the actual number of
+  -- questions for a new attempt, or when its exam is changed.
+  IF TG_OP = 'INSERT'
+     OR NEW.exam_id IS DISTINCT FROM OLD.exam_id
+     OR NEW.question_count IS DISTINCT FROM OLD.question_count THEN
     SELECT count(*)::integer
     INTO NEW.question_count
     FROM public.exam_questions AS question
@@ -32,7 +35,7 @@ REVOKE ALL ON FUNCTION public.snapshot_exam_attempt_question_count()
 
 DROP TRIGGER IF EXISTS snapshot_exam_attempt_question_count ON public.exam_attempts;
 CREATE TRIGGER snapshot_exam_attempt_question_count
-BEFORE INSERT OR UPDATE OF exam_id
+BEFORE INSERT OR UPDATE OF exam_id,question_count
 ON public.exam_attempts
 FOR EACH ROW
 EXECUTE FUNCTION public.snapshot_exam_attempt_question_count();
