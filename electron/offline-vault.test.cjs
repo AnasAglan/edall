@@ -117,6 +117,36 @@ test('authenticates each encrypted chunk before returning its plaintext', async 
   });
 });
 
+
+test('uses Electron asynchronous safeStorage APIs when available', async t => {
+  await withTemp(t, async directory => {
+    const legacy = createTestSafeStorage();
+    const asyncOnly = {
+      isAsyncEncryptionAvailable: async () => true,
+      encryptStringAsync: async value => legacy.encryptString(value),
+      decryptStringAsync: async value => ({
+        result: legacy.decryptString(value),
+        shouldReEncrypt: false
+      })
+    };
+    const plain = Buffer.from('modern electron async safe storage'.repeat(1000));
+    const expected = Buffer.from(plain);
+    const filePath = path.join(directory, 'async.edenc');
+    const descriptor = await encryptMediaStream({
+      source: Readable.from([plain]),
+      filePath,
+      safeStorage: asyncOnly,
+      contentType: 'video/mp4'
+    });
+    const response = createEncryptedMediaResponse({
+      filePath,
+      descriptor,
+      safeStorage: asyncOnly
+    });
+    assert.deepEqual(await collect(response.body), expected);
+  });
+});
+
 test('fails closed when OS-backed key storage is unavailable', async t => {
   await withTemp(t, async directory => {
     const filePath = path.join(directory, 'no-key.edenc');
