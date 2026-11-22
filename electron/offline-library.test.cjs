@@ -119,6 +119,36 @@ test('rejects malformed video IDs, path traversal IDs and failed provider respon
   }), /complete stream/);
 });
 
+
+test('rejects successful HTTP responses that are not media or have the wrong track type', async t => {
+  const htmlLibrary = await createLibrary(t, async () => ({
+    status: 200,
+    contentType: 'text/html; charset=utf-8',
+    body: Readable.from([Buffer.from('<html>provider error</html>')])
+  }));
+  await assert.rejects(() => htmlLibrary.save({
+    title: 'Not a video',
+    videoId: 'abcdefghijk',
+    height: 360,
+    video: { url: 'opaque-token', mimeType: 'video/mp4' }
+  }), /unexpected media type/);
+  assert.deepEqual(await htmlLibrary.list(), []);
+
+  const wrongTrackLibrary = await createLibrary(t, async () => ({
+    status: 200,
+    contentType: 'video/mp4',
+    body: Readable.from([Buffer.from('not-audio')])
+  }));
+  await assert.rejects(() => wrongTrackLibrary.save({
+    title: 'Wrong audio track',
+    videoId: 'abcdefghijk',
+    height: 360,
+    video: { url: 'opaque-video', mimeType: 'video/mp4' },
+    audio: { url: 'opaque-audio', mimeType: 'audio/mp4' }
+  }), /unexpected media type/);
+  assert.deepEqual(await wrongTrackLibrary.list(), []);
+});
+
 test('deletes the encrypted media and manifest as one library item', async t => {
   const library = await createLibrary(t, async reference => ({
     status: 200,
