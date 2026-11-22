@@ -78,3 +78,21 @@ jobs:
           commit_message: "chore(video): refresh public extractor instances"
           file_pattern: public/video-instances.json
           branch: main
+
+      - name: Report incomplete provider discovery
+        if: github.event_name != 'pull_request'
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const registry = JSON.parse(fs.readFileSync("public/video-instances.json", "utf8"));
+            const failures = [];
+            if (registry.sourcesUpdated?.piped !== true) failures.push("Piped directory was not refreshed");
+            if (registry.sourcesUpdated?.invidious !== true) failures.push("Invidious directory was not refreshed");
+            if (registry.refreshedDaily !== true) failures.push(...(registry.sourceErrors || ["At least one provider source is stale"]));
+            if (failures.length) {
+              console.error("Provider discovery is incomplete; the last-known registry was preserved:");
+              for (const failure of [...new Set(failures)]) console.error(" - " + failure);
+              process.exit(1);
+            }
+            console.log("Both provider directories refreshed successfully.");
+          '
