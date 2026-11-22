@@ -153,3 +153,9 @@ export function normalizeEgyptianMobile(value: unknown): string | null {
 export function isFawryPaidStatus(status: unknown): boolean {
   return String(status ?? "").trim().toUpperCase() === "PAID";
 }
+
+export function hasSufficientFawryPaidAmount(paymentAmount: unknown, orderAmount: unknown): boolean {
+  const paid = formatFawryAmount(paymentAmount);
+  const ordered = formatFawryAmount(orderAmount);
+  return paid !== null && ordered !== null && Number(paid) >= Number(ordered);
+}
