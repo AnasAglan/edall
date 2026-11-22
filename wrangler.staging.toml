@@ -9,3 +9,7 @@ EDALL_REGISTRY_URL = "https://id-preview--c65d2fd9-1c85-479f-9347-d54b6341e6a7.l
 enabled = true
 [observability.issues]
 enabled = true
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 0.05
