@@ -3,6 +3,7 @@ main = "workers/extract-youtube-stream/index.ts"
 compatibility_date = "2026-11-02"
 
 [observability]
+redact_query_string = true
 enabled = true
 
 [observability.issues]
