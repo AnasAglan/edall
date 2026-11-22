@@ -102,7 +102,7 @@ The live settings review observed invocation logs enabled at the existing 100% s
 
 - The repository is public.
 - `.env` is tracked and has five client-configuration entries: Supabase project URL/ID and Publishable-key variables. The values inspected were not service-role, database-password, Paymob, Fawry, or signing credentials.
-- `.env.example` is absent.
+- `.env.example` now exists on this documentation branch with placeholders for the five public Supabase client configuration keys. `.gitignore` already ignores `.env` and `.env.*` while allowing `.env.example`.
 - Do not remove the tracked file until the build inputs are confirmed available in the deployment environment; then replace it with placeholders and untrack `.env` in a separate reviewed change.
 - No Android source repository was available under the connected GitHub owner. Android-native implementation remains unverified.
 
