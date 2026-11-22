@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { assertProviderRegistryFresh } from "./assert-video-registry-fresh.mjs";
-import { discoverPiped, discoverInvidious, supportsInvidiousApi, assessSamplePlayback, SAMPLE_VIDEO_IDS, CURATED_INVIDIOUS_INSTANCES, parseHlsPlaylist, verifiedSampleHeights, classifyPlaybackHealth, fetchDirectoryResponse } from "./sync-video-instances.mjs";
+import { discoverPiped, discoverInvidious, discoverInvidiousFromMarkdown, supportsInvidiousApi, assessSamplePlayback, SAMPLE_VIDEO_IDS, CURATED_INVIDIOUS_INSTANCES, parseHlsPlaylist, verifiedSampleHeights, classifyPlaybackHealth, fetchDirectoryResponse } from "./sync-video-instances.mjs";
 
 test("discovers Piped API hosts from the current public directory table only", () => {
   const markdown = [
@@ -220,4 +220,44 @@ test("daily provider refresh accepts only a complete dual-source update", () => 
     sourcesUpdated: { piped: true, invidious: true },
     sourceErrors: []
   }), true);
+});
+
+
+test("uses only the official public Clearnet section of Invidious documentation as the fallback source", () => {
+  const markdown = [
+    "# Invidious Instances",
+    "## Instances API",
+    "## List of public Invidious Instances (sorted from oldest to newest):",
+    "* [inv.nadeko.net](https://inv.nadeko.net) - official public node",
+    "* [invidious.nerdvpn.de](https://invidious.nerdvpn.de) - official public node",
+    "* [yt.chocolatemoo53.com](https://yt.chocolatemoo53.com) - official public node",
+    "* [invidious.tiekoetter.com](https://invidious.tiekoetter.com) - official public node",
+    "### Tor Onion Services:",
+    "* [mirror.onion](http://mirror.onion) - onion only",
+    "### I2P Eepsites:",
+    "* [mirror.i2p](http://mirror.i2p) - I2P only",
+    "### Yggdrasil Network:",
+    "* [inv-ygg.nadeko.net](https://inv-ygg.nadeko.net) - overlay network only",
+    "## Rules to have your instance in this list:",
+    "* [not-an-instance.example](https://not-an-instance.example)"
+  ].join("\n");
+
+  const entries = discoverInvidiousFromMarkdown(markdown);
+  assert.deepEqual(entries.map((item) => item.url), [
+    "https://inv.nadeko.net",
+    "https://invidious.nerdvpn.de",
+    "https://yt.chocolatemoo53.com",
+    "https://invidious.tiekoetter.com"
+  ]);
+  assert.ok(entries.every((item) =>
+    item.official === true &&
+    item.apiProbeCandidate === true &&
+    item.source === "official-documentation-fallback"
+  ));
+});
+
+test("does not accept unlisted links outside the Invidious public-instance section", () => {
+  assert.deepEqual(discoverInvidiousFromMarkdown(
+    "# Invidious\n* [other](https://other.example)\n## Rules\n* [extra](https://extra.example)"
+  ), []);
 });
