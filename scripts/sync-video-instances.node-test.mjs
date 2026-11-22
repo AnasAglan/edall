@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { assertProviderRegistryFresh } from "./assert-video-registry-fresh.mjs";
-import { discoverPiped, discoverInvidious, discoverInvidiousFromMarkdown, supportsInvidiousApi, assessSamplePlayback, SAMPLE_VIDEO_IDS, CURATED_INVIDIOUS_INSTANCES, parseHlsPlaylist, verifiedSampleHeights, classifyPlaybackHealth, fetchDirectoryResponse } from "./sync-video-instances.mjs";
+import { discoverPiped, discoverInvidious, discoverInvidiousFromMarkdown, fetchInvidiousDirectory, supportsInvidiousApi, assessSamplePlayback, SAMPLE_VIDEO_IDS, CURATED_INVIDIOUS_INSTANCES, parseHlsPlaylist, verifiedSampleHeights, classifyPlaybackHealth, fetchDirectoryResponse } from "./sync-video-instances.mjs";
 
 test("discovers Piped API hosts from the current public directory table only", () => {
   const markdown = [
@@ -260,4 +260,47 @@ test("does not accept unlisted links outside the Invidious public-instance secti
   assert.deepEqual(discoverInvidiousFromMarkdown(
     "# Invidious\n* [other](https://other.example)\n## Rules\n* [extra](https://extra.example)"
   ), []);
+});
+
+
+test("prefers the Invidious Instances API and skips the fallback when it succeeds", async () => {
+  let docsCalled = false;
+  const instances = await fetchInvidiousDirectory({
+    fetchApi: async () => [
+      ["api.example", { type: "https", uri: "https://api.example", api: true, cors: true }]
+    ],
+    fetchDocs: async () => {
+      docsCalled = true;
+      return "## List of public Invidious Instances\n* [fallback.example](https://fallback.example)";
+    }
+  });
+  assert.deepEqual(instances.map((item) => item.url), ["https://api.example"]);
+  assert.equal(docsCalled, false);
+});
+
+test("falls back to the official Invidious documentation after the API fails", async () => {
+  let docsCalled = false;
+  const instances = await fetchInvidiousDirectory({
+    fetchApi: async () => { throw new Error("simulated API network failure"); },
+    fetchDocs: async () => {
+      docsCalled = true;
+      return [
+        "## List of public Invidious Instances",
+        "* [inv.nadeko.net](https://inv.nadeko.net)",
+        "* [invidious.nerdvpn.de](https://invidious.nerdvpn.de)",
+        "### Tor Onion Services:",
+        "* [not-public-clearnet.onion](http://not-public-clearnet.onion)"
+      ].join("\n");
+    }
+  });
+  assert.equal(docsCalled, true);
+  assert.deepEqual(instances.map((item) => item.url), [
+    "https://inv.nadeko.net",
+    "https://invidious.nerdvpn.de"
+  ]);
+  assert.ok(instances.every((item) =>
+    item.official === true &&
+    item.apiProbeCandidate === true &&
+    item.source === "official-documentation-fallback"
+  ));
 });
