@@ -56,7 +56,6 @@ async function encryptMediaStream({ source, filePath, safeStorage, contentType }
   }
 
   const directory = path.dirname(filePath);
-  await fs.mkdir(directory, { recursive: true });
   const temporaryPath = filePath + '.' + crypto.randomUUID() + '.part';
   let handle;
   const chunks = [];
@@ -90,6 +89,7 @@ async function encryptMediaStream({ source, filePath, safeStorage, contentType }
   };
 
   try {
+    await fs.mkdir(directory, { recursive: true });
     handle = await fs.open(temporaryPath, 'wx', 0o600);
     await writeBuffer(handle, MAGIC);
 
