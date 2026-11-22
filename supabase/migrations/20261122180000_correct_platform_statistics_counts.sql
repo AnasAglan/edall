@@ -41,7 +41,15 @@ BEGIN
   -- Count actual Auth accounts, including accounts with missing profiles.
   SELECT count(*)::integer INTO _users FROM auth.users;
   SELECT count(*)::integer INTO _profiles FROM public.profiles;
-  _unlinked_profiles := GREATEST(_users - _profiles, 0);
+  -- Count missing profiles directly; subtraction can hide orphan profile rows.
+  SELECT count(*)::integer
+  INTO _unlinked_profiles
+  FROM auth.users AS user_account
+  WHERE NOT EXISTS (
+    SELECT 1
+    FROM public.profiles AS profile
+    WHERE profile.id = user_account.id
+  );
 
   SELECT count(DISTINCT user_id)::integer INTO _students
   FROM public.user_roles WHERE role='student'::public.app_role;
