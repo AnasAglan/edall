@@ -5,6 +5,7 @@ import {
   createFawryRequestSignature,
   formatFawryAmount,
   getFawryChargeUrl,
+  hasSufficientFawryPaidAmount,
   isFawryEnabled,
   isFawryPaidStatus,
   isFawryReferenceMatch,
@@ -110,6 +111,14 @@ describe("dormant Fawry payment provider", () => {
     expect(isFawryPaidStatus("paid")).toBe(true);
     expect(isFawryPaidStatus("NEW")).toBe(false);
     expect(isFawryPaidStatus("DELIVERED")).toBe(false);
+  });
+
+  it("accepts Fawry's additional service fees but never underpayment", () => {
+    expect(hasSufficientFawryPaidAmount("358.50", "356.50")).toBe(true);
+    expect(hasSufficientFawryPaidAmount("356.50", "356.50")).toBe(true);
+    expect(hasSufficientFawryPaidAmount("356.49", "356.50")).toBe(false);
+    expect(hasSufficientFawryPaidAmount("0.00", "356.50")).toBe(false);
+    expect(hasSufficientFawryPaidAmount("not-money", "356.50")).toBe(false);
   });
   it("does not self-enable Fawry from checkout and seeds the database provider disabled", () => {
     const handler = readFileSync(resolve(process.cwd(), "supabase/functions/create-fawry-payment-intention/index.ts"), "utf8");
