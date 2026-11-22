@@ -292,3 +292,38 @@ test("scope classifier accepts common English and Arabic out-of-scope verdicts",
   assert.equal(parseScopeVerdict("IN_SCOPE"), "IN_SCOPE");
   assert.match(buildScopeRouting("OUT_OF_SCOPE").instruction, /لا تذكر أن السؤال خارج نطاق ED-ALL/);
 });
+
+
+test("platform statistics distinguish Auth accounts, profiles, and real exam attempts", () => {
+  const reply = buildVerifiedReadReply([{
+    tool: "get_platform_stats",
+    verified: true,
+    data: {
+      users: 16, profiles: 12, unlinked_profiles: 4,
+      students: 9, teachers: 6, admins: 1,
+      courses: 8, lessons: 9, lesson_video_links: 17, lesson_pdf_links: 10,
+      enrollments: 17, exams: 4, exam_attempts: 58,
+      exam_attempts_tracked: true
+    }
+  }], [{ role: "user", content: "إحصائيات المنصة" }]);
+  assert.match(reply, /المستخدمون: \\*\\*16\\*\\*/);
+  assert.match(reply, /ملفات المستخدمين: \\*\\*12\\*\\*/);
+  assert.match(reply, /حسابات بلا ملف شخصي: \\*\\*4\\*\\*/);
+  assert.match(reply, /محاولات الاختبار: \\*\\*58\\*\\*/);
+});
+
+test("platform statistics never present an untracked exam-attempt count as zero", () => {
+  const reply = buildVerifiedReadReply([{
+    tool: "get_platform_stats",
+    verified: true,
+    data: {
+      users: 0, profiles: 0, unlinked_profiles: 0,
+      students: 0, teachers: 0, admins: 0,
+      courses: 0, lessons: 0, lesson_video_links: 0, lesson_pdf_links: 0,
+      enrollments: 0, exams: 0, exam_attempts: 0,
+      exam_attempts_tracked: false
+    }
+  }], [{ role: "user", content: "إحصائيات المنصة" }]);
+  assert.match(reply, /محاولات الاختبار: غير متاح/);
+  assert.doesNotMatch(reply, /محاولات الاختبار: \\*\\*0\\*\\*/);
+});
