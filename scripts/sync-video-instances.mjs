@@ -46,23 +46,49 @@ function uniqueByUrl(items) {
   return [...found.values()];
 }
 
+export async function fetchDirectoryResponse(url, headers, fetchImpl = fetch) {
+  const maxAttempts = 3;
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const response = await fetchImpl(url, {
+        headers,
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        const error = new Error("HTTP " + response.status + " from " + url);
+        error.status = response.status;
+        error.retryable = response.status === 429 || response.status >= 500;
+        throw error;
+      }
+      return response;
+    } catch (error) {
+      lastError = error;
+      if (error?.retryable === false || attempt === maxAttempts) break;
+      await new Promise(resolve => setTimeout(resolve, 250 * (2 ** (attempt - 1))));
+    }
+  }
+
+  const detail = lastError && lastError.message ? lastError.message : String(lastError || "unknown error");
+  throw new Error("Directory fetch failed after " + maxAttempts + " attempts: " + detail);
+}
+
 async function fetchJson(url) {
-  const response = await fetch(url, {
-    headers: { Accept: "application/json", "Accept-Language": "en-US,en;q=0.9", "User-Agent": PROBE_USER_AGENT },
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    cache: "no-store",
+  const response = await fetchDirectoryResponse(url, {
+    Accept: "application/json",
+    "Accept-Language": "en-US,en;q=0.9",
+    "User-Agent": PROBE_USER_AGENT,
   });
-  if (!response.ok) throw new Error("HTTP " + response.status + " from " + url);
   return response.json();
 }
 
 async function fetchText(url) {
-  const response = await fetch(url, {
-    headers: { Accept: "text/plain, text/markdown;q=0.9, */*;q=0.8" },
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    cache: "no-store",
+  const response = await fetchDirectoryResponse(url, {
+    Accept: "text/plain, text/markdown;q=0.9, */*;q=0.8",
+    "User-Agent": PROBE_USER_AGENT,
   });
-  if (!response.ok) throw new Error("HTTP " + response.status + " from " + url);
   return response.text();
 }
 
