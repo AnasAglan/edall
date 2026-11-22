@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
+  hasSufficientFawryPaidAmount,
   isFawryPaidStatus,
   isFawryReferenceMatch,
   sha256Hex,
@@ -99,7 +100,7 @@ Deno.serve(async (req) => {
       `${fawryRefNumber}:${orderStatus}:${rawHash.slice(0, 16)}`;
 
     if (isFawryPaidStatus(orderStatus)) {
-      if (paymentAmount < orderAmount) {
+      if (!hasSufficientFawryPaidAmount(paymentAmount, orderAmount)) {
         return json({ error: "Fawry paid amount is below the ED-ALL order amount." }, 409);
       }
       const { error: fulfillError } = await admin.rpc("fulfill_payment_order", {
