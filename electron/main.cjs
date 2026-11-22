@@ -1,12 +1,15 @@
-const { app, BrowserWindow, ipcMain, Menu, protocol, net, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, protocol, net, shell, safeStorage } = require('electron');
 const { execFile } = require('node:child_process');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { Readable } = require('node:stream');
+const { fileURLToPath } = require('node:url');
+const { OfflineLibrary } = require('./offline-library.cjs');
 const ORIGIN = 'https://edall.lovable.app';
 const HOME = ORIGIN + '/ed_master.html';
 const streams = new Map(), jobs = new Map(), cache = new Map();
-let windowRef, toolReady;
+let windowRef, toolReady, offlineLibrary;
 protocol.registerSchemesAsPrivileged([{ scheme: 'edmedia', privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true, corsEnabled: true } }]);
 if (!app.requestSingleInstanceLock()) { app.quit(); }
 // Lets the website open the app through edall:// links.
@@ -26,6 +29,54 @@ const frameAllowed = raw => {
     ].some(host => url.hostname === host || (host !== 'edall.lovable.app' && url.hostname.endsWith('.' + host)));
   } catch { return false; }
 };
+function isOfflineUiUrl(raw) {
+  try {
+    const url = new URL(raw);
+    return url.protocol === 'file:' &&
+      path.resolve(fileURLToPath(url)) === path.resolve(__dirname, 'offline.html');
+  } catch { return false; }
+}
+function assertMainFrame(event, allowOfflineUi = false) {
+  if (
+    !windowRef ||
+    windowRef.isDestroyed() ||
+    event.sender !== windowRef.webContents ||
+    event.senderFrame !== event.sender.mainFrame
+  ) throw new Error('Access denied');
+  try {
+    if (new URL(event.senderFrame.url).origin === ORIGIN) return;
+  } catch {}
+  if (allowOfflineUi && isOfflineUiUrl(event.senderFrame.url)) return;
+  throw new Error('Access denied');
+}
+function getRegisteredStream(raw) {
+  let url;
+  try { url = new URL(raw); } catch { throw new Error('Offline source is invalid.'); }
+  if (url.protocol !== 'edmedia:' || url.hostname !== 'stream') {
+    throw new Error('Only the active desktop yt-dlp stream can be saved.');
+  }
+  const stream = streams.get(url.pathname.slice(1));
+  if (!stream || stream.expire < Date.now()) throw new Error('The media source expired; reopen the lesson and try again.');
+  return stream;
+}
+async function downloadOfflineVideo(id, height) {
+  if (!offlineLibrary) throw new Error('Encrypted offline storage is unavailable.');
+  if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows secure key storage is unavailable; no plaintext download was created.');
+  if (!/^[a-zA-Z0-9_-]{11}$/.test(String(id))) throw new Error('Invalid video ID.');
+  const bundle = await extract(String(id), false);
+  const selected = bundle.videos.find(item => item.h === Number(height));
+  if (!selected) throw new Error('The selected desktop video quality is unavailable.');
+  const video = getRegisteredStream(selected.url);
+  const audio = selected.hasAudio ? null : (bundle.audio ? getRegisteredStream(bundle.audio.url) : null);
+  if (!selected.hasAudio && !audio) throw new Error('This quality has no compatible audio stream and cannot be saved.');
+  return offlineLibrary.save({
+    title: bundle.title,
+    videoId: String(id),
+    height: selected.h,
+    video: { ...video, mimeType: selected.mimeType || video.mimeType || 'video/mp4' },
+    audio: audio ? { ...audio, mimeType: bundle.audio.mimeType || audio.mimeType || 'audio/mp4' } : null
+  });
+}
 async function prepareTools() {
   const dir = path.join(app.getPath('userData'), 'tools');
   await fs.mkdir(dir, { recursive: true });
@@ -54,8 +105,11 @@ function registerStream(format, commonHeaders) {
   for (const [key, value] of Object.entries({ ...commonHeaders, ...format.http_headers })) {
     if (['user-agent', 'referer', 'origin', 'accept', 'accept-language'].includes(key.toLowerCase()) && typeof value === 'string' && !/[\r\n]/.test(value)) headers[key] = value;
   }
-  streams.set(token, { url: url.href, headers, expire });
-  return { url: 'edmedia://stream/' + token, expire };
+  const mimeType = format.vcodec === 'none'
+    ? (format.ext === 'webm' ? 'audio/webm' : 'audio/mp4')
+    : (format.ext === 'webm' ? 'video/webm' : 'video/mp4');
+  streams.set(token, { url: url.href, headers, expire, mimeType });
+  return { url: 'edmedia://stream/' + token, expire, mimeType };
 }
 async function extract(id, force) {
   const previous = cache.get(id);
@@ -124,15 +178,65 @@ const editMenu = Menu.buildFromTemplate([
       { role: 'undo' }, { role: 'redo' }, { type: 'separator' },
       { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }
     ]
+  },
+  {
+    label: 'Downloads',
+    click: () => {
+      if (windowRef && !windowRef.isDestroyed()) {
+        windowRef.loadFile(path.join(__dirname, 'offline.html')).catch(() => {});
+      }
+    }
   }
 ]);
 Menu.setApplicationMenu(editMenu);
 
   toolReady = prepareTools();
+  offlineLibrary = new OfflineLibrary({
+    directory: path.join(app.getPath('userData'), 'offline-media'),
+    safeStorage,
+    fetchMedia: async reference => {
+      const upstream = await net.fetch(reference.url, {
+        headers: reference.headers,
+        signal: AbortSignal.timeout(2 * 60 * 60 * 1000),
+        redirect: 'error'
+      });
+      if (!upstream.ok || !upstream.body) {
+        return { status: upstream.status, body: null, contentType: reference.mimeType };
+      }
+      return {
+        status: upstream.status,
+        contentType: upstream.headers.get('content-type') || reference.mimeType,
+        body: Readable.fromWeb(upstream.body)
+      };
+    }
+  });
 
   ipcMain.handle('edall:formats', (event, id, force) => {
-    if (!windowRef || event.sender !== windowRef.webContents || event.senderFrame !== event.sender.mainFrame || new URL(event.senderFrame.url).origin !== ORIGIN || !/^[a-zA-Z0-9_-]{11}$/.test(id)) throw new Error('Access denied');
+    assertMainFrame(event);
+    if (!/^[a-zA-Z0-9_-]{11}$/.test(id)) throw new Error('Access denied');
     return extract(id, force === true);
+  });
+  ipcMain.handle('edall:download-offline', async (event, id, height) => {
+    assertMainFrame(event);
+    return downloadOfflineVideo(id, height);
+  });
+  ipcMain.handle('edall:list-offline', async event => {
+    assertMainFrame(event, true);
+    return offlineLibrary.list();
+  });
+  ipcMain.handle('edall:delete-offline', async (event, id) => {
+    assertMainFrame(event, true);
+    return offlineLibrary.remove(id);
+  });
+  ipcMain.handle('edall:open-offline-library', async event => {
+    assertMainFrame(event);
+    await windowRef.loadFile(path.join(__dirname, 'offline.html'));
+    return true;
+  });
+  ipcMain.handle('edall:return-to-platform', async event => {
+    assertMainFrame(event, true);
+    await windowRef.loadURL(HOME);
+    return true;
   });
 
 ipcMain.handle('edall:video-fullscreen', (event, enabled) => {
@@ -171,6 +275,27 @@ ipcMain.handle('edall:video-fullscreen', (event, enabled) => {
 
   protocol.handle('edmedia', async request => {
     const url = new URL(request.url);
+    const offlineRole = url.hostname === 'offline-v' ? 'video' : url.hostname === 'offline-a' ? 'audio' : null;
+    if (offlineRole) {
+      try {
+        const id = url.pathname.slice(1);
+        const saved = await offlineLibrary.createResponse(id, offlineRole, request.headers.get('range'));
+        const headers = new Headers(saved.headers);
+        headers.set('Access-Control-Allow-Origin', ORIGIN);
+        return new Response(Readable.toWeb(saved.body), { status: saved.status, headers });
+      } catch (error) {
+        if (error && error.statusCode === 416) {
+          return new Response(null, {
+            status: 416,
+            headers: { 'Content-Range': error.contentRange || 'bytes */0', 'Access-Control-Allow-Origin': ORIGIN }
+          });
+        }
+        return new Response('Offline media unavailable', {
+          status: 404,
+          headers: { 'Access-Control-Allow-Origin': ORIGIN, 'Cache-Control': 'no-store' }
+        });
+      }
+    }
     const stream = url.hostname === 'stream' && streams.get(url.pathname.slice(1));
     if (!stream || stream.expire < Date.now()) return new Response('Expired', { status: 410 });
     const headers = { ...stream.headers };
