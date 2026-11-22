@@ -9,3 +9,9 @@ verify_jwt = true
 
 [functions.paymob-webhook]
 verify_jwt = false
+
+[functions.create-fawry-payment-intention]
+verify_jwt = true
+
+[functions.fawry-webhook]
+verify_jwt = false
