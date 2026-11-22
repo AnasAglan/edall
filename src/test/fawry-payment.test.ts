@@ -5,6 +5,7 @@ import {
   getFawryChargeUrl,
   isFawryEnabled,
   isFawryPaidStatus,
+  isFawryReferenceMatch,
   normalizeEgyptianMobile,
   verifyFawryChargeResponseSignature,
   verifyFawryNotificationSignature,
@@ -92,6 +93,14 @@ describe("dormant Fawry payment provider", () => {
     };
     expect(await verifyFawryNotificationSignature(notification, SECURE_KEY)).toBe(true);
     expect(await verifyFawryNotificationSignature({ ...notification, paymentAmount: "359.50" }, SECURE_KEY)).toBe(false);
+  });
+
+  it("accepts callbacks only when both persisted Fawry references match", () => {
+    const metadata = { fawry_reference_number: "970177" };
+    expect(isFawryReferenceMatch(metadata, "970177", "970177")).toBe(true);
+    expect(isFawryReferenceMatch(metadata, "970178", "970177")).toBe(false);
+    expect(isFawryReferenceMatch({}, "970177", "970177")).toBe(false);
+    expect(isFawryReferenceMatch(metadata, "970177", "970178")).toBe(false);
   });
 
   it("recognizes only the provider's PAID state as payment success", () => {
