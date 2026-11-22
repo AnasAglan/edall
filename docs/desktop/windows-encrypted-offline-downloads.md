@@ -7,8 +7,8 @@ This is a Windows desktop-only feature. It uses the existing local yt-dlp extrac
 ## Storage design
 
 - Each video/audio track is stored as independently authenticated AES-256-GCM chunks.
-- The encryption key is wrapped through Electron safeStorage. On Windows this delegates key protection to Windows user-account protection (DPAPI).
-- If OS-backed secure key storage is unavailable, the feature fails closed. It never falls back to an unencrypted download.
+- The encryption key is wrapped through Electron's asynchronous safeStorage API when available (with compatibility for older synchronous Electron versions). On Windows this delegates key protection to Windows user-account protection (DPAPI).
+- If OS-backed secure key storage is unavailable, the feature fails closed. It never falls back to an unencrypted download. The feature is disabled outside Windows rather than accepting a weaker key-storage backend.
 - No plaintext temporary media file is created. Plaintext exists only in bounded in-memory chunks while the encrypted file is written or read.
 - The offline manifest, including the wrapped key and chunk index, is protected with safeStorage.
 - Media playback supports HTTP byte ranges. A chunk is fully authenticated before any bytes from that chunk are returned.
