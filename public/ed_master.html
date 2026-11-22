@@ -4115,6 +4115,196 @@ window.triggerModalClose = function() {
 
         let _passwordRecoveryModalOpen = false;
 
+        function requestAdminMfaCode(options) {
+            return new Promise(resolve => {
+                const isArabic = currentLanguage === 'ar';
+                const qrCode = options && options.qrCode ? String(options.qrCode) : '';
+                const secret = options && options.secret ? String(options.secret) : '';
+                const qrHtml = qrCode
+                    ? '<div style="text-align:center;margin:14px 0;"><img src="' + edEsc(qrCode) + '" alt="TOTP QR code" style="width:190px;max-width:100%;background:#fff;padding:10px;border-radius:12px;"></div>'
+                    : '';
+                const secretHtml = secret
+                    ? '<div style="margin:10px 0;padding:10px;border-radius:10px;background:var(--bg-lighter);"><small>' + (isArabic ? 'المفتاح اليدوي (احتفظ به في مكان آمن):' : 'Manual setup key (keep it private):') + '</small><div dir="ltr" style="font-family:monospace;overflow-wrap:anywhere;font-weight:800;">' + edEsc(secret) + '</div></div>'
+                    : '';
+                const html = '<div style="max-width:440px;margin:auto;">'
+                    + '<h3 style="text-align:center;margin:0 0 8px;">' + (isArabic ? 'التحقق بخطوتين لحساب المدير' : 'Administrator two-factor verification') + '</h3>'
+                    + '<p style="text-align:center;color:var(--text-muted);">' + (options && options.description ? options.description : (isArabic ? 'أدخل الرمز المكوّن من 6 أرقام من تطبيق المصادقة.' : 'Enter the six-digit code from your authenticator app.')) + '</p>'
+                    + qrHtml + secretHtml
+                    + '<form id="edAdminMfaCodeForm">'
+                    + '<label for="edAdminMfaCode" style="display:block;font-weight:700;margin:10px 0 6px;">' + (isArabic ? 'رمز التحقق' : 'Verification code') + '</label>'
+                    + '<input id="edAdminMfaCode" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6" required placeholder="000000" dir="ltr" style="width:100%;text-align:center;font-size:1.35rem;letter-spacing:.35em;">'
+                    + '<p style="font-size:.82rem;color:var(--text-muted);margin:8px 0;">' + (isArabic ? 'لن يتم فتح بيانات الإدارة قبل إتمام هذا التحقق.' : 'Administrator data stays locked until verification succeeds.') + '</p>'
+                    + '<div style="display:flex;justify-content:center;gap:8px;margin-top:14px;">'
+                    + '<button type="submit" class="btn">' + (isArabic ? 'تحقق ودخول' : 'Verify and continue') + '</button>'
+                    + '<button type="button" class="btn btn-outline" onclick="window.triggerModalClose()">' + (isArabic ? 'إلغاء' : 'Cancel') + '</button>'
+                    + '</div></form></div>';
+                let settled = false;
+                const finish = value => {
+                    if (settled) return;
+                    settled = true;
+                    window.closeModal();
+                    resolve(value);
+                };
+                window.showModal(html, { onClose: () => finish(null) });
+                const form = document.getElementById('edAdminMfaCodeForm');
+                const input = document.getElementById('edAdminMfaCode');
+                if (!form || !input) {
+                    finish(null);
+                    return;
+                }
+                form.addEventListener('submit', event => {
+                    event.preventDefault();
+                    const code = String(input.value || '').trim();
+                    if (!/^[0-9]{6}$/.test(code)) {
+                        input.focus();
+                        return;
+                    }
+                    finish(code);
+                });
+                input.focus();
+            });
+        }
+
+        async function rejectAdminMfaSession(message) {
+            try {
+                const { error } = await sb.auth.signOut();
+                if (error) console.warn('Could not finish the administrator MFA sign-out:', error.code || error.status || 'unknown');
+            } catch (error) {
+                console.warn('Could not finish the administrator MFA sign-out:', error && (error.code || error.status) || 'unknown');
+            }
+            currentUser = null;
+            _activeAuthUserId = null;
+            _dataLoaded = false;
+            _syncUser();
+            updateUI();
+            showPage('loginPage');
+            showToast(message || (currentLanguage === 'ar'
+                ? 'لم يكتمل التحقق بخطوتين. سجّل الدخول مجددًا لإعادة المحاولة.'
+                : 'Two-factor verification was not completed. Sign in again to retry.'), 'warning');
+            return false;
+        }
+
+        let _adminMfaEnforcementPromise = null;
+        function ensureAdminMfaForCurrentSession() {
+            if (_adminMfaEnforcementPromise) return _adminMfaEnforcementPromise;
+            _adminMfaEnforcementPromise = (async () => {
+                if (!currentUser || !Array.isArray(currentUser.roles) || !currentUser.roles.includes('admin')) {
+                    return true;
+                }
+                let enrollmentFactorId = null;
+                const mfa = sb.auth.mfa;
+                try {
+                    const [assuranceResult, factorsResult] = await Promise.all([
+                        mfa.getAuthenticatorAssuranceLevel(),
+                        mfa.listFactors()
+                    ]);
+                    if (assuranceResult.error) throw assuranceResult.error;
+                    if (factorsResult.error) throw factorsResult.error;
+
+                    const action = window.EDAuthRules.adminMfaAction(
+                        currentUser,
+                        assuranceResult.data,
+                        factorsResult.data
+                    );
+                    if (action === 'verified') return true;
+                    if (action === 'not_required') return true;
+
+                    let factorId = '';
+                    let enrollment = null;
+                    if (action === 'challenge') {
+                        const factor = window.EDAuthRules.findVerifiedTotpFactor(factorsResult.data);
+                        if (!factor || !factor.id) throw new Error('A verified TOTP factor was not returned.');
+                        factorId = factor.id;
+                    } else {
+                        const pendingFactors = (factorsResult.data.all || []).filter(factor =>
+                            factor.factor_type === 'totp' && factor.status !== 'verified'
+                        );
+                        for (const pendingFactor of pendingFactors) {
+                            const { error } = await mfa.unenroll({ factorId: pendingFactor.id });
+                            if (error) throw error;
+                        }
+                        const enrollmentResult = await mfa.enroll({
+                            factorType: 'totp',
+                            friendlyName: 'ED-ALL Administrator'
+                        });
+                        if (enrollmentResult.error) throw enrollmentResult.error;
+                        enrollment = enrollmentResult.data;
+                        enrollmentFactorId = enrollment.id;
+                        factorId = enrollment.id;
+                    }
+
+                    let verified = false;
+                    let verificationError = null;
+                    for (let attempt = 0; attempt < 3; attempt += 1) {
+                        const code = await requestAdminMfaCode({
+                            qrCode: enrollment && enrollment.totp ? enrollment.totp.qr_code : '',
+                            secret: enrollment && enrollment.totp ? enrollment.totp.secret : '',
+                            description: enrollment
+                                ? (currentLanguage === 'ar'
+                                    ? 'امسح رمز QR باستخدام تطبيق مصادقة مثل Google Authenticator أو Microsoft Authenticator، ثم أدخل الرمز.'
+                                    : 'Scan the QR code with an authenticator app such as Google Authenticator or Microsoft Authenticator, then enter the code.')
+                                : (currentLanguage === 'ar'
+                                    ? 'أدخل الرمز الحالي من تطبيق المصادقة لإكمال تسجيل الدخول.'
+                                    : 'Enter the current code from your authenticator app to complete sign-in.')
+                        });
+                        if (!code) {
+                            if (enrollmentFactorId) {
+                                await mfa.unenroll({ factorId: enrollmentFactorId }).catch(() => {});
+                                enrollmentFactorId = null;
+                            }
+                            return rejectAdminMfaSession(currentLanguage === 'ar'
+                                ? 'تم إلغاء التحقق. لا يمكن فتح حساب المدير دون رمز المصادقة.'
+                                : 'Verification was cancelled. Administrator access requires an authenticator code.');
+                        }
+
+                        const challenge = await mfa.challenge({ factorId });
+                        if (challenge.error) throw challenge.error;
+                        const verification = await mfa.verify({
+                            factorId,
+                            challengeId: challenge.data.id,
+                            code
+                        });
+                        if (!verification.error) {
+                            verified = true;
+                            break;
+                        }
+                        verificationError = verification.error;
+                        if (attempt < 2) {
+                            showToast(currentLanguage === 'ar'
+                                ? 'الرمز غير صحيح أو انتهت صلاحيته. حاول مرة أخرى.'
+                                : 'The code was incorrect or expired. Try again.', 'warning');
+                        }
+                    }
+                    if (!verified) throw verificationError || new Error('TOTP verification failed.');
+
+                    // The enrollment is now verified; do not remove it in any later error path.
+                    enrollmentFactorId = null;
+                    const finalAssurance = await mfa.getAuthenticatorAssuranceLevel();
+                    if (finalAssurance.error) throw finalAssurance.error;
+                    if (!finalAssurance.data || finalAssurance.data.currentLevel !== 'aal2') {
+                        throw new Error('The administrator session did not reach AAL2 after TOTP verification.');
+                    }
+                    return true;
+                } catch (error) {
+                    if (enrollmentFactorId) {
+                        try { await mfa.unenroll({ factorId: enrollmentFactorId }); } catch (_) {}
+                    }
+                    console.warn('Administrator MFA enforcement failed:', {
+                        code: error && (error.code || error.error_code) || null,
+                        status: Number(error && error.status) || null
+                    });
+                    return rejectAdminMfaSession(currentLanguage === 'ar'
+                        ? 'تعذر إكمال التحقق بخطوتين. تأكد من اتصالك ورمز المصادقة ثم سجّل الدخول مجددًا.'
+                        : 'Two-factor verification could not be completed. Check your connection and authenticator code, then sign in again.');
+                }
+            })();
+            const pending = _adminMfaEnforcementPromise;
+            pending.finally(() => {
+                if (_adminMfaEnforcementPromise === pending) _adminMfaEnforcementPromise = null;
+            });
+            return pending;
+        }
+
         async function processAuthStateChange(event, session) {
             const outcome = authEventOutcome(event, session);
             if (outcome === 'password_recovery') {
@@ -4131,9 +4321,12 @@ window.triggerModalClose = function() {
                 return;
             }
             if (outcome !== 'signed_in') return;
-            if (_activeAuthUserId === session.user.id && currentUser?.id === session.user.id) return;
+            const sameActiveUser = _activeAuthUserId === session.user.id && currentUser?.id === session.user.id;
+            if (sameActiveUser && event !== 'TOKEN_REFRESHED') return;
 
-            await loadCurrentUserFromSupabase(session.user);
+            if (!sameActiveUser) {
+                await loadCurrentUserFromSupabase(session.user);
+            }
             clearPendingSignupVerification(session.user.email);
             if (currentUser?.banned) {
                 await sb.auth.signOut();
@@ -4146,6 +4339,7 @@ window.triggerModalClose = function() {
             }
 
             _activeAuthUserId = session.user.id;
+            if (!(await ensureAdminMfaForCurrentSession())) return;
             _dataLoaded = false;
             await loadData();
             updateUI();
@@ -4214,6 +4408,7 @@ window.triggerModalClose = function() {
                         return;
                     }
                     _activeAuthUserId = session.user.id;
+                    await ensureAdminMfaForCurrentSession();
                 } else {
                     currentUser = null;
                     _activeAuthUserId = null;
@@ -4312,6 +4507,25 @@ window.triggerModalClose = function() {
             return currentUser;
         }
 
+        async function loadAdminUserDirectory() {
+            const pageSize = 100;
+            const allUsers = [];
+            while (true) {
+                const result = await sb.rpc('admin_list_users', {
+                    _term: '',
+                    _limit: pageSize,
+                    _offset: allUsers.length
+                });
+                if (result.error) throw result.error;
+                const page = Array.isArray(result.data) ? result.data : [];
+                allUsers.push(...page);
+                if (page.length < pageSize) return allUsers;
+                if (allUsers.length >= 10000) {
+                    throw new Error('Administrator user directory reached its pagination safety limit.');
+                }
+            }
+        }
+
         // Load every course's public metadata at startup. This is deliberately separate
         // from homepage rendering: admin pages, course management, and direct course URLs
         // must not depend on whether a visitor has scrolled through the homepage.
@@ -4351,20 +4565,24 @@ window.triggerModalClose = function() {
                 // can find every course even before the visitor scrolls the homepage.
                 const isGuest = !currentUser;
                 const isAdminUser = !!(currentUser && currentUser.roles && currentUser.roles.includes('admin'));
-                const profilesQuery = isAdminUser
-                    ? sb.from('profiles').select('*')
+                const profilesPromise = isAdminUser
+                    ? loadAdminUserDirectory().then(data => ({ data, error: null }))
                     : sb.rpc('get_course_creators_public');
                 const [
                     coursesData,
-                    { data: profilesData },
-                    { data: rolesData },
-                    { data: notifsData }
+                    profilesResult,
+                    notifsResult
                 ] = await Promise.all([
                     loadAllCourseMetadata(),
-                    profilesQuery,
-                    isAdminUser ? sb.from('user_roles').select('*') : Promise.resolve({ data: [] }),
-                    isGuest ? Promise.resolve({ data: [] }) : sb.from('notifications').select('*').order('created_at', { ascending: false }).limit(50)
+                    profilesPromise,
+                    isGuest ? Promise.resolve({ data: [], error: null }) : sb.from('notifications').select('*').order('created_at', { ascending: false }).limit(50)
                 ]);
+                if (profilesResult.error) throw profilesResult.error;
+                if (notifsResult.error) {
+                    console.warn('Could not load notifications:', notifsResult.error.message);
+                }
+                const profilesData = profilesResult.data || [];
+                const notifsData = notifsResult.data || [];
 
                 _coursesOffset = (coursesData || []).length;
                 _homeCoursesVisibleLimit = Math.min(_homeCoursesBatchSize, (coursesData || []).length);
@@ -4384,20 +4602,26 @@ window.triggerModalClose = function() {
                     created: new Date(c.created_at).getTime()
                 }));
 
-                // Build users array from profiles + roles
-                users = (profilesData || []).map(p => {
-                    const userRoles = (rolesData || []).filter(r => r.user_id === p.id).map(r => r.role);
+                // Admin rows include Auth users even when a profile/role row is missing.
+                // Public teacher cards still come from the restricted public-creators RPC.
+                users = profilesData.map(p => {
+                    const userRoles = isAdminUser
+                        ? (Array.isArray(p.roles) ? p.roles : [])
+                        : ['teacher'];
                     return {
                         id: p.id,
                         email: p.email || '',
-                        name: p.name,
+                        name: p.name || p.email || '',
                         phone: p.phone || null,
                         avatar_url: p.avatar_url || null,
                         bio: p.bio || null,
-                        banned: p.banned || false,
-                        roles: userRoles.length > 0 ? userRoles : ['teacher'],
+                        banned: !!p.banned,
+                        public_id: p.public_id || null,
+                        roles: userRoles,
+                        profile_state: p.profile_state || 'ready',
+                        role_state: p.role_state || (userRoles.length ? 'ready' : 'missing'),
                         lastActive: p.last_active ? new Date(p.last_active).getTime() : Date.now(),
-                        joined: p.joined_at ? new Date(p.joined_at).getTime() : Date.now()
+                        joined: (p.joined_at || p.created_at) ? new Date(p.joined_at || p.created_at).getTime() : Date.now()
                     };
                 });
 
@@ -5782,6 +6006,10 @@ window.triggerModalClose = function() {
                     return;
                 }
                 
+                if (!(await ensureAdminMfaForCurrentSession())) {
+                    hideBtnLoading(btn);
+                    return;
+                }
                 _dataLoaded = false;
                 await loadData();
                 updateUI();
@@ -5853,6 +6081,10 @@ window.triggerModalClose = function() {
                 
                 
                 await loadCurrentUserFromSupabase(data.user);
+                if (!(await ensureAdminMfaForCurrentSession())) {
+                    hideBtnLoading(btn);
+                    return;
+                }
                 _dataLoaded = false;
                 await loadData();
                 updateUI();
@@ -9345,14 +9577,21 @@ exam.questions.forEach((question, index) => {
         function renderUserSingleCard(user) {
             const isAdmin = user.roles && user.roles.includes('admin');
             const isBanned = user.banned;
+            const profileMissing = user.profile_state === 'missing';
+            const roleMissing = user.role_state === 'missing' || !Array.isArray(user.roles) || user.roles.length === 0;
+            const accountNeedsRepair = profileMissing || roleMissing;
+            const roleText = Array.isArray(user.roles) && user.roles.length ? user.roles.join(', ') : (currentLanguage === 'ar' ? 'لا توجد صلاحية مسجلة' : 'No role assigned');
             return `
             <div class="list-item" ${isBanned ? 'style="opacity:0.6;border-right:4px solid var(--danger);"' : ''}>
                 <div>
                     <strong>${edEsc(user.name || user.email)}</strong>
                     ${isBanned ? '<span class="badge" style="background:var(--danger);color:white;margin-right:8px;">' + (currentLanguage === 'ar' ? 'محظور' : 'Banned') + '</span>' : ''}
+                    ${accountNeedsRepair ? '<span class="badge" style="background:var(--warning);color:#111;margin-inline-start:8px;">' + (currentLanguage === 'ar' ? 'يحتاج مراجعة بيانات الحساب' : 'Account data needs review') + '</span>' : ''}
                     <div style="color: var(--text-muted); font-size: 0.9rem;">
-                        ${edEsc(user.email)} | ${user.roles ? user.roles.join(', ') : 'student'}
+                        ${edEsc(user.email)} | ${edEsc(roleText)}
                     </div>
+                    ${profileMissing ? '<small style="display:block;color:var(--warning);margin-top:4px;">' + (currentLanguage === 'ar' ? 'لا يوجد ملف مستخدم مرتبط بحساب المصادقة.' : 'No profile is linked to this Auth account.') + '</small>' : ''}
+                    ${roleMissing ? '<small style="display:block;color:var(--warning);margin-top:4px;">' + (currentLanguage === 'ar' ? 'لم تُسجّل صلاحية لهذا الحساب؛ لم تُمنح له صلاحية افتراضية.' : 'No role is recorded; no default role has been assigned.') + '</small>' : ''}
                 </div>
                 <div style="display: flex; gap: 8px; flex-wrap:wrap;">
                     <button class="btn btn-sm view-user-btn" data-user-id="${user.id}">
@@ -9515,6 +9754,10 @@ exam.questions.forEach((question, index) => {
                         <div class="user-detail-card">
                             <h4>${currentLanguage === 'ar' ? 'الصلاحيات' : 'Roles'}</h4>
                             <p>${user.roles ? user.roles.join(', ') : (currentLanguage === 'ar' ? 'طالب' : 'student')}</p>
+                        </div>
+                        <div class="user-detail-card">
+                            <h4>${currentLanguage === 'ar' ? 'حالة بيانات الحساب' : 'Account data state'}</h4>
+                            <p>${user.profile_state === 'missing' ? (currentLanguage === 'ar' ? 'ملف المستخدم مفقود' : 'Profile missing') : (currentLanguage === 'ar' ? 'الملف موجود' : 'Profile available')} · ${user.role_state === 'missing' ? (currentLanguage === 'ar' ? 'الصلاحية مفقودة' : 'Role missing') : (currentLanguage === 'ar' ? 'الصلاحية مسجلة' : 'Role recorded')}</p>
                         </div>
                         <div class="user-detail-card">
                             <h4>${currentLanguage === 'ar' ? 'تاريخ التسجيل' : 'Joined'}</h4>
@@ -11772,7 +12015,20 @@ exam.questions.forEach((question, index) => {
     var message = String((error && error.message) || '').toLowerCase();
     return code === 'email_not_confirmed' || message.indexOf('email not confirmed') > -1;
   }
-  window.EDAuthRules = { MIN_PASSWORD_LENGTH: MIN_PASSWORD_LENGTH, validateSignupPassword: validateSignupPassword, describeAuthError: describeAuthError, signupOutcome: signupOutcome, authEventOutcome: authEventOutcome, canShowLessonVideoOnWeb: canShowLessonVideoOnWeb, normalizeSignupOtp: normalizeSignupOtp, isValidSignupOtp: isValidSignupOtp, isEmailNotConfirmedError: isEmailNotConfirmedError };
+  function findVerifiedTotpFactor(factors){
+    var all = factors && Array.isArray(factors.all) ? factors.all : [];
+    var totp = factors && Array.isArray(factors.totp) ? factors.totp : [];
+    return all.find(function(factor){ return factor && factor.factor_type === 'totp' && factor.status === 'verified'; })
+      || totp.find(function(factor){ return factor && factor.status === 'verified'; })
+      || null;
+  }
+  function adminMfaAction(user, assurance, factors){
+    var roles = user && Array.isArray(user.roles) ? user.roles : [];
+    if (roles.indexOf('admin') < 0) return 'not_required';
+    if (assurance && assurance.currentLevel === 'aal2') return 'verified';
+    return findVerifiedTotpFactor(factors) ? 'challenge' : 'enroll';
+  }
+  window.EDAuthRules = { MIN_PASSWORD_LENGTH: MIN_PASSWORD_LENGTH, validateSignupPassword: validateSignupPassword, describeAuthError: describeAuthError, signupOutcome: signupOutcome, authEventOutcome: authEventOutcome, canShowLessonVideoOnWeb: canShowLessonVideoOnWeb, normalizeSignupOtp: normalizeSignupOtp, isValidSignupOtp: isValidSignupOtp, isEmailNotConfirmedError: isEmailNotConfirmedError, findVerifiedTotpFactor: findVerifiedTotpFactor, adminMfaAction: adminMfaAction };
 })();
 </script>
 <script src="/ed-xlsx.js" defer></script>
