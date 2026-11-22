@@ -3,6 +3,7 @@ import {
   createFawryRequestSignature,
   formatFawryAmount,
   getFawryChargeUrl,
+  hasSufficientFawryPaidAmount,
   isFawryEnabled,
   normalizeEgyptianMobile,
   sha256Hex,
@@ -263,12 +264,16 @@ Deno.serve(async (req) => {
     const responseBody = await providerResponse.json().catch(() => null);
     const fawry = record(responseBody) as FawryChargeResponse;
     const responseAmount = formatFawryAmount(fawry.orderAmount);
+    const responseStatus = String(fawry.orderStatus || "").trim().toUpperCase();
+    const paidAmountIsValid = responseStatus !== "PAID" ||
+      hasSufficientFawryPaidAmount(fawry.paymentAmount, orderAmount);
     const validResponse =
       providerResponse.ok &&
       Number(fawry.statusCode) === 200 &&
       String(fawry.merchantRefNumber || "") === merchantRefNum &&
       Boolean(String(fawry.referenceNumber || "")) &&
       responseAmount === orderAmount &&
+      paidAmountIsValid &&
       await verifyFawryChargeResponseSignature(fawry, secureKey);
 
     if (!validResponse) {
