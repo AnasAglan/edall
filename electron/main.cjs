@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 const { Readable } = require('node:stream');
 const { fileURLToPath } = require('node:url');
 const { OfflineLibrary } = require('./offline-library.cjs');
+const { assertSafeStorageAvailable } = require('./safe-storage-adapter.cjs');
 const ORIGIN = 'https://edall.lovable.app';
 const HOME = ORIGIN + '/ed_master.html';
 const streams = new Map(), jobs = new Map(), cache = new Map();
@@ -60,8 +61,11 @@ function getRegisteredStream(raw) {
   return stream;
 }
 async function downloadOfflineVideo(id, height) {
+  if (process.platform !== 'win32') {
+    throw new Error('Encrypted offline downloads are currently supported on Windows only.');
+  }
   if (!offlineLibrary) throw new Error('Encrypted offline storage is unavailable.');
-  if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows secure key storage is unavailable; no plaintext download was created.');
+  await assertSafeStorageAvailable(safeStorage);
   if (!/^[a-zA-Z0-9_-]{11}$/.test(String(id))) throw new Error('Invalid video ID.');
   const bundle = await extract(String(id), false);
   const selected = bundle.videos.find(item => item.h === Number(height));
