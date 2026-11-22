@@ -44,3 +44,21 @@ jobs:
           node --check electron/offline-library.cjs
           node --check electron/offline.js
           node --test electron/offline-vault.test.cjs electron/offline-library.test.cjs
+
+  windows-offline-tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Check Electron desktop modules on Windows
+        shell: pwsh
+        run: |
+          node --check electron/main.cjs
+          node --check electron/preload.cjs
+          node --check electron/offline-vault.cjs
+          node --check electron/offline-library.cjs
+          node --check electron/offline.js
+      - name: Run encrypted offline storage tests on Windows
+        run: node --test electron/offline-vault.test.cjs electron/offline-library.test.cjs
