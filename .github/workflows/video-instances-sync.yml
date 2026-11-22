@@ -78,3 +78,9 @@ jobs:
           commit_message: "chore(video): refresh public extractor instances"
           file_pattern: public/video-instances.json
           branch: main
+
+      # Commit successful provider updates first; the helper preserves the last-known
+      # entries for any failed directory and then reports the incomplete refresh.
+      - name: Report incomplete provider discovery
+        if: github.event_name != 'pull_request'
+        run: node scripts/assert-video-registry-fresh.mjs
