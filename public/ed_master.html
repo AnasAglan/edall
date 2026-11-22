@@ -3603,6 +3603,55 @@ cleanups.push(() => {
                 container._p = player;
                 const mark = getWatermarkText();
                 if (mark) { wrap.appendChild(buildWatermarkLayer(mark)); guardWatermark(wrap, mark); }
+
+                // Windows-only encrypted offline saving. This uses the already
+                // selected local yt-dlp stream; browser/Piped/Android paths do not see it.
+                if (typeof bridge.downloadOffline === 'function') {
+                    const offlineActions = document.createElement('div');
+                    offlineActions.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;padding:9px 4px;direction:rtl;';
+                    const makeOfflineButton = label => {
+                        const button = document.createElement('button');
+                        button.type = 'button';
+                        button.textContent = label;
+                        button.style.cssText = 'border:1px solid #475569;border-radius:9px;background:#1c2736;color:#f8fafc;padding:8px 13px;font:600 13px Segoe UI,Tahoma,sans-serif;cursor:pointer;';
+                        return button;
+                    };
+                    const saveOfflineButton = makeOfflineButton(currentLanguage === 'ar' ? 'حفظ مشفّر دون اتصال' : 'Save encrypted offline');
+                    const openOfflineButton = makeOfflineButton(currentLanguage === 'ar' ? 'التنزيلات المحفوظة' : 'Saved downloads');
+                    listen(saveOfflineButton, 'click', async () => {
+                        if (saveOfflineButton.disabled) return;
+                        const quality = Number(selected || initial.h);
+                        saveOfflineButton.disabled = true;
+                        saveOfflineButton.textContent = currentLanguage === 'ar' ? 'جارٍ التنزيل والتشفير...' : 'Downloading and encrypting...';
+                        try {
+                            const saved = await bridge.downloadOffline(vid, quality);
+                            saveOfflineButton.textContent = currentLanguage === 'ar' ? 'تم الحفظ المشفّر' : 'Encrypted and saved';
+                            showToast(
+                                currentLanguage === 'ar'
+                                    ? 'تم حفظ الدرس مشفّراً على هذا الجهاز.'
+                                    : 'The lesson was saved encrypted on this device.',
+                                'success'
+                            );
+                        } catch (error) {
+                            saveOfflineButton.textContent = currentLanguage === 'ar' ? 'إعادة المحاولة' : 'Try again';
+                            showToast(
+                                error && error.message
+                                    ? error.message
+                                    : (currentLanguage === 'ar' ? 'تعذر حفظ التنزيل المشفّر.' : 'Could not save the encrypted download.'),
+                                'error'
+                            );
+                        } finally {
+                            saveOfflineButton.disabled = false;
+                        }
+                    });
+                    listen(openOfflineButton, 'click', async () => {
+                        try { await bridge.openOfflineLibrary(); }
+                        catch { showToast(currentLanguage === 'ar' ? 'تعذر فتح مكتبة التنزيلات.' : 'Could not open the download library.', 'error'); }
+                    });
+                    offlineActions.append(saveOfflineButton, openOfflineButton);
+                    wrap.appendChild(offlineActions);
+                }
+
                 await switchQuality(initial.h);
                 schedule();
             } catch (err) { if (!disposed) { _edClose(container); throw err; } }
