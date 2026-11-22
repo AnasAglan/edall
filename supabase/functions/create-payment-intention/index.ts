@@ -121,6 +121,9 @@ Deno.serve(async req => {
     if(orderError) {
       if(orderError.message?.includes("ALREADY_ENROLLED")) return json({error:"ALREADY_ENROLLED"},409,cors);
       if(orderError.message?.includes("COURSE_NOT_PAYABLE")) return json({error:"COURSE_NOT_PAYABLE"},400,cors);
+      if(orderError.message?.includes("OPEN_PAYMENT_ORDER_FOR_DIFFERENT_PROVIDER")) {
+        return json({error:"OPEN_PAYMENT_ORDER_FOR_DIFFERENT_PROVIDER"},409,cors);
+      }
       console.warn("create_payment_order rejected",orderError.code || "rpc_error");
       return json({error:orderError.message?.includes("PAYMENT_PROVIDER_NOT_CONFIGURED")
         ? "PAYMENT_PROVIDER_NOT_CONFIGURED" : "Could not create payment order."},orderError.message?.includes("PAYMENT_PROVIDER_NOT_CONFIGURED")?503:400,cors);
