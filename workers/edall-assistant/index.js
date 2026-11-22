@@ -435,9 +435,19 @@ export function buildVerifiedReadReply(snapshots, conversation = []) {
   const data = snapshot.data;
   if (snapshot.tool === "get_platform_stats") {
     if (!data || typeof data !== "object") return "تعذر قراءة إحصاءات المنصة من قاعدة البيانات.";
-    const labels = [["users","المستخدمون"],["students","الطلاب"],["teachers","المعلمون"],["admins","المديرون"],["courses","الدورات"],["lessons","المحاضرات"],["lesson_video_links","روابط الفيديو"],["lesson_pdf_links","روابط PDF"],["enrollments","التسجيلات"],["exams","الاختبارات"],["exam_attempts","محاولات الاختبار"]];
-    if (labels.some(([key]) => !Number.isFinite(Number(data[key])))) return "لم تكتمل قراءة بعض الإحصاءات من قاعدة البيانات؛ لن أعرض أرقامًا غير مؤكدة.";
-    return "إحصاءات ED-ALL التي قرأتها الآن من قاعدة البيانات:\n" + labels.map(([key,label]) => "• " + label + ": **" + Number(data[key]).toLocaleString("en-US") + "**").join("\n");
+    if (data.statistics_migration_required === true) {
+      return "إحصاءات المنصة غير متاحة مؤقتًا لأن قاعدة البيانات لم تُحدّث بعد لتسجيل حسابات Auth ومحاولات الاختبار الفعلية. لم أعرض أرقامًا قديمة أو غير دقيقة. يجب تطبيق ترحيل الإحصاءات بعد التحقق من نسخة Staging واستعادة النسخة الاحتياطية.";
+    }
+    const labels = [["users","المستخدمون"],["profiles","ملفات المستخدمين"],["unlinked_profiles","حسابات بلا ملف شخصي"],["students","الطلاب"],["teachers","المعلمون"],["admins","المديرون"],["courses","الدورات"],["lessons","المحاضرات"],["lesson_video_links","روابط الفيديو"],["lesson_pdf_links","روابط PDF"],["enrollments","التسجيلات"],["exams","الاختبارات"],["exam_attempts","محاولات الاختبار"]];
+    const requiredLabels = labels.filter(([key]) => key !== "exam_attempts" || data.exam_attempts_tracked === true);
+    if (requiredLabels.some(([key]) => !Number.isSafeInteger(Number(data[key])) || Number(data[key]) < 0)) return "لم تكتمل قراءة بعض الإحصاءات من قاعدة البيانات؛ لن أعرض أرقامًا غير مؤكدة.";
+    const lines = labels.map(([key,label]) => {
+      if (key === "exam_attempts" && data.exam_attempts_tracked !== true) {
+        return "• " + label + ": غير متاح (تتبّع المحاولات غير مفعّل في قاعدة البيانات)";
+      }
+      return "• " + label + ": **" + Number(data[key]).toLocaleString("en-US") + "**";
+    });
+    return "إحصاءات ED-ALL التي قرأتها الآن من قاعدة البيانات:\n" + lines.join("\n");
   }
   if (snapshot.tool === "list_courses") {
     if (!Array.isArray(data)) return "تعذر قراءة قائمة الدورات من قاعدة البيانات.";
@@ -1087,9 +1097,13 @@ async function tool(name, args, env, token, user, roles, images = []) {
     // counts can silently return zero under admin AAL2 policies and appear blank.
     const snapshot = await db(env, "/rest/v1/rpc/get_platform_analytics", token, "POST", {});
     const keys = [
-      "users", "students", "teachers", "admins", "courses", "lessons",
-      "lesson_video_links", "lesson_pdf_links", "enrollments", "exams", "exam_attempts"
+      "users", "profiles", "unlinked_profiles", "students", "teachers", "admins",
+      "courses", "lessons", "lesson_video_links", "lesson_pdf_links",
+      "enrollments", "exams", "exam_attempts"
     ];
+    if (typeof snapshot?.exam_attempts_tracked !== "boolean") {
+      return { statistics_migration_required: true };
+    }
     const result = {};
     for (const key of keys) {
       const value = Number(snapshot?.[key]);
@@ -1098,6 +1112,7 @@ async function tool(name, args, env, token, user, roles, images = []) {
       }
       result[key] = value;
     }
+    result.exam_attempts_tracked = snapshot.exam_attempts_tracked;
     return result;
   }
 
