@@ -4,24 +4,17 @@ const crypto = require('node:crypto');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { Readable } = require('node:stream');
+const {
+  assertSafeStorageAvailable,
+  safeStorageEncryptString,
+  safeStorageDecryptString
+} = require('./safe-storage-adapter.cjs');
 
 const MAGIC = Buffer.from('EDALLEN1', 'ascii');
 const CHUNK_BYTES = 1024 * 1024;
 const NONCE_BYTES = 12;
 const TAG_BYTES = 16;
 const RECORD_HEADER_BYTES = 4 + NONCE_BYTES + TAG_BYTES;
-
-function assertSafeStorage(safeStorage) {
-  if (
-    !safeStorage ||
-    typeof safeStorage.isEncryptionAvailable !== 'function' ||
-    typeof safeStorage.encryptString !== 'function' ||
-    typeof safeStorage.decryptString !== 'function' ||
-    safeStorage.isEncryptionAvailable() !== true
-  ) {
-    throw new Error('OS-backed secure key storage is unavailable; encrypted downloads are disabled.');
-  }
-}
 
 async function writeBuffer(handle, buffer) {
   let offset = 0;
@@ -38,7 +31,7 @@ async function writeBuffer(handle, buffer) {
  * returned. No plaintext temp file is created.
  */
 async function encryptMediaStream({ source, filePath, safeStorage, contentType }) {
-  assertSafeStorage(safeStorage);
+  await assertSafeStorageAvailable(safeStorage);
   if (!source || typeof source[Symbol.asyncIterator] !== 'function') {
     throw new TypeError('A readable media stream is required.');
   }
@@ -49,7 +42,7 @@ async function encryptMediaStream({ source, filePath, safeStorage, contentType }
   const key = crypto.randomBytes(32);
   let encryptedKey;
   try {
-    encryptedKey = safeStorage.encryptString(key.toString('base64')).toString('base64');
+    encryptedKey = (await safeStorageEncryptString(safeStorage, key.toString('base64'))).toString('base64');
   } catch {
     key.fill(0);
     throw new Error('The operating system could not protect the offline media key.');
@@ -171,7 +164,6 @@ async function readExact(handle, length, position) {
  * A chunk is authenticated in full before any part of its plaintext is emitted.
  */
 function createEncryptedMediaResponse({ filePath, descriptor, safeStorage, rangeHeader }) {
-  assertSafeStorage(safeStorage);
   if (
     !descriptor ||
     descriptor.format !== 'EDALLEN1' ||
@@ -201,8 +193,9 @@ function createEncryptedMediaResponse({ filePath, descriptor, safeStorage, range
     let key;
     let handle;
     try {
+      await assertSafeStorageAvailable(safeStorage);
       const encryptedKey = Buffer.from(descriptor.encryptedKey, 'base64');
-      key = Buffer.from(safeStorage.decryptString(encryptedKey), 'base64');
+      key = Buffer.from(await safeStorageDecryptString(safeStorage, encryptedKey), 'base64');
       if (key.length !== 32) throw new Error('Offline media key is invalid.');
 
       handle = await fs.open(filePath, 'r');
