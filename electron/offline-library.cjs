@@ -44,6 +44,11 @@ class OfflineLibrary {
   }
 
   async save({ title, videoId, height, video, audio = null }) {
+    if (
+      !this.safeStorage ||
+      typeof this.safeStorage.isEncryptionAvailable !== 'function' ||
+      this.safeStorage.isEncryptionAvailable() !== true
+    ) throw new Error('OS-backed secure key storage is unavailable; offline saving is disabled.');
     if (!/^[a-zA-Z0-9_-]{11}$/.test(String(videoId))) throw new Error('Invalid video reference.');
     if (!Number.isInteger(Number(height)) || Number(height) < 144 || Number(height) > 4320) {
       throw new Error('Invalid video quality.');
@@ -69,12 +74,27 @@ class OfflineLibrary {
       if (!response || response.status !== 200 || !response.body) {
         throw new Error('The media provider did not return a complete stream.');
       }
+      const expectedPrefix = role === 'video' ? 'video/' : 'audio/';
+      const declaredType = String(reference.mimeType || '').toLowerCase();
+      const responseType = String(response.contentType || '').split(';')[0].trim().toLowerCase();
+      if (!declaredType.startsWith(expectedPrefix)) {
+        throw new Error('The selected media track has an unexpected content type.');
+      }
+      if (
+        responseType &&
+        responseType !== 'application/octet-stream' &&
+        !responseType.startsWith(expectedPrefix)
+      ) {
+        throw new Error('The media provider returned a non-media response; the file was not saved.');
+      }
       const filePath = this.mediaPath(id, role);
       const descriptor = await encryptMediaStream({
         source: response.body,
         filePath,
         safeStorage: this.safeStorage,
-        contentType: response.contentType || reference.mimeType
+        contentType: !responseType || responseType === 'application/octet-stream'
+          ? declaredType
+          : responseType
       });
       createdFiles.push(filePath);
       return descriptor;
