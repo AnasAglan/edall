@@ -5,6 +5,11 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { Readable } = require('node:stream');
 const { encryptMediaStream, createEncryptedMediaResponse } = require('./offline-vault.cjs');
+const {
+  assertSafeStorageAvailable,
+  safeStorageEncryptString,
+  safeStorageDecryptString
+} = require('./safe-storage-adapter.cjs');
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -42,7 +47,7 @@ class OfflineLibrary {
 
   async readManifest(id) {
     const encrypted = await fs.readFile(this.manifestPath(id), 'utf8');
-    const json = this.safeStorage.decryptString(Buffer.from(encrypted, 'base64'));
+    const json = await safeStorageDecryptString(this.safeStorage, Buffer.from(encrypted, 'base64'));
     const manifest = JSON.parse(json);
     if (
       manifest.id !== id ||
@@ -55,11 +60,7 @@ class OfflineLibrary {
   }
 
   async save({ title, videoId, height, video, audio = null }) {
-    if (
-      !this.safeStorage ||
-      typeof this.safeStorage.isEncryptionAvailable !== 'function' ||
-      this.safeStorage.isEncryptionAvailable() !== true
-    ) throw new Error('OS-backed secure key storage is unavailable; offline saving is disabled.');
+    await assertSafeStorageAvailable(this.safeStorage);
     if (!/^[a-zA-Z0-9_-]{11}$/.test(String(videoId))) throw new Error('Invalid video reference.');
     if (!Number.isInteger(Number(height)) || Number(height) < 144 || Number(height) > 4320) {
       throw new Error('Invalid video quality.');
@@ -126,7 +127,7 @@ class OfflineLibrary {
         video: videoDescriptor,
         audio: audioDescriptor
       };
-      const serialized = this.safeStorage.encryptString(JSON.stringify(manifest)).toString('base64');
+      const serialized = (await safeStorageEncryptString(this.safeStorage, JSON.stringify(manifest))).toString('base64');
       const target = this.manifestPath(id);
       const temporary = target + '.part';
       await fs.writeFile(temporary, serialized, { flag: 'wx', mode: 0o600 });
