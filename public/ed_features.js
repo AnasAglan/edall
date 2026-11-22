@@ -177,6 +177,9 @@
      }
     if (!state.courseId) return;
     const courseId = state.courseId;
+    if (state.tab === "assignments" || state.tab === "discussions") {
+      state.data.lessons = await rows("lessons", q => q.eq("course_id",courseId).order("sort_order",{ascending:true}));
+    }
     if (state.tab === "assignments") {
       state.data.assignments = await rows("assignments", q => q.eq("course_id",courseId).order("due_at",{ascending:true}));
       const ids = state.data.assignments.map(a => a.id);
@@ -234,6 +237,20 @@
       '</select></label>';
   }
 
+  function lessonLabel(lessonId) {
+    if (!lessonId) return text("كل الدورة","Entire course");
+    const lesson = (state.data.lessons || []).find(item => item.id === lessonId);
+    return lesson ? lesson.title : text("درس غير متاح","Lesson unavailable");
+  }
+
+  function lessonSelector(label) {
+    const lessons = state.data.lessons || [];
+    return '<label class="edf-lesson-select"><span>' + esc(label) + '</span><select name="lesson_id">' +
+      '<option value="">' + esc(text("كل الدورة","Entire course")) + '</option>' +
+      lessons.map(lesson => '<option value="' + esc(lesson.id) + '">' + esc(lesson.title || text("درس بدون عنوان","Untitled lesson")) + '</option>').join("") +
+      '</select></label>';
+  }
+
   function renderAssignmentTab() {
     const assignments = state.data.assignments || [];
     const submissions = state.data.submissions || [];
@@ -243,6 +260,7 @@
         '<h3>' + esc(text("إضافة واجب", "Create assignment")) + '</h3>' +
         '<input name="title" maxlength="180" required placeholder="' + esc(text("عنوان الواجب","Assignment title")) + '">' +
         '<textarea name="description" maxlength="12000" placeholder="' + esc(text("التعليمات","Instructions")) + '"></textarea>' +
+        lessonSelector(text("إضافة الواجب إلى درس (اختياري)","Attach assignment to a lesson (optional)")) +
         '<div class="edf-form-grid"><input name="due_at" type="datetime-local"><input name="max_score" type="number" min="1" max="100000" value="100" required></div>' +
         '<button class="edf-btn edf-primary" type="submit">' + esc(text("نشر الواجب","Publish assignment")) + '</button></form>';
     }
@@ -250,6 +268,7 @@
       const mine = submissions.find(s => s.assignment_id === a.id);
       const submitted = submissions.filter(s => s.assignment_id === a.id);
       let detail = '<p>' + esc(a.description || text("لا توجد تعليمات إضافية.","No extra instructions.")) + '</p>' +
+        '<div class="edf-meta">' + esc(text("الدرس: ","Lesson: ")) + esc(lessonLabel(a.lesson_id)) + '</div>' +
         '<div class="edf-meta">' + esc(text("آخر موعد: ","Due: ")) + esc(fmtDate(a.due_at)) + ' · ' +
         esc(text("الدرجة: ","Max score: ")) + esc(a.max_score) + '</div>';
       if (!isTeacher()) {
@@ -365,22 +384,31 @@
   function renderDiscussionsTab() {
     const topics = state.data.topics || [];
     const posts = state.data.posts || [];
+    const canModerateDiscussions = hasCourseCapability("discussions");
     let body = '<form class="edf-form" data-form="create-topic"><h3>' + esc(text("طرح سؤال أو نقاش","Start a discussion")) + '</h3>' +
       '<input name="title" maxlength="180" required placeholder="' + esc(text("عنوان النقاش","Discussion title")) + '">' +
+      lessonSelector(text("ربط النقاش بدرس (اختياري)","Attach discussion to a lesson (optional)")) +
       '<textarea name="content" maxlength="12000" required placeholder="' + esc(text("اكتب رسالتك","Write your post")) + '"></textarea>' +
       '<button class="edf-btn edf-primary" type="submit">' + esc(text("نشر","Publish")) + '</button></form>';
     body += topics.map(t => {
       const topicPosts = Array.isArray(t.posts) ? t.posts : posts.filter(p => p.topic_id === t.id);
       return card(t.title,
-        '<div class="edf-meta">' + esc(fmtDate(t.created_at)) + (t.is_pinned ? ' · ' + esc(text("مثبّت","Pinned")) : "") +
+        '<div class="edf-meta">' + esc(fmtDate(t.created_at)) +
+          ' · ' + esc(text("الدرس: ","Lesson: ")) + esc(lessonLabel(t.lesson_id)) +
+          (t.is_pinned ? ' · ' + esc(text("مثبّت","Pinned")) : "") +
           (t.is_locked ? ' · ' + esc(text("مغلق","Locked")) : "") + '</div>' +
-        topicPosts.map(p => '<div class="edf-post' + (p.is_hidden ? ' is-hidden' : '') + '"><strong>' + esc(p.author_name || "") + '</strong><p>' + esc(p.content) + '</p><small>' + esc(fmtDate(p.created_at)) + '</small>' +
-          (isTeacher() ? '<button class="edf-text-btn" data-action="moderate-post" data-id="' + esc(p.id) + '" data-hidden="' + (!p.is_hidden) + '">' + esc(p.is_hidden ? text("إظهار","Unhide") : text("إخفاء","Hide")) + '</button>' : "") +
+        topicPosts.map(p => '<div class="edf-post' + (p.is_hidden ? ' is-hidden' : '') + (p.is_pinned ? ' is-pinned' : '') + '">' +
+          (p.is_pinned ? '<div class="edf-pin-label">' + esc(text("الإجابة المهمة المثبّتة","Pinned important answer")) + '</div>' : "") +
+          '<strong>' + esc(p.author_name || "") + '</strong><p>' + esc(p.content) + '</p><small>' + esc(fmtDate(p.created_at)) + '</small>' +
+          (canModerateDiscussions ? '<div class="edf-actions">' +
+            '<button class="edf-text-btn" data-action="moderate-post" data-id="' + esc(p.id) + '" data-hidden="' + (!p.is_hidden) + '">' + esc(p.is_hidden ? text("إظهار","Unhide") : text("إخفاء","Hide")) + '</button>' +
+            '<button class="edf-text-btn" data-action="pin-discussion-post" data-id="' + esc(p.id) + '" data-pinned="' + (!!p.is_pinned) + '">' + esc(p.is_pinned ? text("إلغاء تثبيت الإجابة","Unpin answer") : text("تثبيت الإجابة","Pin answer")) + '</button>' +
+            '</div>' : "") +
           '</div>').join("") +
-        '<form class="edf-inline-form" data-form="reply-topic" data-id="' + esc(t.id) + '">' +
-        '<input name="content" maxlength="12000" required placeholder="' + esc(text("أضف ردًا","Add a reply")) + '">' +
-        '<button class="edf-btn" type="submit">' + esc(text("رد","Reply")) + '</button></form>' +
-        (isTeacher() ? '<div class="edf-actions">' +
+        (t.is_locked ? "" : '<form class="edf-inline-form" data-form="reply-topic" data-id="' + esc(t.id) + '">' +
+          '<input name="content" maxlength="12000" required placeholder="' + esc(text("أضف ردًا","Add a reply")) + '">' +
+          '<button class="edf-btn" type="submit">' + esc(text("رد","Reply")) + '</button></form>') +
+        (canModerateDiscussions ? '<div class="edf-actions">' +
           '<button class="edf-text-btn" data-action="moderate-topic" data-id="' + esc(t.id) + '" data-kind="lock">' + esc(t.is_locked ? text("فتح النقاش","Unlock topic") : text("إغلاق النقاش","Lock topic")) + '</button>' +
           '<button class="edf-text-btn" data-action="moderate-topic" data-id="' + esc(t.id) + '" data-kind="pin">' + esc(t.is_pinned ? text("إلغاء التثبيت","Unpin") : text("تثبيت","Pin")) + '</button>' +
           '</div>' : "")
@@ -562,7 +590,7 @@
       switch (form.dataset.form) {
         case "create-assignment":
           await rpc("create_assignment",{
-            _course_id:course,_lesson_id:null,_title:v.title,_description:v.description || "",
+            _course_id:course,_lesson_id:v.lesson_id || null,_title:v.title,_description:v.description || "",
             _due_at:v.due_at ? new Date(v.due_at).toISOString() : null,_max_score:Number(v.max_score || 100)
           });
           break;
@@ -625,7 +653,7 @@
           await rpc("issue_course_certificate",{_course_id:course,_student_id:v.student_id});
           break;
         case "create-topic":
-          await rpc("create_discussion_topic",{_course_id:course,_lesson_id:null,_title:v.title,_content:v.content});
+          await rpc("create_discussion_topic",{_course_id:course,_lesson_id:v.lesson_id || null,_title:v.title,_content:v.content});
           break;
         case "reply-topic":
           await rpc("create_discussion_post",{_topic_id:id,_content:v.content});
@@ -675,6 +703,17 @@
       if (action === "moderate-post") {
         await rpc("moderate_discussion_post",{_post_id:id,_hidden:button.dataset.hidden==="true"});
         await refresh(); return;
+      }
+      if (action === "pin-discussion-post") {
+        if (!hasCourseCapability("discussions")) {
+          throw new Error(text("لا تملك صلاحية تثبيت الإجابات في هذه الدورة.","You cannot pin answers in this course."));
+        }
+        await rpc("set_discussion_post_pinned",{
+          _post_id:id,
+          _pinned:button.dataset.pinned !== "true"
+        });
+        await refresh();
+        return;
       }
       if (action === "moderate-topic") {
         const item=(state.data.topics||[]).find(x=>x.id===id); if(!item) return;

@@ -10,6 +10,8 @@
 .edf-btn:hover{transform:translateY(-1px);border-color:var(--primary,#fc8019)}
 .edf-btn:disabled{opacity:.55;cursor:not-allowed;transform:none}
 .edf-primary{background:var(--primary,#fc8019);border-color:var(--primary,#fc8019);color:white}
+.edf-lesson-select{display:grid;gap:6px;color:var(--edf-muted);font-weight:700}
+.edf-lesson-select select{width:100%;border:1px solid var(--edf-line);border-radius:10px;background:var(--input-bg,var(--edf-panel));color:var(--edf-text);padding:10px 12px;font:inherit;min-width:0}
 .edf-course-select{display:flex;gap:10px;align-items:center;margin:12px 0 18px;color:var(--edf-muted);font-weight:700}
 .edf-course-select select{min-width:220px;max-width:100%}
 .edf-tabs{display:flex;gap:8px;overflow-x:auto;padding:5px 0 15px;scrollbar-width:thin}
@@ -32,6 +34,8 @@
 .edf-submission{border-top:1px solid var(--edf-line);padding:12px 0}
 .edf-submission p{margin:5px 0}
 .edf-post{padding:10px 12px;border:1px solid var(--edf-line);border-radius:10px;margin:8px 0}
+.edf-post.is-pinned{border-inline-start:3px solid var(--primary,#fc8019);background:var(--edf-panel)}
+.edf-pin-label{display:inline-block;font-size:.78rem;font-weight:800;color:var(--primary,#fc8019);margin:0 0 6px}
 .edf-post.is-hidden{opacity:.55}
 .edf-post small,.edf-submission small{color:var(--edf-muted);font-size:.76rem}
 .edf-text-btn{border:0;background:transparent;color:var(--primary,#fc8019);font:inherit;cursor:pointer;padding:5px 8px}

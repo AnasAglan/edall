@@ -163,3 +163,80 @@ describe("ED-ALL integrated learning suite", () => {
     expect(ui).toContain('const isTeacher = () => isAdmin() || isCourseOwner() || !!currentStaffRole()');
   });
 });
+
+
+describe("lesson-scoped assignments and discussions", () => {
+  const ui = read("public/ed_features.js");
+  const migration = read("supabase/migrations/20261114121000_add_integrated_learning_suite.sql");
+
+  it("loads the selected course's lessons before rendering assignment and discussion creation", () => {
+    expect(ui).toContain('state.data.lessons = await rows("lessons"');
+    expect(ui).toContain('q.eq("course_id",courseId)');
+    expect(ui).toContain('.order("sort_order",{ascending:true})');
+  });
+
+  it("offers an optional lesson selector in assignment and discussion forms", () => {
+    expect(ui).toContain('name="lesson_id"');
+    expect(ui).toContain('data-form="create-assignment"');
+    expect(ui).toContain('data-form="create-topic"');
+    expect(ui).toContain('كل الدورة');
+    expect(ui).toContain('Entire course');
+  });
+
+  it("passes the selected lesson id to both server RPCs and preserves course-level creation when blank", () => {
+    expect(ui).toContain('_lesson_id:v.lesson_id || null');
+    expect(ui).not.toContain('_lesson_id:null');
+    expect(ui).toContain('rpc("create_assignment"');
+    expect(ui).toContain('rpc("create_discussion_topic"');
+  });
+
+  it("shows the lesson label on each assignment and discussion topic", () => {
+    expect(ui).toContain('function lessonLabel(');
+    expect(ui).toContain('lessonLabel(a.lesson_id)');
+    expect(ui).toContain('lessonLabel(t.lesson_id)');
+  });
+
+  it("validates lesson/course ownership in the trusted database functions", () => {
+    expect(migration).toContain("LESSON_NOT_IN_COURSE");
+    const assignmentStart = migration.indexOf("CREATE OR REPLACE FUNCTION public.create_assignment");
+    const assignmentEnd = migration.indexOf("$function$;", assignmentStart);
+    const assignment = migration.slice(assignmentStart, assignmentEnd);
+    expect(assignment).toContain("l.id = _lesson_id AND l.course_id = _course_id");
+    const discussionStart = migration.indexOf("CREATE OR REPLACE FUNCTION public.create_discussion_topic");
+    const discussionEnd = migration.indexOf("$function$;", discussionStart);
+    const discussion = migration.slice(discussionStart, discussionEnd);
+    expect(discussion).toContain("l.id=_lesson_id AND l.course_id=_course_id");
+  });
+});
+
+
+describe("pinned answers in course discussions", () => {
+  const ui = read("public/ed_features.js");
+  const pinMigration = read("supabase/migrations/20261122130000_pin_discussion_answers.sql");
+
+  it("adds a pinned flag to posts without changing existing topic pinning", () => {
+    expect(pinMigration).toContain("ADD COLUMN IF NOT EXISTS is_pinned boolean NOT NULL DEFAULT false");
+    expect(pinMigration).toContain("CREATE INDEX IF NOT EXISTS discussion_posts_pinned_idx");
+    expect(ui).toContain("t.is_pinned");
+  });
+
+  it("exposes pinned state in the authorized discussion feed and sorts pinned answers first", () => {
+    expect(pinMigration).toContain("'is_pinned',post.is_pinned");
+    expect(pinMigration).toContain("ORDER BY post.is_pinned DESC,post.created_at");
+  });
+
+  it("allows only discussion-capable course staff to pin or unpin an answer through an audited RPC", () => {
+    expect(pinMigration).toContain("CREATE OR REPLACE FUNCTION public.set_discussion_post_pinned");
+    expect(pinMigration).toContain("public.has_course_capability(_course_id,'discussions')");
+    expect(pinMigration).toContain("public.admin_mfa_verified()");
+    expect(pinMigration).toContain("public.write_platform_audit_event");
+    expect(pinMigration).toContain("REVOKE ALL ON FUNCTION public.set_discussion_post_pinned(uuid,boolean) FROM PUBLIC,anon");
+  });
+
+  it("shows pin controls only to discussion moderators and renders the pinned answer label", () => {
+    expect(ui).toContain('data-action="pin-discussion-post"');
+    expect(ui).toContain('hasCourseCapability("discussions")');
+    expect(ui).toContain("الإجابة المهمة المثبّتة");
+    expect(ui).toContain('rpc("set_discussion_post_pinned"');
+  });
+});
