@@ -9,3 +9,7 @@ EDALL_SERVICE_NAME = "edall-video-media-proxy-staging"
 enabled = true
 [observability.issues]
 enabled = true
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 0.05
