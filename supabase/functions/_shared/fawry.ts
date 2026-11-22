@@ -132,6 +132,18 @@ export async function verifyFawryNotificationSignature(
   return constantTimeHexEqual(expected, received);
 }
 
+export function isFawryReferenceMatch(
+  metadata: unknown,
+  providerReference: unknown,
+  callbackReference: unknown,
+): boolean {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return false;
+  const expected = String((metadata as Record<string, unknown>).fawry_reference_number ?? "");
+  const callback = String(callbackReference ?? "");
+  const persisted = String(providerReference ?? "");
+  return Boolean(callback) && expected === callback && persisted === callback;
+}
+
 export function normalizeEgyptianMobile(value: unknown): string | null {
   const digits = String(value ?? "").replace(/\D/g, "");
   const local = digits.startsWith("20") && digits.length === 12 ? "0" + digits.slice(2) : digits;
