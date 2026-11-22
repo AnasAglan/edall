@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
+import { pathToFileURL } from "node:url";
 
 export function assertProviderRegistryFresh(registry) {
   const failures = [];
@@ -30,6 +30,6 @@ async function main() {
   console.log("Both provider directories refreshed successfully.");
 }
 
-if (process.argv[1] && import.meta.url === new URL("file://" + fileURLToPath(import.meta.url)).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   await main();
 }
