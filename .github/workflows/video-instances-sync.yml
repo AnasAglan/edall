@@ -71,6 +71,10 @@ jobs:
         run: |
           node --input-type=module -e 'import fs from "node:fs"; const r=JSON.parse(fs.readFileSync("public/video-instances.json","utf8")); const all=[...(r.sources?.piped||[]),...(r.sources?.invidious||[])]; const ok=all.filter(x=>x.status==="healthy"||x.status==="degraded"); if(!r.sources?.piped?.length||!r.sources?.invidious?.length||!ok.length) throw new Error("Refusing to commit an empty or unusable video registry"); console.log(JSON.stringify({piped:r.sources.piped.length,invidious:r.sources.invidious.length,playable:ok.length}));'
 
+      - name: Report incomplete provider discovery
+        if: github.event_name != 'pull_request'
+        run: node scripts/assert-video-registry-fresh.mjs
+
       - name: Commit changed registry
         if: github.event_name != 'pull_request'
         uses: stefanzweifel/git-auto-commit-action@v5
@@ -78,7 +82,3 @@ jobs:
           commit_message: "chore(video): refresh public extractor instances"
           file_pattern: public/video-instances.json
           branch: main
-
-      - name: Report incomplete provider discovery
-        if: github.event_name != 'pull_request'
-        run: node scripts/assert-video-registry-fresh.mjs
