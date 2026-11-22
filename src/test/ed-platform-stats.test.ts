@@ -35,6 +35,11 @@ describe("verified platform statistics contract", () => {
     expect(worker).toContain("snapshot.exam_attempts_tracked");
   });
 
+  it("documents the database migration required before corrected statistics are available", () => {
+    expect(worker).toContain("statistics_migration_required === true");
+    expect(worker).toContain("قاعدة البيانات لم تُحدّث بعد");
+  });
+
   it("does not silently display zero when attempt tracking is absent", () => {
     expect(worker).toContain("تتبّع المحاولات غير مفعّل في قاعدة البيانات");
   });
