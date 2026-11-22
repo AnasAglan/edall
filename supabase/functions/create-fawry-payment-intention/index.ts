@@ -199,6 +199,7 @@ Deno.serve(async (req) => {
     const { data: claimed, error: claimError } = await admin.from("payment_orders")
       .update({
         status: "pending",
+        provider_reference: merchantRefNum,
         metadata: claimedMetadata,
         updated_at: new Date().toISOString(),
       })
