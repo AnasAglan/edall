@@ -49,8 +49,10 @@ function uniqueByUrl(items) {
 export async function fetchDirectoryResponse(url, headers, fetchImpl = fetch) {
   const maxAttempts = 3;
   let lastError = null;
+  let attemptsMade = 0;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    attemptsMade = attempt;
     try {
       const response = await fetchImpl(url, {
         headers,
@@ -72,7 +74,7 @@ export async function fetchDirectoryResponse(url, headers, fetchImpl = fetch) {
   }
 
   const detail = lastError && lastError.message ? lastError.message : String(lastError || "unknown error");
-  throw new Error("Directory fetch failed after " + maxAttempts + " attempts: " + detail);
+  throw new Error("Directory fetch failed after " + attemptsMade + (attemptsMade === 1 ? " attempt: " : " attempts: ") + detail);
 }
 
 async function fetchJson(url) {
