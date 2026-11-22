@@ -49,6 +49,8 @@ async function createLibrary(t, fetchMedia) {
 test('saves encrypted video and audio without plaintext files and lists safe metadata', async t => {
   const videoBytes = Buffer.from('video-plaintext-'.repeat(50000));
   const audioBytes = Buffer.from('audio-plaintext-'.repeat(10000));
+  const videoExpected = Buffer.from(videoBytes);
+  const audioExpected = Buffer.from(audioBytes);
   const library = await createLibrary(t, async reference => ({
     status: 200,
     contentType: reference.mimeType,
@@ -70,8 +72,8 @@ test('saves encrypted video and audio without plaintext files and lists safe met
 
   const video = await library.createResponse(saved.id, 'video');
   const audio = await library.createResponse(saved.id, 'audio');
-  assert.deepEqual(await collect(video.body), videoBytes);
-  assert.deepEqual(await collect(audio.body), audioBytes);
+  assert.deepEqual(await collect(video.body), videoExpected);
+  assert.deepEqual(await collect(audio.body), audioExpected);
 
   const videoFile = await fs.readFile(library.mediaPath(saved.id, 'video'));
   const audioFile = await fs.readFile(library.mediaPath(saved.id, 'audio'));
@@ -82,6 +84,7 @@ test('saves encrypted video and audio without plaintext files and lists safe met
 
 test('supports authenticated HTTP byte ranges for offline playback', async t => {
   const bytes = Buffer.from(Array.from({ length: 150000 }, (_, i) => i % 239));
+  const expected = Buffer.from(bytes);
   const library = await createLibrary(t, async reference => ({
     status: 200,
     contentType: reference.mimeType,
@@ -96,7 +99,7 @@ test('supports authenticated HTTP byte ranges for offline playback', async t => 
   const response = await library.createResponse(saved.id, 'video', 'bytes=2000-8000');
   assert.equal(response.status, 206);
   assert.equal(response.headers['Content-Range'], 'bytes 2000-8000/150000');
-  assert.deepEqual(await collect(response.body), bytes.subarray(2000, 8001));
+  assert.deepEqual(await collect(response.body), expected.subarray(2000, 8001));
 });
 
 test('rejects malformed video IDs, path traversal IDs and failed provider responses', async t => {
