@@ -16,6 +16,9 @@ describe("verified platform statistics contract", () => {
     expect(migration).toContain("FROM auth.users");
     expect(migration).toContain("FROM public.profiles");
     expect(migration).toContain("'unlinked_profiles',_unlinked_profiles");
+    expect(migration).toContain("WHERE NOT EXISTS (");
+    expect(migration).toContain("profile.id = user_account.id");
+    expect(migration).not.toContain("GREATEST(_users - _profiles, 0)");
   });
 
   it("counts real exam attempts only when that optional table exists", () => {
