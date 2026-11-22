@@ -2,7 +2,7 @@
 -- Runs inside a transaction and rolls back all fixture accounts/data.
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT plan(44);
+SELECT plan(58);
 
 INSERT INTO auth.users (
   id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -302,6 +302,106 @@ SELECT ok(
   'first-admin bootstrap recounts after a shared lock only when roles are empty'
 )
 FROM positions;
+
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='lessons' AND column_name='is_final'
+  ),
+  'lessons include a final lesson designation'
+);
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE schemaname='public' AND indexname='lessons_one_final_per_course_idx'
+  ),
+  'a course can have at most one final lesson'
+);
+SELECT ok(
+  to_regprocedure('public.set_course_final_lesson(uuid,uuid)') IS NOT NULL,
+  'course final lesson management RPC exists'
+);
+SELECT ok(
+  NOT has_function_privilege('anon','public.set_course_final_lesson(uuid,uuid)','EXECUTE'),
+  'anonymous callers cannot designate a course final lesson'
+);
+SELECT ok(
+  NOT has_function_privilege('authenticated','public.issue_course_certificate_internal(uuid,uuid,uuid,boolean)','EXECUTE'),
+  'authenticated clients cannot invoke the internal certificate issuer'
+);
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgname='auto_issue_course_certificate_lesson_progress'
+      AND NOT tgisinternal
+  )
+  AND EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgname='auto_issue_course_certificate_exam_results'
+      AND NOT tgisinternal
+  ),
+  'lesson progress and exam result changes trigger automatic certificate checks'
+);
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_proc p
+    WHERE p.oid='public.audit_course_final_lesson_change()'::regprocedure
+      AND p.prosecdef
+      AND 'search_path=""' = ANY(p.proconfig)
+  ),
+  'final lesson changes are audited by a protected trigger function'
+);
+
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='lessons' AND column_name='is_final'
+  ),
+  'lessons include a final lesson designation'
+);
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE schemaname='public' AND indexname='lessons_one_final_per_course_idx'
+  ),
+  'a course can have at most one final lesson'
+);
+SELECT ok(
+  to_regprocedure('public.set_course_final_lesson(uuid,uuid)') IS NOT NULL,
+  'course final lesson management RPC exists'
+);
+SELECT ok(
+  NOT has_function_privilege('anon','public.set_course_final_lesson(uuid,uuid)','EXECUTE'),
+  'anonymous callers cannot designate a course final lesson'
+);
+SELECT ok(
+  NOT has_function_privilege('authenticated','public.issue_course_certificate_internal(uuid,uuid,uuid,boolean)','EXECUTE'),
+  'authenticated clients cannot invoke the internal certificate issuer'
+);
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgname='auto_issue_course_certificate_lesson_progress'
+      AND tgrelid='public.lesson_progress'::regclass
+      AND NOT tgisinternal
+  )
+  AND EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgname='auto_issue_course_certificate_exam_results'
+      AND tgrelid='public.exam_results'::regclass
+      AND NOT tgisinternal
+  ),
+  'lesson progress and exam result changes trigger automatic certificate checks'
+);
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_proc p
+    WHERE p.oid='public.audit_course_final_lesson_change()'::regprocedure
+      AND p.prosecdef
+      AND 'search_path=""' = ANY(p.proconfig)
+  ),
+  'final lesson changes are audited by a protected trigger function'
+);
 
 SELECT * FROM finish();
 ROLLBACK;

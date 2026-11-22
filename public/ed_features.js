@@ -214,8 +214,11 @@
     } else if (state.tab === "liveClasses") {
       state.data.liveClasses = await rows("live_classes", q => q.eq("course_id",courseId).order("starts_at",{ascending:true}));
     } else if (state.tab === "certificates") {
+      state.data.lessons = await rows("lessons", q => q.eq("course_id",courseId).order("sort_order",{ascending:true}));
+      state.data.finalLessonId = (state.data.lessons.find(lesson => lesson.is_final) || {}).id || "";
+      const canManageCertificates = hasCourseCapability("certificates");
       state.data.certificates = await rows("course_certificates", q =>
-        isTeacher() ? q.eq("course_id",courseId).order("issued_at",{ascending:false}) :
+        canManageCertificates ? q.eq("course_id",courseId).order("issued_at",{ascending:false}) :
           q.eq("course_id",courseId).eq("student_id",state.user.id).order("issued_at",{ascending:false})
       );
     } else if (state.tab === "discussions") {
@@ -340,25 +343,139 @@
     return body;
   }
 
+  function certificateLessonSelector() {
+    const lessons = state.data.lessons || [];
+    const current = state.data.finalLessonId || "";
+    return '<label class="edf-form-grid-field"><span>' + esc(text("تحديد الدرس الأخير للدورة","Designate the final course lesson")) + '</span>' +
+      '<select name="lesson_id"><option value="">' + esc(text("بدون درس أخير (إيقاف الإصدار التلقائي)","No final lesson (disable automatic issuance)")) + '</option>' +
+      lessons.map(lesson => '<option value="' + esc(lesson.id) + '"' + (lesson.id === current ? ' selected' : '') + '>' +
+        esc(lesson.title || text("درس بدون عنوان","Untitled lesson")) + '</option>').join("") + '</select></label>';
+  }
+
+  function certificateXml(value) {
+    return String(value == null ? "" : value).replace(/[&<>"']/g,character => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&apos;"
+    })[character]);
+  }
+
+  function certificateSvg(certificate) {
+    const course = (state.courses || []).find(item => item.id === certificate.course_id);
+    const courseTitle = course ? course.title : ((state.data.lessons || [])[0] && state.data.lessons[0].course_title) || "";
+    const studentName = state.user.name || state.user.full_name || state.user.email || "";
+    const issuedAt = certificate.issued_at ? new Date(certificate.issued_at).toLocaleDateString(document.documentElement.lang || "ar") : "";
+    const number = certificate.certificate_number || "";
+    const verifyUrl = window.location.origin + "/?verify-certificate=" + encodeURIComponent(certificate.verification_token || "");
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1100" viewBox="0 0 1600 1100">' +
+      '<defs><linearGradient id="paper" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fffdf8"/><stop offset="1" stop-color="#f2eadb"/></linearGradient>' +
+      '<linearGradient id="gold" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#96713a"/><stop offset=".5" stop-color="#d5b36b"/><stop offset="1" stop-color="#96713a"/></linearGradient></defs>' +
+      '<rect width="1600" height="1100" fill="url(#paper)"/>' +
+      '<rect x="34" y="34" width="1532" height="1032" rx="18" fill="none" stroke="#1d3552" stroke-width="8"/>' +
+      '<rect x="58" y="58" width="1484" height="984" rx="12" fill="none" stroke="url(#gold)" stroke-width="4"/>' +
+      '<path d="M110 160 H1490 M110 940 H1490" stroke="url(#gold)" stroke-width="3"/>' +
+      '<circle cx="800" cy="140" r="54" fill="#1d3552"/><text x="800" y="153" text-anchor="middle" font-family="Arial" font-size="38" font-weight="700" fill="#fff">ED</text>' +
+      '<text x="800" y="235" text-anchor="middle" font-family="Arial,Tahoma,sans-serif" font-size="42" font-weight="700" letter-spacing="8" fill="#1d3552">ED-ALL</text>' +
+      '<text x="800" y="335" text-anchor="middle" font-family="Tahoma,Arial,sans-serif" font-size="58" font-weight="700" fill="#1d3552" direction="rtl">شهادة إتمام دورة</text>' +
+      '<text x="800" y="390" text-anchor="middle" font-family="Georgia,serif" font-size="29" letter-spacing="3" fill="#8c6b36">CERTIFICATE OF COMPLETION</text>' +
+      '<text x="800" y="490" text-anchor="middle" font-family="Tahoma,Arial,sans-serif" font-size="31" fill="#35475e" direction="rtl">تشهد منصة ED-ALL بأن</text>' +
+      '<text x="800" y="590" text-anchor="middle" font-family="Tahoma,Arial,sans-serif" font-size="58" font-weight="700" fill="#173552" direction="rtl">' + certificateXml(studentName) + '</text>' +
+      '<path d="M330 625 H1270" stroke="url(#gold)" stroke-width="3"/>' +
+      '<text x="800" y="705" text-anchor="middle" font-family="Tahoma,Arial,sans-serif" font-size="30" fill="#35475e" direction="rtl">قد أتم بنجاح متطلبات الدورة التعليمية</text>' +
+      '<text x="800" y="785" text-anchor="middle" font-family="Tahoma,Arial,sans-serif" font-size="48" font-weight="700" fill="#1d3552" direction="rtl">' + certificateXml(courseTitle) + '</text>' +
+      '<text x="800" y="885" text-anchor="middle" font-family="Tahoma,Arial,sans-serif" font-size="24" fill="#35475e" direction="rtl">رقم الشهادة: ' + certificateXml(number) + '   •   تاريخ الإصدار: ' + certificateXml(issuedAt) + '</text>' +
+      '<text x="800" y="985" text-anchor="middle" font-family="Arial,sans-serif" font-size="17" fill="#66758a">' + certificateXml(verifyUrl) + '</text>' +
+      '</svg>';
+  }
+
+  function downloadCertificateImage(certificate) {
+    const svg = certificateSvg(certificate);
+    const blob = new Blob([svg],{type:"image/svg+xml;charset=utf-8"});
+    const sourceUrl = URL.createObjectURL(blob);
+    const image = new Image();
+    image.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = 1600;
+        canvas.height = 1100;
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("Canvas is unavailable.");
+        context.drawImage(image,0,0,1600,1100);
+        canvas.toBlob(output => {
+          URL.revokeObjectURL(sourceUrl);
+          if (!output) {
+            notify(text("تعذر إنشاء صورة الشهادة.","Could not create the certificate image."),"error");
+            return;
+          }
+          const downloadUrl = URL.createObjectURL(output);
+          const link = document.createElement("a");
+          link.href = downloadUrl;
+          link.download = (certificate.certificate_number || "ED-ALL-certificate") + ".png";
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(downloadUrl);
+        },"image/png");
+      } catch (error) {
+        URL.revokeObjectURL(sourceUrl);
+        notify(actionError(error),"error");
+      }
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(sourceUrl);
+      notify(text("تعذر تحميل تصميم الشهادة.","Could not render the certificate."),"error");
+    };
+    image.src = sourceUrl;
+  }
+
+  function printCertificatePdf(certificate) {
+    const popup = window.open("","_blank");
+    if (!popup) {
+      notify(text("اسمح بفتح نافذة منبثقة لتنزيل الشهادة بصيغة PDF.","Allow the pop-up window to print or save the certificate as PDF."),"warning");
+      return;
+    }
+    const svg = certificateSvg(certificate);
+    popup.document.open();
+    popup.document.write('<!doctype html><html lang="' + certificateXml(document.documentElement.lang || "ar") + '"><head><meta charset="utf-8"><title>' +
+      certificateXml(certificate.certificate_number || "ED-ALL certificate") +
+      '</title><style>@page{size:A4 landscape;margin:0}html,body{margin:0;padding:0;background:#fff}svg{display:block;width:100vw;height:100vh;object-fit:contain}@media print{svg{width:100%;height:100%}}</style></head><body>' +
+      svg + '<script>window.addEventListener("load",function(){window.focus();window.print();});</script></body></html>');
+    popup.document.close();
+  }
+
   function renderCertificatesTab() {
     const list = state.data.certificates || [];
+    const canManageCertificates = hasCourseCapability("certificates");
     let body = "";
-    if (isTeacher()) {
+    if (canManageCertificates) {
+      const selectedFinal = (state.data.lessons || []).find(lesson => lesson.id === state.data.finalLessonId);
+      body += '<form class="edf-form" data-form="set-final-lesson"><h3>' + esc(text("تحديد الدرس الأخير للدورة","Designate the final course lesson")) + '</h3>' +
+        certificateLessonSelector() +
+        '<p class="edf-help">' + esc(text("لن تصدر الشهادة تلقائيًا حتى يستوفي الطالب جميع متطلبات الدروس والاختبارات بعد تحديد الدرس الأخير.","Certificates are not issued automatically until all lesson and exam requirements are met after a final lesson is designated.")) + '</p>' +
+        '<button class="edf-btn edf-primary" type="submit">' + esc(text("حفظ الدرس الأخير","Save final lesson")) + '</button></form>';
+      if (selectedFinal) {
+        body += '<div class="edf-meta">' + esc(text("الدرس الأخير الحالي: ","Current final lesson: ")) + esc(selectedFinal.title) + '</div>';
+      }
       body += '<form class="edf-form" data-form="issue-certificate"><h3>' + esc(text("إصدار شهادة بعد التحقق من إكمال الدورة","Issue a certificate after course completion")) + '</h3>' +
         '<input name="student_id" required placeholder="' + esc(text("معرّف الطالب","Student user ID")) + '">' +
         '<button class="edf-btn edf-primary" type="submit">' + esc(text("إصدار الشهادة","Issue certificate")) + '</button></form>';
     } else {
-      body += '<div class="edf-actions">' + makeBtn(text("التحقق من أهليتي وإصدار الشهادة","Check eligibility & issue certificate"),"self-certificate","edf-primary") + '</div>';
+      body += '<div class="edf-actions">' + makeBtn(text("التحقق من الشهادة","Check certificate eligibility"),"self-certificate","edf-primary") + '</div>';
     }
     body += list.map(c => {
       const token = c.verification_token;
       const url = window.location.origin + "/?verify-certificate=" + encodeURIComponent(token);
+      const ownCertificate = c.student_id === state.user.id;
+      const downloads = ownCertificate
+        ? '<div class="edf-actions">' +
+          '<button class="edf-btn" data-action="certificate-image" data-id="' + esc(c.id) + '">' + esc(text("تنزيل صورة PNG","Download PNG image")) + '</button>' +
+          '<button class="edf-btn" data-action="certificate-pdf" data-id="' + esc(c.id) + '">' + esc(text("طباعة / حفظ PDF","Print / save PDF")) + '</button></div>'
+        : "";
       return card(c.certificate_number,
         '<div class="edf-meta">' + esc(fmtDate(c.issued_at)) + ' · ' + esc(c.revoked_at ? text("ملغاة","Revoked") : text("سارية","Valid")) + '</div>' +
-        '<a class="edf-link" href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(text("رابط التحقق العام","Public verification link")) + '</a>'
+        '<a class="edf-link" href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(text("رابط التحقق العام","Public verification link")) + '</a>' +
+        downloads
       );
     }).join("");
-    if (!list.length) body += empty(text("لا توجد شهادات لهذه الدورة حتى الآن.","No certificates are available for this course yet."));
+    if (!list.length) body += empty(text("لا توجد شهادات لهذه الدورة حتى الآن.","No certificates are available in this course yet."));
     return body;
   }
 
@@ -624,6 +741,9 @@
         case "issue-certificate":
           await rpc("issue_course_certificate",{_course_id:course,_student_id:v.student_id});
           break;
+        case "set-final-lesson":
+          await rpc("set_course_final_lesson",{_course_id:course,_lesson_id:v.lesson_id || null});
+          break;
         case "create-topic":
           await rpc("create_discussion_topic",{_course_id:course,_lesson_id:null,_title:v.title,_content:v.content});
           break;
@@ -671,6 +791,15 @@
         notify(text("تم إصدار الشهادة أو كانت موجودة مسبقاً.","Certificate issued or already exists."),"success");
         await refresh();
         return data;
+      }
+      if (action === "certificate-image" || action === "certificate-pdf") {
+        const certificate = (state.data.certificates || []).find(item => item.id === id);
+        if (!certificate || certificate.student_id !== state.user.id || certificate.revoked_at) {
+          throw new Error(text("لا يمكن تنزيل هذه الشهادة.","This certificate cannot be downloaded."));
+        }
+        if (action === "certificate-image") downloadCertificateImage(certificate);
+        else printCertificatePdf(certificate);
+        return;
       }
       if (action === "moderate-post") {
         await rpc("moderate_discussion_post",{_post_id:id,_hidden:button.dataset.hidden==="true"});
