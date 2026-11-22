@@ -13,6 +13,7 @@ WORKER_SERVICE_NAME = "edall-assistant-staging"
 required = ["STAGING_SUPABASE_PUBLISHABLE_KEY"]
 # Optional isolated fallback: STAGING_GEMINI_API_KEY. Workers AI is primary.
 [observability]
+redact_query_string = true
 enabled = true
 [observability.issues]
 enabled = true
