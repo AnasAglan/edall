@@ -29,6 +29,13 @@ describe("student exam, assignment, and certificate history", () => {
     expect(migration).toContain("GRANT EXECUTE ON FUNCTION public.get_my_learning_history() TO authenticated");
   });
 
+  it("snapshots the true question count and prevents client-supplied count tampering", () => {
+    expect(migration).toContain("TG_OP = 'INSERT'");
+    expect(migration).toContain("NEW.question_count IS DISTINCT FROM OLD.question_count");
+    expect(migration).toContain("BEFORE INSERT OR UPDATE OF exam_id,question_count");
+    expect(migration).toContain("FROM public.exam_questions AS question");
+  });
+
   it("includes real attempt start and submit times, question counts, grading and essay-pending states", () => {
     expect(migration).toContain("attempt.started_at");
     expect(migration).toContain("attempt.submitted_at");
