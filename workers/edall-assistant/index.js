@@ -435,6 +435,9 @@ export function buildVerifiedReadReply(snapshots, conversation = []) {
   const data = snapshot.data;
   if (snapshot.tool === "get_platform_stats") {
     if (!data || typeof data !== "object") return "تعذر قراءة إحصاءات المنصة من قاعدة البيانات.";
+    if (data.statistics_migration_required === true) {
+      return "إحصاءات المنصة غير متاحة مؤقتًا لأن قاعدة البيانات لم تُحدّث بعد لتسجيل حسابات Auth ومحاولات الاختبار الفعلية. لم أعرض أرقامًا قديمة أو غير دقيقة. يجب تطبيق ترحيل الإحصاءات بعد التحقق من نسخة Staging واستعادة النسخة الاحتياطية.";
+    }
     const labels = [["users","المستخدمون"],["profiles","ملفات المستخدمين"],["unlinked_profiles","حسابات بلا ملف شخصي"],["students","الطلاب"],["teachers","المعلمون"],["admins","المديرون"],["courses","الدورات"],["lessons","المحاضرات"],["lesson_video_links","روابط الفيديو"],["lesson_pdf_links","روابط PDF"],["enrollments","التسجيلات"],["exams","الاختبارات"],["exam_attempts","محاولات الاختبار"]];
     const requiredLabels = labels.filter(([key]) => key !== "exam_attempts" || data.exam_attempts_tracked === true);
     if (requiredLabels.some(([key]) => !Number.isSafeInteger(Number(data[key])) || Number(data[key]) < 0)) return "لم تكتمل قراءة بعض الإحصاءات من قاعدة البيانات؛ لن أعرض أرقامًا غير مؤكدة.";
@@ -1099,7 +1102,7 @@ async function tool(name, args, env, token, user, roles, images = []) {
       "enrollments", "exams", "exam_attempts"
     ];
     if (typeof snapshot?.exam_attempts_tracked !== "boolean") {
-      throw new Error("تعذر التحقق من توافر جدول تتبع محاولات الاختبار.");
+      return { statistics_migration_required: true };
     }
     const result = {};
     for (const key of keys) {
