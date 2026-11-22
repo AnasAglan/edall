@@ -8,6 +8,17 @@ const { encryptMediaStream, createEncryptedMediaResponse } = require('./offline-
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+function discardBody(body) {
+  if (!body) return;
+  if (typeof body.destroy === 'function') {
+    body.destroy();
+    return;
+  }
+  if (typeof body.cancel === 'function') {
+    Promise.resolve(body.cancel()).catch(() => {});
+  }
+}
+
 class OfflineLibrary {
   constructor({ directory, safeStorage, fetchMedia }) {
     if (!path.isAbsolute(directory)) throw new TypeError('Offline storage path must be absolute.');
@@ -72,6 +83,7 @@ class OfflineLibrary {
     const encryptOne = async (role, reference) => {
       const response = await this.fetchMedia(reference);
       if (!response || response.status !== 200 || !response.body) {
+        if (response && response.body) discardBody(response.body);
         throw new Error('The media provider did not return a complete stream.');
       }
       const expectedPrefix = role === 'video' ? 'video/' : 'audio/';
@@ -83,10 +95,10 @@ class OfflineLibrary {
       if (
         responseType &&
         responseType !== 'application/octet-stream' &&
-        !responseType.startsWith('video/') &&
-        !responseType.startsWith('audio/')
+        !responseType.startsWith(expectedPrefix)
       ) {
-        throw new Error('The media provider returned a non-media response; the file was not saved.');
+        discardBody(response.body);
+        throw new Error('The media provider returned an unexpected media type; the file was not saved.');
       }
       const filePath = this.mediaPath(id, role);
       const descriptor = await encryptMediaStream({
