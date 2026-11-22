@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   isFawryPaidStatus,
+  isFawryReferenceMatch,
   sha256Hex,
   verifyFawryNotificationSignature,
   type FawryNotification,
@@ -65,7 +66,7 @@ Deno.serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
     const { data: matches, error: lookupError } = await admin.from("payment_orders")
-      .select("id,amount,currency,provider,status,metadata")
+      .select("id,amount,currency,provider,status,metadata,provider_reference")
       .eq("provider", "fawry")
       .filter("metadata->>fawry_merchant_ref", "eq", merchantRefNumber)
       .limit(2);
@@ -79,6 +80,12 @@ Deno.serve(async (req) => {
     }
 
     const order = matches[0];
+    // Reject callbacks until the charge response has been verified and the actual
+    // Fawry reference is persisted. A transient early callback receives non-200 so
+    // Fawry can retry; a valid merchant reference alone is not sufficient.
+    if (!isFawryReferenceMatch(order.metadata, order.provider_reference, fawryRefNumber)) {
+      return json({ error: "Fawry reference does not match the persisted payment order." }, 409);
+    }
     if (order.currency !== "EGP" || Number(order.amount).toFixed(2) !== orderAmount.toFixed(2)) {
       return json({ error: "Fawry order amount or currency mismatch." }, 409);
     }
