@@ -16,7 +16,8 @@ function createTestSafeStorage() {
     encryptString(value) {
       const nonce = crypto.randomBytes(12);
       const cipher = crypto.createCipheriv('aes-256-gcm', master, nonce);
-      return Buffer.concat([nonce, cipher.getAuthTag(), cipher.update(value, 'utf8'), cipher.final()]);
+      const body = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
+      return Buffer.concat([nonce, cipher.getAuthTag(), body]);
     },
     decryptString(payload) {
       const nonce = payload.subarray(0, 12);
