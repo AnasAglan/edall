@@ -48,6 +48,7 @@ async function withTemp(t, callback) {
 test('stores only authenticated encrypted chunks and round-trips the original stream', async t => {
   await withTemp(t, async directory => {
     const plain = Buffer.from('private lesson video content '.repeat(120000));
+    const expected = Buffer.from(plain);
     const safeStorage = createTestSafeStorage();
     const filePath = path.join(directory, 'sample.edenc');
     const descriptor = await encryptMediaStream({
@@ -61,19 +62,20 @@ test('stores only authenticated encrypted chunks and round-trips the original st
     assert.equal(stored.subarray(0, 8).toString('ascii'), 'EDALLEN1');
     assert.equal(stored.includes(Buffer.from('private lesson video content')), false);
     assert.equal(descriptor.format, 'EDALLEN1');
-    assert.equal(descriptor.totalBytes, plain.length);
+    assert.equal(descriptor.totalBytes, expected.length);
     assert.ok(descriptor.chunks.length > 1);
 
     const response = createEncryptedMediaResponse({ filePath, descriptor, safeStorage });
     assert.equal(response.status, 200);
     assert.equal(response.headers['Content-Type'], 'video/mp4');
-    assert.deepEqual(await collect(response.body), plain);
+    assert.deepEqual(await collect(response.body), expected);
   });
 });
 
 test('decrypts only requested byte ranges and returns correct partial headers', async t => {
   await withTemp(t, async directory => {
     const plain = Buffer.from(Array.from({ length: 200000 }, (_, i) => i % 251));
+    const expected = Buffer.from(plain);
     const safeStorage = createTestSafeStorage();
     const filePath = path.join(directory, 'range.edenc');
     const descriptor = await encryptMediaStream({
@@ -92,7 +94,7 @@ test('decrypts only requested byte ranges and returns correct partial headers', 
     assert.equal(response.status, 206);
     assert.equal(response.headers['Content-Range'], 'bytes 12345-54321/200000');
     assert.equal(response.headers['Content-Length'], '41977');
-    assert.deepEqual(await collect(response.body), plain.subarray(12345, 54322));
+    assert.deepEqual(await collect(response.body), expected.subarray(12345, 54322));
   });
 });
 
