@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 
 const PIPED_SOURCE = "https://raw.githubusercontent.com/TeamPiped/documentation/main/content/docs/public-instances/index.md";
 const INVIDIOUS_SOURCE = "https://api.invidious.io/instances.json?sort_by=health";
+const INVIDIOUS_DOCS_SOURCE = "https://raw.githubusercontent.com/iv-org/documentation/master/docs/instances.md";
 const OUTPUT = new URL("../public/video-instances.json", import.meta.url);
 export const SAMPLE_VIDEO_IDS = ["dQw4w9WgXcQ", "aqz-KE-bpKQ"];
 export const CURATED_INVIDIOUS_INSTANCES = [
@@ -142,6 +143,66 @@ export function discoverInvidious(payload) {
     });
   }
   return uniqueByUrl(entries);
+}
+
+export function discoverInvidiousFromMarkdown(markdown) {
+  const entries = [];
+  let inPublicInstances = false;
+  for (const line of String(markdown || "").split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (/^#{2,6}\s+List of public Invidious Instances\b/i.test(trimmed)) {
+      inPublicInstances = true;
+      continue;
+    }
+    if (inPublicInstances && /^#{1,6}\s+/.test(trimmed)) break;
+    if (!inPublicInstances) continue;
+
+    const match = trimmed.match(/^[*-]\s+\[[^\]]+\]\((https:\/\/[^)\s]+)\)/i);
+    if (!match) continue;
+    const url = cleanBase(match[1]);
+    if (!url) continue;
+    entries.push({
+      url,
+      provider: "invidious",
+      official: true,
+      apiListed: false,
+      directoryApiListed: false,
+      apiProbeCandidate: true,
+      source: "official-documentation-fallback",
+    });
+  }
+  return uniqueByUrl(entries);
+}
+
+export async function fetchInvidiousDirectory({
+  fetchApi = () => fetchJson(INVIDIOUS_SOURCE),
+  fetchDocs = () => fetchText(INVIDIOUS_DOCS_SOURCE),
+} = {}) {
+  let apiError;
+  try {
+    const instances = discoverInvidious(await fetchApi());
+    if (instances.length) return instances;
+    throw new Error("Invidious instances API returned no validated public HTTPS endpoints.");
+  } catch (error) {
+    apiError = error;
+  }
+
+  try {
+    const instances = discoverInvidiousFromMarkdown(await fetchDocs());
+    if (!instances.length) {
+      throw new Error("Official Invidious documentation contained no validated public HTTPS instances.");
+    }
+    console.warn(
+      "[video-registry] Invidious API unavailable; using the official documentation list as fallback:",
+      String(apiError?.message || apiError)
+    );
+    return instances;
+  } catch (docsError) {
+    throw new Error(
+      "Invidious API failed (" + String(apiError?.message || apiError) +
+      "); official documentation fallback failed (" + String(docsError?.message || docsError) + ")."
+    );
+  }
 }
 
 function parseQuality(stream) {
@@ -630,7 +691,7 @@ async function main() {
 
   const [pipedResult, invidiousResult] = await Promise.allSettled([
     fetchText(PIPED_SOURCE).then((text) => { const list = discoverPiped(text); if (!list.length) throw new Error("Piped directory contained no validated API endpoints."); return list; }),
-    fetchJson(INVIDIOUS_SOURCE).then((json) => { const list = discoverInvidious(json); if (!list.length) throw new Error("Invidious directory contained no validated public HTTPS endpoints."); return list; }),
+    fetchInvidiousDirectory(),
   ]);
 
   const sourceErrors = [];
