@@ -1,0 +1,28 @@
+name: Windows encrypted offline media vault
+
+on:
+  pull_request:
+    paths:
+      - "electron/offline-vault.cjs"
+      - "electron/offline-vault.test.cjs"
+      - ".github/workflows/electron-offline-vault.yml"
+  push:
+    branches: [main]
+    paths:
+      - "electron/offline-vault.cjs"
+      - "electron/offline-vault.test.cjs"
+      - ".github/workflows/electron-offline-vault.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  encrypted-vault-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Run encrypted media vault tests
+        run: node --test electron/offline-vault.test.cjs
