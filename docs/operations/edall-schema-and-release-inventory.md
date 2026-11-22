@@ -8,7 +8,7 @@
 
 - No SQL migration was applied to Production or the old Staging project during this review.
 - No Production deploy or PR merge was performed.
-- The existing Staging Lovable project is stale and its database migration ledger was not found. It is not an acceptable release-validation target until rebuilt/restored and re-verified.
+- The existing Staging Lovable project is stale and its database migration ledger was not reconciled. It is not an acceptable release-validation target until rebuilt/restored and re-verified.
 - The GitHub CI security suite applies migrations to a clean local Supabase stack. This does not prove the live Staging project is current.
 - The workflow named `Validate ED-ALL Staging isolation` uses non-secret fixture environment values. A green result is a build/isolation regression check, not an end-to-end live Staging DB test.
 
@@ -20,7 +20,7 @@ A batched, read-only schema inventory of Production observed:
 - 79 public RLS policies in the inspected schema snapshot.
 - Core tables include `profiles`, `user_roles`, `courses`, `lessons`, `enrollments`, `lesson_progress`, `exams`, `exam_attempts`, `exam_results`, `assignments`, `assignment_submissions`, `attendance_sessions`, `attendance_records`, `course_certificates`, `wallet_transactions`, `payment_orders`, `payment_provider_settings`, `payment_webhook_events`, and `platform_audit_log`.
 - `assignments.lesson_id` exists in the inspected schema.
-- `platform_audit_log` has an immutability-protection trigger in the inspected schema.
+- `platform_audit_log` has an immutability-protection trigger in the inspected schema. Existing business audit triggers cover course, role, profile-ban, payment-order, certificate, and assignment-grade changes; the initial inventory did not find wallet balance, wallet transaction, or provider-setting audit triggers. PR #71 proposes these missing triggers but is not merged.
 - Payment order storage enforces one open order per student/course across providers. The payment-order idempotency and unique provider-reference constraints were also observed.
 - The existing payment fulfillment RPC is server-side and accepts provider event ID, amount, currency, and payload hash.
 - Storage buckets observed: private `assignment-submissions`, public `avatars`, public `course-images`, and private `lesson-pdfs`.
@@ -31,7 +31,7 @@ These observations describe schema objects only. They do not establish that the 
 
 The repository contains 43 SQL migration files at the baseline above. Every filename below is present in source control.
 
-**Remote status rule:** Production has a `supabase_migrations.schema_migrations` relation, but the exact per-file comparison against all source migrations has not been signed off in this inventory. The old Staging project did not expose the expected migration-ledger relation. Therefore, each migration's remote application status is recorded as **unreconciled**, not “applied” or “missing”.
+**Observed Production ledger:** One consolidated read-only query confirmed `supabase_migrations.schema_migrations` exists and contains 21 rows, with the latest recorded version `20260730163017`. These entries correspond by migration sequence/time to the 21 source migrations through July 30, 2026. The repository contains 43 migration files, including 22 November 2026 migration files whose versions were not present in the observed ledger. However, the live schema already contains several objects introduced by those later source files. Therefore, those 22 files cannot safely be classified as simply unapplied: some DDL may have been applied outside the tracked migration ledger, or the live schema may be partially drifted. A per-file DDL/object reconciliation is required before any migration command or remote SQL write. The old Staging project remains stale and is not a valid comparison target.
 
 - `supabase/migrations/20260320161341_b62843a4-98f6-4c1c-a9fd-2e0bdd6525e0.sql` — remote application status: **unreconciled**
 - `supabase/migrations/20260321181847_7a3877a3-896d-4920-822c-ce4ee584b89a.sql` — remote application status: **unreconciled**
@@ -123,8 +123,8 @@ The live settings review observed invocation logs enabled at the existing 100% s
 | #65 | Guard video registry commit on successful refresh | Ready for review; not merged |
 | #66 | Retry transient video instance directory failures | Ready for review; not merged |
 | #67 | Incorrect mobile-wallet/Fawry interpretation | Closed; superseded by #68 |
-| #68 | Independent dormant Fawry provider; existing Paymob preserved | Ready for review; not merged |
-| #69 | Query-string redaction in Wrangler configurations | Draft pending full CI |
+| #68 | Independent dormant Fawry provider; existing Paymob preserved | Open; CI fix in progress; not merged |
+| #69 | Query-string redaction in Wrangler configurations | Draft; all four CI checks observed successful; not merged |
 
 All “Ready for review” entries remain unmerged. They are not deployed features.
 
