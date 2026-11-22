@@ -83,7 +83,8 @@ class OfflineLibrary {
       if (
         responseType &&
         responseType !== 'application/octet-stream' &&
-        !responseType.startsWith(expectedPrefix)
+        !responseType.startsWith('video/') &&
+        !responseType.startsWith('audio/')
       ) {
         throw new Error('The media provider returned a non-media response; the file was not saved.');
       }
@@ -92,9 +93,7 @@ class OfflineLibrary {
         source: response.body,
         filePath,
         safeStorage: this.safeStorage,
-        contentType: !responseType || responseType === 'application/octet-stream'
-          ? declaredType
-          : responseType
+        contentType: declaredType
       });
       createdFiles.push(filePath);
       return descriptor;
