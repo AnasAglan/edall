@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getPaymobIntegrationIds } from "../_shared/paymob-methods.ts";
 import {
   edallCorsHeaders,
   getEdallAppOrigins,
@@ -13,20 +14,7 @@ function json(body: Record<string,unknown>, status: number, headers: Record<stri
 }
 
 function paymentMethods(): number[] {
-  const raw = Deno.env.get("PAYMOB_INTEGRATION_IDS") || "";
-  let values: unknown[];
-  try {
-    values = raw.trim().startsWith("[")
-      ? JSON.parse(raw)
-      : raw.split(",").map(value => value.trim()).filter(Boolean);
-  } catch {
-    throw new Error("PAYMOB_INTEGRATION_IDS must be a JSON array or comma-separated list.");
-  }
-  const ids = values.map(value => Number(value));
-  if (!ids.length || ids.some(value => !Number.isSafeInteger(value) || value <= 0)) {
-    throw new Error("PAYMOB_INTEGRATION_IDS is missing or invalid.");
-  }
-  return [...new Set(ids)];
+  return getPaymobIntegrationIds(name => Deno.env.get(name));
 }
 
 function splitName(name: string) {
