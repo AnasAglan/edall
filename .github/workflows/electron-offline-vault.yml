@@ -5,6 +5,12 @@ on:
     paths:
       - "electron/offline-vault.cjs"
       - "electron/offline-vault.test.cjs"
+      - "electron/offline-library.cjs"
+      - "electron/offline-library.test.cjs"
+      - "electron/main.cjs"
+      - "electron/preload.cjs"
+      - "electron/offline.html"
+      - "electron/offline.js"
       - ".github/workflows/electron-offline-vault.yml"
   push:
     branches: [main]
@@ -25,4 +31,10 @@ jobs:
         with:
           node-version: 24
       - name: Run encrypted media vault tests
-        run: node --test electron/offline-vault.test.cjs
+        run: |
+          node --check electron/main.cjs
+          node --check electron/preload.cjs
+          node --check electron/offline-vault.cjs
+          node --check electron/offline-library.cjs
+          node --check electron/offline.js
+          node --test electron/offline-vault.test.cjs electron/offline-library.test.cjs
