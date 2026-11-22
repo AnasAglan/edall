@@ -191,4 +191,23 @@ $function$;
 REVOKE ALL ON FUNCTION public.create_payment_order(uuid,text) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.create_payment_order(uuid,text) TO authenticated;
 
+
+-- Register Fawry as an available but disabled provider. Checkout requests must
+-- never turn this switch on; a separate administrator action and server secret
+-- are both required before the provider can accept payments.
+INSERT INTO public.payment_provider_settings (
+  provider_code, display_name, enabled, currency, public_config, secret_binding_name
+)
+VALUES (
+  'fawry',
+  'Fawry',
+  false,
+  'EGP',
+  '{"checkout":"PayAtFawry-reference","environment":"staging"}'::jsonb,
+  'FAWRY_SECURE_KEY'
+)
+ON CONFLICT (provider_code) DO UPDATE
+SET enabled = false,
+    updated_at = now();
+
 COMMIT;
