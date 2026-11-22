@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   createFawryRequestSignature,
   formatFawryAmount,
@@ -109,7 +111,6 @@ describe("dormant Fawry payment provider", () => {
     expect(isFawryPaidStatus("NEW")).toBe(false);
     expect(isFawryPaidStatus("DELIVERED")).toBe(false);
   });
-}
   it("does not self-enable Fawry from checkout and seeds the database provider disabled", () => {
     const handler = readFileSync(resolve(process.cwd(), "supabase/functions/create-fawry-payment-intention/index.ts"), "utf8");
     const migration = readFileSync(resolve(process.cwd(), "supabase/migrations/20261123100000_add_fawry_payment_order_provider.sql"), "utf8");
@@ -120,4 +121,15 @@ describe("dormant Fawry payment provider", () => {
     expect(migration).toContain("ON CONFLICT (provider_code) DO UPDATE");
     expect(migration).toContain("SET enabled = false");
   });
+  it("does not self-enable Fawry from checkout and seeds the database provider disabled", () => {
+    const handler = readFileSync(resolve(process.cwd(), "supabase/functions/create-fawry-payment-intention/index.ts"), "utf8");
+    const migration = readFileSync(resolve(process.cwd(), "supabase/migrations/20261123100000_add_fawry_payment_order_provider.sql"), "utf8");
+    expect(handler).not.toContain('.from("payment_provider_settings").upsert');
+    expect(migration).toContain("'fawry'");
+    expect(migration).toContain("'Fawry'");
+    expect(migration).toContain("  false,");
+    expect(migration).toContain("ON CONFLICT (provider_code) DO UPDATE");
+    expect(migration).toContain("SET enabled = false");
+  });
+
 });
