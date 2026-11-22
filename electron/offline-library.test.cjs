@@ -36,12 +36,12 @@ async function collect(stream) {
   return Buffer.concat(parts);
 }
 
-async function createLibrary(t, fetchMedia) {
+async function createLibrary(t, fetchMedia, safeStorage = createTestSafeStorage()) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'edall-library-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   return new OfflineLibrary({
     directory,
-    safeStorage: createTestSafeStorage(),
+    safeStorage,
     fetchMedia
   });
 }
@@ -100,6 +100,38 @@ test('supports authenticated HTTP byte ranges for offline playback', async t => 
   assert.equal(response.status, 206);
   assert.equal(response.headers['Content-Range'], 'bytes 2000-8000/150000');
   assert.deepEqual(await collect(response.body), expected.subarray(2000, 8001));
+});
+
+
+test('saves, lists and plays manifests using modern async Electron safeStorage', async t => {
+  const legacy = createTestSafeStorage();
+  const asyncOnly = {
+    isAsyncEncryptionAvailable: async () => true,
+    encryptStringAsync: async value => legacy.encryptString(value),
+    decryptStringAsync: async value => ({
+      result: legacy.decryptString(value),
+      shouldReEncrypt: false
+    })
+  };
+  const bytes = Buffer.from('async-library-content-'.repeat(3000));
+  const expected = Buffer.from(bytes);
+  const library = await createLibrary(t, async reference => ({
+    status: 200,
+    contentType: reference.mimeType,
+    body: Readable.from([bytes])
+  }), asyncOnly);
+
+  const saved = await library.save({
+    title: 'Async storage lesson',
+    videoId: 'abcdefghijk',
+    height: 480,
+    video: { url: 'opaque-video-token', mimeType: 'video/mp4' }
+  });
+  const listed = await library.list();
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].id, saved.id);
+  const playback = await library.createResponse(saved.id, 'video');
+  assert.deepEqual(await collect(playback.body), expected);
 });
 
 test('rejects malformed video IDs, path traversal IDs and failed provider responses', async t => {
