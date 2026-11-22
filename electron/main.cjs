@@ -281,13 +281,20 @@ ipcMain.handle('edall:video-fullscreen', (event, enabled) => {
         const id = url.pathname.slice(1);
         const saved = await offlineLibrary.createResponse(id, offlineRole, request.headers.get('range'));
         const headers = new Headers(saved.headers);
-        headers.set('Access-Control-Allow-Origin', ORIGIN);
+        const requestOrigin = request.headers.get('origin');
+        if (requestOrigin && requestOrigin !== ORIGIN && requestOrigin !== 'null') {
+          return new Response('Origin denied', { status: 403 });
+        }
+        headers.set('Access-Control-Allow-Origin', requestOrigin || ORIGIN);
         return new Response(Readable.toWeb(saved.body), { status: saved.status, headers });
       } catch (error) {
         if (error && error.statusCode === 416) {
           return new Response(null, {
             status: 416,
-            headers: { 'Content-Range': error.contentRange || 'bytes */0', 'Access-Control-Allow-Origin': ORIGIN }
+            headers: {
+              'Content-Range': error.contentRange || 'bytes */0',
+              'Access-Control-Allow-Origin': request.headers.get('origin') === 'null' ? 'null' : ORIGIN
+            }
           });
         }
         return new Response('Offline media unavailable', {
@@ -316,9 +323,12 @@ ipcMain.handle('edall:video-fullscreen', (event, enabled) => {
   windowRef.webContents.setWindowOpenHandler(({ url }) => { openOutside(url); return { action: 'deny' }; });
   windowRef.webContents.on('will-navigate', (event, raw) => {
     if (raw.startsWith('edall-restart:')) { event.preventDefault(); app.relaunch(); app.exit(0); return; }
+    if (isOfflineUiUrl(raw)) return;
     try { const u = new URL(raw); if (u.origin !== ORIGIN || /\.pdf$/i.test(u.pathname)) { event.preventDefault(); openOutside(raw); } } catch { event.preventDefault(); }
   });
-  windowRef.webContents.on('will-frame-navigate', (event, details) => { if (!frameAllowed(details.url)) event.preventDefault(); });
+  windowRef.webContents.on('will-frame-navigate', (event, details) => {
+    if (!frameAllowed(details.url) && !isOfflineUiUrl(details.url)) event.preventDefault();
+  });
   windowRef.webContents.on('will-attach-webview', event => event.preventDefault());
   windowRef.webContents.on('before-input-event', (event, input) => { if (input.key === 'F12' || (input.control && input.shift && ['i','j','c'].includes(input.key.toLowerCase()))) event.preventDefault(); });
   windowRef.webContents.session.setPermissionCheckHandler((_wc, permission) => {
