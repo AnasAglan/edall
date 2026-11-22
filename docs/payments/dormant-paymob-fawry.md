@@ -2,7 +2,7 @@
 
 ## Current state
 
-**Neither provider is activated by this change.** No feature flag, merchant credential, provider setting, payment order, webhook event, or deployment is written or enabled by this source-only change.
+**Neither provider is activated by this change.** The migration seeds Fawry with `enabled = false`; the checkout handler cannot enable it. No feature flag or merchant credential is configured, and no payment order, webhook event, or deployment is written by this source-only change.
 
 - Paymob remains the existing provider on `provider_code = primary`, using its current Intention / Unified Checkout path and signed Paymob webhook.
 - Fawry is a separate provider on `provider_code = fawry`, using the PayAtFawry reference-number API. It is not an extra Paymob integration ID and is not a mobile-wallet channel.
@@ -12,7 +12,7 @@
 
 | Secret | Purpose |
 |---|---|
-| `FAWRY_PROVIDER_ENABLED` | Exact string `true` enables new Fawry requests; anything else keeps it disabled |
+| `FAWRY_PROVIDER_ENABLED` | Exact string `true` is required, alongside an administrator-controlled `payment_provider_settings.enabled = true` row; anything else keeps it disabled |
 | `FAWRY_MERCHANT_CODE` | Fawry merchant code |
 | `FAWRY_SECURE_KEY` | Fawry server-side SHA-256 signing key |
 | `FAWRY_ENVIRONMENT` | `staging` by default; exact `production` chooses the production endpoint |
