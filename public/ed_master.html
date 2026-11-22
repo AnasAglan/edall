@@ -1924,6 +1924,19 @@ word-spacing: normal !important;
         </div>
 
 
+        <section id="guestWelcomePanel" aria-labelledby="guestWelcomeTitle" style="display:none;margin:18px 20px 8px;padding:22px 24px;border-radius:18px;background:linear-gradient(135deg,rgba(37,99,235,.14),rgba(124,58,237,.10));border:1px solid var(--border);">
+            <div style="max-width:900px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;">
+                <div style="flex:1;min-width:230px;">
+                    <h2 id="guestWelcomeTitle" style="margin:0 0 7px;font-size:1.35rem;font-weight:900;">ابدأ رحلتك التعليمية مع ED-ALL</h2>
+                    <p id="guestWelcomeDesc" style="margin:0;color:var(--text-muted);line-height:1.8;">اكتشف الدورات العامة وسجّل حسابًا لمتابعة دروسك وامتحاناتك وشهاداتك من مكان واحد.</p>
+                </div>
+                <div style="display:flex;gap:9px;flex-wrap:wrap;">
+                    <button id="guestStartBtn" type="button" class="btn btn-accent" onclick="showPage('loginPage')">ابدأ الآن</button>
+                    <button id="guestBrowseBtn" type="button" class="btn btn-outline" onclick="document.getElementById('coursesGrid').scrollIntoView({behavior:'smooth',block:'start'})">تصفح الدورات</button>
+                </div>
+            </div>
+        </section>
+
         <div style="padding: 0 20px;">
             <div class="search-bar">
                 <!-- Dummy inputs to trap browser autofill (Chrome ignores autocomplete=off) -->
@@ -5006,6 +5019,8 @@ window.triggerModalClose = function() {
                 if (currentUser) {
                     document.getElementById('loginBtn').style.display = 'none';
                     document.getElementById('userMenu').style.display = 'inline-block';
+                    const guestWelcomePanel = document.getElementById('guestWelcomePanel');
+                    if (guestWelcomePanel) guestWelcomePanel.style.display = 'none';
                     document.getElementById('userName').textContent = currentUser.name || currentUser.email;
                     
                     if (currentUser.roles && currentUser.roles.includes('admin')) {
@@ -5028,6 +5043,8 @@ window.triggerModalClose = function() {
                 } else {
                     document.getElementById('loginBtn').style.display = 'inline-flex';
                     document.getElementById('userMenu').style.display = 'none';
+                    const guestWelcomePanel = document.getElementById('guestWelcomePanel');
+                    if (guestWelcomePanel) guestWelcomePanel.style.display = 'block';
                     document.getElementById('adminUiBtn').style.display = 'none';
                     const releaseEditButton = document.getElementById('releaseAdminEditBtn');
                     if (releaseEditButton) releaseEditButton.style.display = 'none';
@@ -5086,6 +5103,10 @@ window.triggerModalClose = function() {
                 themeText: 'الوضع الليلي',
                 headerTitle: 'ED ALL',
                 headerDesc: 'منصة تعليمية متطورة تجمع بين أحدث التقنيات وأفضل المحتويات التعليمية بتجربة مستخدم استثنائية',
+                guestWelcomeTitle: 'ابدأ رحلتك التعليمية مع ED-ALL',
+                guestWelcomeDesc: 'اكتشف الدورات العامة وسجّل حسابًا لمتابعة دروسك وامتحاناتك وشهاداتك من مكان واحد.',
+                guestStartText: 'ابدأ الآن',
+                guestBrowseText: 'تصفح الدورات',
                 searchPlaceholder: 'ابحث عن كورس، محتوى، أو مدرس...',
                 filterAll: 'جميع الكورسات',
                 filterEnrolled: 'الكورسات المنضمة',
@@ -5143,6 +5164,10 @@ window.triggerModalClose = function() {
                 themeText: 'Dark Mode',
                 headerTitle: 'ED ALL',
                 headerDesc: 'An advanced educational platform combining the latest technology with the best educational content',
+                guestWelcomeTitle: 'Start your learning journey with ED-ALL',
+                guestWelcomeDesc: 'Explore public courses and create an account to track lessons, exams and certificates in one place.',
+                guestStartText: 'Get started',
+                guestBrowseText: 'Browse courses',
                 searchPlaceholder: 'Search for courses, content, or teachers...',
                 filterAll: 'All Courses',
                 filterEnrolled: 'Enrolled',
@@ -5217,6 +5242,10 @@ window.triggerModalClose = function() {
                 'adminText': t.adminText,
                 'themeText': t.themeText,
                 'languageText': t.languageText,
+                'guestWelcomeTitle': t.guestWelcomeTitle,
+                'guestWelcomeDesc': t.guestWelcomeDesc,
+                'guestStartBtn': t.guestStartText,
+                'guestBrowseBtn': t.guestBrowseText,
                 'loginPageTitle': t.loginPageTitle,
                 'loginPageDesc': t.loginPageDesc,
                 'verifyEmailTitle': t.verifyEmailTitle,
