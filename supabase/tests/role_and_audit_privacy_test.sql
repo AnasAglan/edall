@@ -2,7 +2,7 @@
 -- Runs inside a transaction and rolls back all fixture accounts/data.
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT plan(44);
+SELECT plan(51);
 
 INSERT INTO auth.users (
   id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -302,6 +302,46 @@ SELECT ok(
   'first-admin bootstrap recounts after a shared lock only when roles are empty'
 )
 FROM positions;
+
+SELECT ok(
+  to_regprocedure('public.get_my_learning_history()') IS NOT NULL,
+  'student learning history RPC exists'
+);
+SELECT ok(
+  NOT has_function_privilege('anon','public.get_my_learning_history()','EXECUTE'),
+  'anonymous callers cannot read student learning history'
+);
+SELECT ok(
+  has_function_privilege('authenticated','public.get_my_learning_history()','EXECUTE'),
+  'authenticated students can call their own history RPC'
+);
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_proc p
+    WHERE p.oid='public.get_my_learning_history()'::regprocedure
+      AND p.prosecdef
+      AND 'search_path=""' = ANY(p.proconfig)
+  ),
+  'student learning history RPC is SECURITY DEFINER with an empty search path'
+);
+SELECT ok(
+  to_regprocedure('public.wallet_user_ledger(uuid,integer,integer)') IS NOT NULL,
+  'administrator wallet ledger RPC exists'
+);
+SELECT ok(
+  NOT has_function_privilege('anon','public.wallet_user_ledger(uuid,integer,integer)','EXECUTE'),
+  'anonymous callers cannot access administrator wallet transaction history'
+);
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_proc p
+    WHERE p.oid='public.wallet_user_ledger(uuid,integer,integer)'::regprocedure
+      AND p.prosecdef
+      AND 'search_path=""' = ANY(p.proconfig)
+      AND position('admin_mfa_verified' in p.prosrc) > 0
+  ),
+  'wallet ledger RPC is a SECURITY DEFINER function with an internal AAL2 check'
+);
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -1762,6 +1762,14 @@ word-spacing: normal !important;
                         <i class="fas fa-book-open"></i>
                         <span id="myCoursesText">كورساتي</span>
                     </div>
+                    <div class="user-dropdown-item" id="myLearningRecordsBtn">
+                        <i class="fas fa-clipboard-list"></i>
+                        <span id="myLearningRecordsText">امتحاناتي وواجباتي</span>
+                    </div>
+                    <div class="user-dropdown-item" id="myCertificatesBtn">
+                        <i class="fas fa-certificate"></i>
+                        <span id="myCertificatesText">شهاداتي</span>
+                    </div>
                     <div class="user-dropdown-item" id="favoritesBtn">
                         <i class="fas fa-heart"></i>
                         <span id="favoritesText">المفضلة</span>
@@ -2212,6 +2220,28 @@ word-spacing: normal !important;
             </div>
             <div id="walletTopupUsersList"></div>
         </div>
+    </div>
+    <div id="myLearningRecordsPage" class="page">
+        <div class="header">
+            <div class="logo" onclick="showPage('mainPage')">ED</div>
+            <div class="header-title" id="myLearningRecordsTitle">امتحاناتي وواجباتي</div>
+            <div class="header-desc" id="myLearningRecordsDesc">سجل محاولاتك ونتائجك وتسليماتك حسب الدورة</div>
+            <div class="actions">
+                <button class="btn" onclick="showPage('mainPage')"><i class="fas fa-arrow-right"></i> <span>العودة</span></button>
+            </div>
+        </div>
+        <div id="myLearningRecordsBody" style="padding:20px;max-width:1100px;margin:0 auto;"></div>
+    </div>
+    <div id="myCertificatesPage" class="page">
+        <div class="header">
+            <div class="logo" onclick="showPage('mainPage')">ED</div>
+            <div class="header-title" id="myCertificatesTitle">شهاداتي</div>
+            <div class="header-desc" id="myCertificatesDesc">شهاداتك وروابط التحقق والتنزيل</div>
+            <div class="actions">
+                <button class="btn" onclick="showPage('mainPage')"><i class="fas fa-arrow-right"></i> <span>العودة</span></button>
+            </div>
+        </div>
+        <div id="myCertificatesBody" style="padding:20px;max-width:1100px;margin:0 auto;"></div>
     </div>
 
     <footer>
@@ -4803,6 +4833,18 @@ window.triggerModalClose = function() {
                     renderEnrolledCourses();
                     hideUserMenu();
                 });
+                document.getElementById('myLearningRecordsBtn').addEventListener('click', (e) => {
+                    e.preventDefault();
+                    showPage('myLearningRecordsPage');
+                    renderMyLearningRecordsPage();
+                    hideUserMenu();
+                });
+                document.getElementById('myCertificatesBtn').addEventListener('click', (e) => {
+                    e.preventDefault();
+                    showPage('myCertificatesPage');
+                    renderMyCertificatesPage();
+                    hideUserMenu();
+                });
                 document.getElementById('favoritesBtn').addEventListener('click', (e) => {
                     e.preventDefault();
                     showPage('favoritesPage');
@@ -5078,6 +5120,12 @@ window.triggerModalClose = function() {
                 profileText: 'الملف الشخصي',
                 notificationsText: 'الإشعارات',
                 myCoursesText: 'كورساتي',
+                myLearningRecordsText: 'امتحاناتي وواجباتي',
+                myCertificatesText: 'شهاداتي',
+                myLearningRecordsTitle: 'امتحاناتي وواجباتي',
+                myLearningRecordsDesc: 'سجل محاولاتك ونتائجك وتسليماتك حسب الدورة',
+                myCertificatesTitle: 'شهاداتي',
+                myCertificatesDesc: 'شهاداتك وروابط التحقق والتنزيل',
                 favoritesText: 'المفضلة',
                 manageCoursesText: 'إدارة الكورسات',
                 settingsText: 'الإعدادات',
@@ -5135,6 +5183,12 @@ window.triggerModalClose = function() {
                 profileText: 'Profile',
                 notificationsText: 'Notifications',
                 myCoursesText: 'My Courses',
+                myLearningRecordsText: 'My Exams & Assignments',
+                myCertificatesText: 'My Certificates',
+                myLearningRecordsTitle: 'My Exams & Assignments',
+                myLearningRecordsDesc: 'Your exam attempts, grades and assignment submissions by course',
+                myCertificatesTitle: 'My Certificates',
+                myCertificatesDesc: 'Your earned certificates, verification links and downloads',
                 favoritesText: 'Favorites',
                 manageCoursesText: 'Manage Courses',
                 settingsText: 'Settings',
@@ -5210,6 +5264,12 @@ window.triggerModalClose = function() {
                 'profileText': t.profileText,
                 'notificationsText': t.notificationsText,
                 'myCoursesText': t.myCoursesText,
+                'myLearningRecordsText': t.myLearningRecordsText,
+                'myCertificatesText': t.myCertificatesText,
+                'myLearningRecordsTitle': t.myLearningRecordsTitle,
+                'myLearningRecordsDesc': t.myLearningRecordsDesc,
+                'myCertificatesTitle': t.myCertificatesTitle,
+                'myCertificatesDesc': t.myCertificatesDesc,
                 'favoritesText': t.favoritesText,
                 'manageCoursesText': t.manageCoursesText,
                 'settingsText': t.settingsText,
@@ -11120,6 +11180,228 @@ exam.questions.forEach((question, index) => {
                 } catch(e){ console.error('fetchMyTransactions', e); return []; }
             }
 
+            function myHistoryDate(value){
+                if (!value) return t('غير مسجل','Not recorded');
+                var date = new Date(value);
+                return Number.isNaN(date.getTime()) ? t('غير متاح','Unavailable')
+                    : date.toLocaleString(currentLanguage === 'ar' ? 'ar-EG' : 'en-US');
+            }
+
+            function myHistoryStatus(status){
+                var labels = {
+                    in_progress:t('قيد التنفيذ','In progress'),
+                    essay_pending:t('بانتظار تصحيح المقال','Essay grading pending'),
+                    passed:t('ناجح','Passed'),
+                    completed:t('تم التسليم','Submitted'),
+                    not_submitted:t('لم يتم التسليم','Not submitted'),
+                    submitted_pending_grade:t('بانتظار التصحيح','Awaiting grade'),
+                    graded:t('تم التصحيح','Graded')
+                };
+                return labels[status] || t('غير محدد','Unknown');
+            }
+
+            window._myLearningHistoryCache = null;
+            window._myCertificateHistoryCache = [];
+
+            async function fetchMyLearningHistory(){
+                if (!currentUser) throw new Error(t('يجب تسجيل الدخول','Login required'));
+                var response = await sb.rpc('get_my_learning_history');
+                if (response.error) throw response.error;
+                var data = response.data || {};
+                return Array.isArray(data.courses) ? data.courses : [];
+            }
+
+            window.renderMyLearningRecordsPage = async function(){
+                if (!currentUser) {
+                    showToast(t('يجب تسجيل الدخول أولاً','Please sign in first'),'error');
+                    showPage('loginPage');
+                    return;
+                }
+                var body = document.getElementById('myLearningRecordsBody');
+                if (!body) return;
+                body.innerHTML = '<div style="text-align:center;padding:38px;"><div class="loading-spinner"></div></div>';
+                try {
+                    var coursesList = await fetchMyLearningHistory();
+                    window._myLearningHistoryCache = coursesList;
+                    if (!coursesList.length) {
+                        body.innerHTML = '<div style="text-align:center;padding:36px;opacity:.8;">' +
+                            t('لم تسجل في أي دورة بعد.','You are not enrolled in any courses yet.') + '</div>';
+                        return;
+                    }
+                    body.innerHTML = coursesList.map(function(course){
+                        var exams = Array.isArray(course.exams) ? course.exams : [];
+                        var assignments = Array.isArray(course.assignments) ? course.assignments : [];
+                        var examHtml = exams.length ? exams.map(function(exam){
+                            var attempts = Array.isArray(exam.attempts) ? exam.attempts : [];
+                            var attemptHtml = attempts.length ? attempts.map(function(attempt,index){
+                                var status = myHistoryStatus(attempt.status);
+                                var score = attempt.score == null ? t('لم تُحدد الدرجة بعد','No final grade yet') : String(attempt.score) + '%';
+                                var essay = attempt.essay_pending
+                                    ? '<div style="color:var(--warning,#f59e0b);font-weight:800;margin-top:4px;">' + t('بانتظار تصحيح المقال','Essay grading pending') + '</div>'
+                                    : '';
+                                return '<div style="border:1px solid var(--border,rgba(128,128,128,.2));border-radius:10px;padding:12px;margin:8px 0;">' +
+                                    '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;"><strong>' + t('المحاولة','Attempt') + ' ' + (index+1) + '</strong>' +
+                                    '<span style="font-weight:800;">' + escapeHtml(status) + '</span></div>' +
+                                    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px;margin-top:8px;font-size:.9rem;">' +
+                                    '<div><strong>' + t('وقت البدء: ','Started: ') + '</strong>' + escapeHtml(myHistoryDate(attempt.started_at)) + '</div>' +
+                                    '<div><strong>' + t('وقت الانتهاء: ','Finished: ') + '</strong>' + escapeHtml(myHistoryDate(attempt.submitted_at)) + '</div>' +
+                                    '<div><strong>' + t('عدد الأسئلة: ','Questions: ') + '</strong>' + escapeHtml(attempt.question_count == null ? (exam.question_count == null ? '—' : exam.question_count) : attempt.question_count) + '</div>' +
+                                    '<div><strong>' + t('الدرجة: ','Score: ') + '</strong>' + escapeHtml(score) + '</div></div>' + essay + '</div>';
+                            }).join('') : '<div style="opacity:.7;padding:8px;">' + t('لم تبدأ هذا الامتحان بعد.','You have not started this exam yet.') + '</div>';
+                            return '<div style="padding:12px 0;border-bottom:1px solid var(--border,rgba(128,128,128,.15));">' +
+                                '<div style="font-weight:800;">' + escapeHtml(exam.title || t('امتحان','Exam')) + '</div>' +
+                                '<div style="font-size:.88rem;opacity:.75;margin:4px 0 8px;">' + escapeHtml(t('الدرس: ','Lesson: ') + (exam.lesson_title || '—')) + ' · ' +
+                                escapeHtml(t('عدد الأسئلة: ','Questions: ') + (exam.question_count == null ? '—' : exam.question_count)) + '</div>' +
+                                attemptHtml + '</div>';
+                        }).join('') : '<div style="opacity:.7;">' + t('لا توجد امتحانات في هذه الدورة.','No exams in this course.') + '</div>';
+                        var assignmentHtml = assignments.length ? assignments.map(function(assignment){
+                            var status = myHistoryStatus(assignment.status);
+                            var grade = assignment.score == null ? t('لم تُحدد','Not graded') : String(assignment.score) + ' / ' + String(assignment.max_score);
+                            return '<div style="border:1px solid var(--border,rgba(128,128,128,.2));border-radius:10px;padding:12px;margin:8px 0;">' +
+                                '<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;"><strong>' + escapeHtml(assignment.title || t('واجب','Assignment')) + '</strong>' +
+                                '<span style="font-weight:800;">' + escapeHtml(status) + '</span></div>' +
+                                '<div style="font-size:.88rem;opacity:.78;margin-top:6px;">' +
+                                escapeHtml(t('الدرس: ','Lesson: ') + (assignment.lesson_title || t('كل الدورة','Entire course'))) + ' · ' +
+                                escapeHtml(t('الموعد النهائي: ','Due: ') + myHistoryDate(assignment.due_at)) + '</div>' +
+                                '<div style="font-size:.9rem;margin-top:6px;">' +
+                                escapeHtml(t('وقت التسليم: ','Submitted: ') + myHistoryDate(assignment.submitted_at)) + ' · ' +
+                                escapeHtml(t('الدرجة: ','Grade: ') + grade) + '</div>' +
+                                (assignment.feedback ? '<div style="margin-top:6px;"><strong>' + t('ملاحظات المعلم: ','Teacher feedback: ') + '</strong>' + escapeHtml(assignment.feedback) + '</div>' : '') +
+                                '</div>';
+                        }).join('') : '<div style="opacity:.7;">' + t('لا توجد واجبات في هذه الدورة.','No assignments in this course.') + '</div>';
+                        return '<section style="background:var(--card-bg,rgba(128,128,128,.06));border:1px solid var(--border,rgba(128,128,128,.16));border-radius:16px;padding:16px;margin-bottom:16px;">' +
+                            '<h3 style="margin:0 0 14px;">' + escapeHtml(course.course_title || t('دورة','Course')) + '</h3>' +
+                            '<div style="font-size:.88rem;opacity:.7;margin-bottom:14px;">' + t('تاريخ التسجيل: ','Enrolled: ') + escapeHtml(myHistoryDate(course.enrolled_at)) + '</div>' +
+                            '<h4 style="margin:14px 0 8px;"><i class="fas fa-file-alt"></i> ' + t('الامتحانات','Exams') + '</h4>' + examHtml +
+                            '<h4 style="margin:18px 0 8px;"><i class="fas fa-tasks"></i> ' + t('الواجبات','Assignments') + '</h4>' + assignmentHtml +
+                            '</section>';
+                    }).join('');
+                } catch(error) {
+                    console.error('renderMyLearningRecordsPage',error);
+                    body.innerHTML = '<div style="color:#ef4444;padding:18px;">' + escapeHtml(error && error.message || t('تعذر تحميل سجل التعلم.','Could not load learning history.')) +
+                        '<div style="margin-top:12px;"><button class="btn" onclick="renderMyLearningRecordsPage()">' + t('إعادة المحاولة','Retry') + '</button></div></div>';
+                }
+            };
+
+            function myCertificateSvg(certificate){
+                var studentName = currentUser && (currentUser.name || currentUser.full_name || currentUser.email) || '';
+                var courseTitle = certificate.course_title || '';
+                var issuedAt = myHistoryDate(certificate.issued_at);
+                var number = certificate.certificate_number || '';
+                var verifyUrl = window.location.origin + '/?verify-certificate=' + encodeURIComponent(certificate.verification_token || '');
+                function xml(value){
+                    return String(value == null ? '' : value).replace(/[&<>"']/g,function(character){
+                        return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'})[character];
+                    });
+                }
+                return '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1100" viewBox="0 0 1600 1100">' +
+                    '<defs><linearGradient id="certPaper" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fffdf8"/><stop offset="1" stop-color="#f2eadb"/></linearGradient>' +
+                    '<linearGradient id="certGold"><stop offset="0" stop-color="#96713a"/><stop offset=".5" stop-color="#d5b36b"/><stop offset="1" stop-color="#96713a"/></linearGradient></defs>' +
+                    '<rect width="1600" height="1100" fill="url(#certPaper)"/><rect x="34" y="34" width="1532" height="1032" rx="18" fill="none" stroke="#1d3552" stroke-width="8"/>' +
+                    '<rect x="58" y="58" width="1484" height="984" rx="12" fill="none" stroke="url(#certGold)" stroke-width="4"/>' +
+                    '<circle cx="800" cy="142" r="52" fill="#1d3552"/><text x="800" y="155" text-anchor="middle" font-family="Arial" font-size="38" font-weight="700" fill="#fff">ED</text>' +
+                    '<text x="800" y="235" text-anchor="middle" font-family="Arial,Tahoma" font-size="40" font-weight="700" letter-spacing="8" fill="#1d3552">ED-ALL</text>' +
+                    '<text x="800" y="350" text-anchor="middle" font-family="Tahoma,Arial" font-size="58" font-weight="700" fill="#1d3552" direction="rtl">شهادة إتمام دورة</text>' +
+                    '<text x="800" y="415" text-anchor="middle" font-family="Georgia,serif" font-size="28" letter-spacing="3" fill="#96713a">CERTIFICATE OF COMPLETION</text>' +
+                    '<text x="800" y="520" text-anchor="middle" font-family="Tahoma,Arial" font-size="30" fill="#35475e" direction="rtl">تشهد منصة ED-ALL بأن</text>' +
+                    '<text x="800" y="620" text-anchor="middle" font-family="Tahoma,Arial" font-size="58" font-weight="700" fill="#173552" direction="rtl">' + xml(studentName) + '</text>' +
+                    '<path d="M330 655 H1270" stroke="url(#certGold)" stroke-width="3"/>' +
+                    '<text x="800" y="735" text-anchor="middle" font-family="Tahoma,Arial" font-size="30" fill="#35475e" direction="rtl">قد أتم بنجاح متطلبات الدورة التعليمية</text>' +
+                    '<text x="800" y="815" text-anchor="middle" font-family="Tahoma,Arial" font-size="46" font-weight="700" fill="#1d3552" direction="rtl">' + xml(courseTitle) + '</text>' +
+                    '<text x="800" y="900" text-anchor="middle" font-family="Tahoma,Arial" font-size="23" fill="#35475e" direction="rtl">رقم الشهادة: ' + xml(number) + ' · تاريخ الإصدار: ' + xml(issuedAt) + '</text>' +
+                    '<text x="800" y="980" text-anchor="middle" font-family="Arial" font-size="16" fill="#66758a">' + xml(verifyUrl) + '</text></svg>';
+            }
+
+            window.downloadMyCertificatePng = function(certificateId){
+                var certificate = (window._myCertificateHistoryCache || []).find(function(item){ return item.id === certificateId; });
+                if (!certificate || certificate.revoked_at) {
+                    showToast(t('لا يمكن تنزيل هذه الشهادة.','This certificate cannot be downloaded.'),'error');
+                    return;
+                }
+                var source = URL.createObjectURL(new Blob([myCertificateSvg(certificate)],{type:'image/svg+xml;charset=utf-8'}));
+                var image = new Image();
+                image.onload = function(){
+                    var canvas = document.createElement('canvas');
+                    canvas.width = 1600; canvas.height = 1100;
+                    var context = canvas.getContext('2d');
+                    if (!context) { URL.revokeObjectURL(source); showToast(t('تعذر إنشاء الصورة.','Could not create image.'),'error'); return; }
+                    context.drawImage(image,0,0,1600,1100);
+                    canvas.toBlob(function(blob){
+                        URL.revokeObjectURL(source);
+                        if (!blob) { showToast(t('تعذر إنشاء الصورة.','Could not create image.'),'error'); return; }
+                        var url = URL.createObjectURL(blob);
+                        var link = document.createElement('a');
+                        link.href = url;
+                        link.download = (certificate.certificate_number || 'ED-ALL-certificate') + '.png';
+                        document.body.appendChild(link); link.click(); link.remove();
+                        URL.revokeObjectURL(url);
+                    },'image/png');
+                };
+                image.onerror = function(){ URL.revokeObjectURL(source); showToast(t('تعذر تحميل الشهادة.','Could not render certificate.'),'error'); };
+                image.src = source;
+            };
+
+            window.printMyCertificatePdf = function(certificateId){
+                var certificate = (window._myCertificateHistoryCache || []).find(function(item){ return item.id === certificateId; });
+                if (!certificate || certificate.revoked_at) {
+                    showToast(t('لا يمكن تنزيل هذه الشهادة.','This certificate cannot be downloaded.'),'error');
+                    return;
+                }
+                var popup = window.open('','_blank');
+                if (!popup) { showToast(t('اسمح بفتح نافذة منبثقة لحفظ PDF.','Allow pop-ups to save the PDF.'),'warning'); return; }
+                popup.document.open();
+                popup.document.write('<!doctype html><html lang="ar"><head><meta charset="utf-8"><title>' +
+                    escapeHtml(certificate.certificate_number || 'ED-ALL certificate') +
+                    '</title><style>@page{size:A4 landscape;margin:0}html,body{margin:0;padding:0}svg{width:100vw;height:100vh;display:block;object-fit:contain}</style></head><body>' +
+                    myCertificateSvg(certificate) + '<script>window.addEventListener("load",function(){window.focus();window.print();});</script></body></html>');
+                popup.document.close();
+            };
+
+            window.renderMyCertificatesPage = async function(){
+                if (!currentUser) {
+                    showToast(t('يجب تسجيل الدخول أولاً','Please sign in first'),'error');
+                    showPage('loginPage');
+                    return;
+                }
+                var body = document.getElementById('myCertificatesBody');
+                if (!body) return;
+                body.innerHTML = '<div style="text-align:center;padding:38px;"><div class="loading-spinner"></div></div>';
+                try {
+                    var coursesList = await fetchMyLearningHistory();
+                    var certificates = [];
+                    coursesList.forEach(function(course){
+                        (course.certificates || []).forEach(function(certificate){
+                            certificates.push(Object.assign({},certificate,{course_title:course.course_title}));
+                        });
+                    });
+                    window._myCertificateHistoryCache = certificates;
+                    if (!certificates.length) {
+                        body.innerHTML = '<div style="text-align:center;padding:36px;opacity:.8;">' +
+                            t('لا توجد شهادات مكتسبة حتى الآن.','You have not earned any certificates yet.') + '</div>';
+                        return;
+                    }
+                    body.innerHTML = certificates.map(function(certificate){
+                        var url = window.location.origin + '/?verify-certificate=' + encodeURIComponent(certificate.verification_token);
+                        var revoked = !!certificate.revoked_at;
+                        return '<section style="background:var(--card-bg,rgba(128,128,128,.06));border:1px solid var(--border,rgba(128,128,128,.16));border-radius:14px;padding:16px;margin-bottom:12px;">' +
+                            '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;"><strong>' + escapeHtml(certificate.course_title || '') + '</strong>' +
+                            '<span style="font-weight:800;color:' + (revoked ? '#ef4444' : '#16a34a') + ';">' + (revoked ? t('ملغاة','Revoked') : t('سارية','Valid')) + '</span></div>' +
+                            '<div style="margin-top:8px;">' + t('رقم الشهادة: ','Certificate no.: ') + '<strong dir="ltr">' + escapeHtml(certificate.certificate_number) + '</strong></div>' +
+                            '<div style="font-size:.9rem;opacity:.75;margin-top:4px;">' + t('تاريخ الإصدار: ','Issued: ') + escapeHtml(myHistoryDate(certificate.issued_at)) + '</div>' +
+                            '<div class="edf-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">' +
+                            '<a class="btn btn-outline" href="' + escapeHtml(url) + '" target="_blank" rel="noopener noreferrer">' + t('رابط التحقق والمشاركة','Share verification link') + '</a>' +
+                            (revoked ? '' :
+                              '<button class="btn btn-accent" onclick="downloadMyCertificatePng(\\'' + certificate.id + '\\')">' + t('تنزيل PNG','Download PNG') + '</button>' +
+                              '<button class="btn btn-outline" onclick="printMyCertificatePdf(\\'' + certificate.id + '\\')">' + t('حفظ PDF','Save PDF') + '</button>') +
+                            '</div></section>';
+                    }).join('');
+                } catch(error) {
+                    console.error('renderMyCertificatesPage',error);
+                    body.innerHTML = '<div style="color:#ef4444;padding:18px;">' + escapeHtml(error && error.message || t('تعذر تحميل الشهادات.','Could not load certificates.')) +
+                        '<div style="margin-top:12px;"><button class="btn" onclick="renderMyCertificatesPage()">' + t('إعادة المحاولة','Retry') + '</button></div></div>';
+                }
+            };
+
             window.renderWalletPage = async function(){
                 if (!currentUser) { showToast(t('يجب تسجيل الدخول', 'Login required'), 'error'); showPage('loginPage'); return; }
                 var body = document.getElementById('walletPageBody');
@@ -11276,6 +11558,8 @@ exam.questions.forEach((question, index) => {
                     var r = await sb.rpc('admin_search_users', { _term: term || '', _limit: 50, _offset: 0 });
                     if (r.error) throw r.error;
                     var users = r.data || [];
+                    window._walletAdminUsersById = window._walletAdminUsersById || {};
+                    users.forEach(function(user){ window._walletAdminUsersById[user.id] = user; });
                     if (users.length === 0) { listEl.innerHTML = '<div style="padding:16px;opacity:.75;">' + t('لا يوجد نتائج','No results') + '</div>'; return; }
                     listEl.innerHTML = users.map(function(u){
                         var safeName = escapeHtml((u.name || u.email || '').replace(/\x27/g,"&#39;"));
@@ -11287,6 +11571,7 @@ exam.questions.forEach((question, index) => {
                             + '</div>'
                             + '<div style="display:flex;align-items:center;gap:8px;">'
                             + '<span style="font-weight:900;color:#22d3ee;">' + fmt(u.balance) + '</span>'
+                            + '<button class="btn btn-outline admin-user-transactions" onclick="openWalletUserTransactions(\'' + u.id + '\')" title="' + t('سجل العمليات','Transaction history') + '"><i class="fas fa-list-alt"></i></button>'
                             + '<button class="btn btn-accent" onclick="openCreditUserModal(\'' + u.id + '\',\'' + safeName + '\', 1)" title="' + t('شحن','Top up') + '"><i class="fas fa-plus"></i></button>'
                             + '<button class="btn btn-danger" onclick="openCreditUserModal(\'' + u.id + '\',\'' + safeName + '\', -1)" title="' + t('خصم','Debit') + '"><i class="fas fa-minus"></i></button>'
                             + '</div>'
@@ -11298,6 +11583,62 @@ exam.questions.forEach((question, index) => {
                 }
             }
             window.runWalletUserSearch = runWalletUserSearch;
+
+            window.openWalletUserTransactions = async function(userId){
+                if (!isAdmin()) {
+                    showToast(t('صلاحيات غير كافية','Not authorized'),'error');
+                    return;
+                }
+                var selected = (window._walletAdminUsersById || {})[userId] || {};
+                var userName = selected.name || selected.email || userId;
+                showModal('<div style="text-align:center;padding:26px;"><div class="loading-spinner"></div><p>' +
+                    t('جارٍ تحميل سجل معاملات ','Loading transactions for ') + escapeHtml(userName) + '</p></div>');
+                try {
+                    var result = await sb.rpc('wallet_user_ledger',{
+                        _user_id:userId,_limit:100,_offset:0
+                    });
+                    if (result.error) throw result.error;
+                    var transactions = Array.isArray(result.data) ? result.data : [];
+                    var rows = transactions.length ? transactions.map(function(transaction){
+                        var amount = Number(transaction.amount || 0);
+                        var positive = amount >= 0;
+                        var when = transaction.created_at
+                            ? new Date(transaction.created_at).toLocaleString(currentLanguage === 'ar' ? 'ar-EG' : 'en-US')
+                            : '—';
+                        var typeLabel = transaction.type === 'purchase'
+                            ? t('شراء دورة','Course purchase')
+                            : transaction.type === 'admin_adjustment'
+                                ? t('تعديل إداري','Admin adjustment')
+                                : (transaction.type || t('عملية محفظة','Wallet transaction'));
+                        return '<tr><td>' + escapeHtml(when) + '</td>' +
+                            '<td>' + escapeHtml(typeLabel) + '</td>' +
+                            '<td>' + escapeHtml(transaction.note || '—') + '</td>' +
+                            '<td style="font-weight:900;white-space:nowrap;color:' + (positive ? '#16a34a' : '#ef4444') + ';" dir="ltr">' +
+                            escapeHtml(fmtSigned(amount)) + '</td></tr>';
+                    }).join('') : '<tr><td colspan="4" style="text-align:center;padding:24px;opacity:.7;">' +
+                        t('لا توجد معاملات لهذا المستخدم.','No transactions found for this user.') + '</td></tr>';
+                    var html = '<div style="max-width:850px;margin:0 auto;">' +
+                        '<h3 style="margin:0 0 4px;text-align:center;">' + t('سجل معاملات المستخدم','User transaction history') + '</h3>' +
+                        '<div style="text-align:center;opacity:.7;margin-bottom:16px;">' + escapeHtml(userName) + '</div>' +
+                        '<div style="overflow-x:auto;border:1px solid var(--border,rgba(128,128,128,.18));border-radius:12px;">' +
+                        '<table style="width:100%;border-collapse:collapse;min-width:590px;"><thead><tr>' +
+                        '<th style="padding:10px;text-align:start;">' + t('التاريخ','Date') + '</th>' +
+                        '<th style="padding:10px;text-align:start;">' + t('النوع','Type') + '</th>' +
+                        '<th style="padding:10px;text-align:start;">' + t('ملاحظة','Note') + '</th>' +
+                        '<th style="padding:10px;text-align:start;">' + t('المبلغ','Amount') + '</th>' +
+                        '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+                        '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap;">' +
+                        '<small style="opacity:.7;">' + t('آخر 100 عملية كحد أقصى.','Up to the latest 100 transactions.') + '</small>' +
+                        '<button class="btn btn-outline" onclick="closeModal()">' + t('إغلاق','Close') + '</button></div></div>';
+                    showModal(html);
+                } catch(error) {
+                    console.error('openWalletUserTransactions',error);
+                    showModal('<div style="text-align:center;padding:22px;">' +
+                        '<h3>' + t('تعذر تحميل سجل المعاملات','Could not load transaction history') + '</h3>' +
+                        '<p style="color:#ef4444;">' + escapeHtml(error && error.message || '') + '</p>' +
+                        '<button class="btn btn-outline" onclick="closeModal()">' + t('إغلاق','Close') + '</button></div>');
+                }
+            };
 
             window.openCreditUserModal = function(userId, userName, sign){
                 sign = (sign === -1) ? -1 : 1;
