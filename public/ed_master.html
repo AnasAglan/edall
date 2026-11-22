@@ -2890,7 +2890,13 @@ word-spacing: normal !important;
                 const _t = _edPack(_yt);
                 const showLbl0 = currentLanguage === 'ar' ? 'مشاهدة الفيديو' : 'Watch Video';
                 const hideLbl0 = currentLanguage === 'ar' ? 'إخفاء الفيديو' : 'Hide Video';
-                const offlineActions = window.edallDesktop && window.edallDesktop.isAndroid
+                const androidOfflineBridgeReady = Boolean(
+                    window.edallDesktop &&
+                    window.edallDesktop.isAndroid === true &&
+                    typeof window.edallDesktop.downloadOfflineVideo === 'function' &&
+                    typeof window.edallDesktop.openOfflineLibrary === 'function'
+                );
+                const offlineActions = androidOfflineBridgeReady
                     ? '<div style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin:6px 0 12px;">' +
                         '<button type="button" class="btn btn-sm btn-outline" data-offline-video="' + _yt +
                         '" data-course-id="' + edEsc(courseId || '') + '" data-lesson-id="' + edEsc(lessonId || '') +
@@ -2922,7 +2928,13 @@ word-spacing: normal !important;
         }
 
         window.downloadYouTubeVideoOffline = async function(button) {
-            if (!button || !window.edallDesktop || !window.edallDesktop.isAndroid) return;
+            if (
+                !button ||
+                !window.edallDesktop ||
+                window.edallDesktop.isAndroid !== true ||
+                typeof window.edallDesktop.downloadOfflineVideo !== 'function' ||
+                typeof window.edallDesktop.openOfflineLibrary !== 'function'
+            ) return;
             const videoId = button.dataset.offlineVideo || '';
             const courseId = button.dataset.courseId || '';
             const lessonId = button.dataset.lessonId || '';
