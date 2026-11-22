@@ -174,10 +174,13 @@ export function discoverInvidiousFromMarkdown(markdown) {
   return uniqueByUrl(entries);
 }
 
-async function fetchInvidiousDirectory() {
+export async function fetchInvidiousDirectory({
+  fetchApi = () => fetchJson(INVIDIOUS_SOURCE),
+  fetchDocs = () => fetchText(INVIDIOUS_DOCS_SOURCE),
+} = {}) {
   let apiError;
   try {
-    const instances = discoverInvidious(await fetchJson(INVIDIOUS_SOURCE));
+    const instances = discoverInvidious(await fetchApi());
     if (instances.length) return instances;
     throw new Error("Invidious instances API returned no validated public HTTPS endpoints.");
   } catch (error) {
@@ -185,7 +188,7 @@ async function fetchInvidiousDirectory() {
   }
 
   try {
-    const instances = discoverInvidiousFromMarkdown(await fetchText(INVIDIOUS_DOCS_SOURCE));
+    const instances = discoverInvidiousFromMarkdown(await fetchDocs());
     if (!instances.length) {
       throw new Error("Official Invidious documentation contained no validated public HTTPS instances.");
     }
