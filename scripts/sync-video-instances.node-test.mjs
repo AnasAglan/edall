@@ -182,7 +182,7 @@ test("does not retry permanent client errors such as a forbidden directory respo
         return { ok: false, status: 403 };
       }
     ),
-    /Directory fetch failed after 3 attempts: HTTP 403/
+    /Directory fetch failed after 1 attempt: HTTP 403/
   );
   assert.equal(calls, 1);
 });
