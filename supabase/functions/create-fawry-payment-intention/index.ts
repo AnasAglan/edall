@@ -127,20 +127,9 @@ Deno.serve(async (req) => {
     }
 
     const environment = Deno.env.get("FAWRY_ENVIRONMENT") === "production" ? "production" : "staging";
-    const { error: configError } = await admin.from("payment_provider_settings").upsert({
-      provider_code: "fawry",
-      display_name: "Fawry",
-      enabled: true,
-      currency: "EGP",
-      public_config: { checkout: "PayAtFawry-reference", environment },
-      secret_binding_name: "FAWRY_SECURE_KEY",
-      updated_by: user.id,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: "provider_code" });
-    if (configError) {
-      console.error("Fawry provider config write failed", configError.code || "database_error");
-      return json({ error: "Fawry provider configuration could not be verified." }, 503, cors);
-    }
+    // Do not self-enable the database provider from a checkout request.
+    // The independent payment_provider_settings.enabled switch is managed
+    // administratively and must remain false until a deliberate activation.
 
     const { data: orderData, error: orderError } = await admin.rpc("create_payment_order_for_provider", {
       _user_id: user.id,
