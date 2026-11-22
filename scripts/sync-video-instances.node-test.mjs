@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { discoverPiped, discoverInvidious, supportsInvidiousApi, assessSamplePlayback, SAMPLE_VIDEO_IDS, CURATED_INVIDIOUS_INSTANCES, parseHlsPlaylist, verifiedSampleHeights, classifyPlaybackHealth } from "./sync-video-instances.mjs";
+import { discoverPiped, discoverInvidious, supportsInvidiousApi, assessSamplePlayback, SAMPLE_VIDEO_IDS, CURATED_INVIDIOUS_INSTANCES, parseHlsPlaylist, verifiedSampleHeights, classifyPlaybackHealth, fetchDirectoryResponse } from "./sync-video-instances.mjs";
 
 test("discovers Piped API hosts from the current public directory table only", () => {
   const markdown = [
@@ -153,4 +153,51 @@ test("probes Invidious API=false entries and the four curated public Clearnet ca
     "https://invidious.tiekoetter.com",
   ]);
   assert.ok(CURATED_INVIDIOUS_INSTANCES.every((item) => item.curated && item.apiProbeCandidate));
+});
+
+
+test("retries transient directory network failures and recovers on the next attempt", async () => {
+  let calls = 0;
+  const response = await fetchDirectoryResponse(
+    "https://api.invidious.io/instances.json",
+    { Accept: "application/json" },
+    async () => {
+      calls += 1;
+      if (calls < 3) throw new TypeError("fetch failed");
+      return { ok: true, status: 200 };
+    }
+  );
+  assert.equal(response.status, 200);
+  assert.equal(calls, 3);
+});
+
+test("does not retry permanent client errors such as a forbidden directory response", async () => {
+  let calls = 0;
+  await assert.rejects(
+    fetchDirectoryResponse(
+      "https://api.invidious.io/instances.json",
+      { Accept: "application/json" },
+      async () => {
+        calls += 1;
+        return { ok: false, status: 403 };
+      }
+    ),
+    /Directory fetch failed after 1 attempt: HTTP 403/
+  );
+  assert.equal(calls, 1);
+});
+
+test("retries rate limits and upstream server errors", async () => {
+  let calls = 0;
+  const response = await fetchDirectoryResponse(
+    "https://api.invidious.io/instances.json",
+    { Accept: "application/json" },
+    async () => {
+      calls += 1;
+      if (calls === 1) return { ok: false, status: 503 };
+      return { ok: true, status: 200 };
+    }
+  );
+  assert.equal(response.status, 200);
+  assert.equal(calls, 2);
 });
