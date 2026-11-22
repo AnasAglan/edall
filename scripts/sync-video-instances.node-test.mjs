@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { assertProviderRegistryFresh } from "./assert-video-registry-fresh.mjs";
 import { discoverPiped, discoverInvidious, supportsInvidiousApi, assessSamplePlayback, SAMPLE_VIDEO_IDS, CURATED_INVIDIOUS_INSTANCES, parseHlsPlaylist, verifiedSampleHeights, classifyPlaybackHealth, fetchDirectoryResponse } from "./sync-video-instances.mjs";
 
 test("discovers Piped API hosts from the current public directory table only", () => {
@@ -200,4 +201,23 @@ test("retries rate limits and upstream server errors", async () => {
   );
   assert.equal(response.status, 200);
   assert.equal(calls, 2);
+});
+
+
+test("daily provider refresh reports a stale registry while preserving last-known providers", () => {
+  const stale = {
+    refreshedDaily: false,
+    sourcesUpdated: { piped: true, invidious: false },
+    sourceErrors: ["Invidious source: fetch failed"]
+  };
+  assert.throws(() => assertProviderRegistryFresh(stale), /Invidious directory was not refreshed/);
+  assert.throws(() => assertProviderRegistryFresh(stale), /Invidious source: fetch failed/);
+});
+
+test("daily provider refresh accepts only a complete dual-source update", () => {
+  assert.equal(assertProviderRegistryFresh({
+    refreshedDaily: true,
+    sourcesUpdated: { piped: true, invidious: true },
+    sourceErrors: []
+  }), true);
 });
