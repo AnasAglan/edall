@@ -306,10 +306,10 @@ test("platform statistics distinguish Auth accounts, profiles, and real exam att
       exam_attempts_tracked: true
     }
   }], [{ role: "user", content: "إحصائيات المنصة" }]);
-  assert.match(reply, /المستخدمون: \\*\\*16\\*\\*/);
-  assert.match(reply, /ملفات المستخدمين: \\*\\*12\\*\\*/);
-  assert.match(reply, /حسابات بلا ملف شخصي: \\*\\*4\\*\\*/);
-  assert.match(reply, /محاولات الاختبار: \\*\\*58\\*\\*/);
+  assert.ok(reply.includes("المستخدمون: **16**"));
+  assert.ok(reply.includes("ملفات المستخدمين: **12**"));
+  assert.ok(reply.includes("حسابات بلا ملف شخصي: **4**"));
+  assert.ok(reply.includes("محاولات الاختبار: **58**"));
 });
 
 test("platform statistics never present an untracked exam-attempt count as zero", () => {
@@ -325,5 +325,5 @@ test("platform statistics never present an untracked exam-attempt count as zero"
     }
   }], [{ role: "user", content: "إحصائيات المنصة" }]);
   assert.match(reply, /محاولات الاختبار: غير متاح/);
-  assert.doesNotMatch(reply, /محاولات الاختبار: \\*\\*0\\*\\*/);
+  assert.ok(!reply.includes("محاولات الاختبار: **0**"));
 });
