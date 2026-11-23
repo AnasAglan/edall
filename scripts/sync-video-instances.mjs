@@ -11,6 +11,7 @@ export const CURATED_INVIDIOUS_INSTANCES = [
   "https://invidious.nerdvpn.de",
   "https://yt.chocolatemoo53.com",
   "https://invidious.tiekoetter.com",
+  "https://invidious.f5.si",
 ].map((url) => ({
   url,
   provider: "invidious",

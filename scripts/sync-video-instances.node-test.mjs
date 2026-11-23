@@ -142,7 +142,7 @@ test("preserves the official directory's API capability flag", () => {
   assert.equal(entries.find((item) => item.url === "https://web-only.example").apiProbeCandidate, true);
 });
 
-test("probes Invidious API=false entries and the four curated public Clearnet candidates", () => {
+test("probes Invidious API=false entries and the five curated public Clearnet candidates", () => {
   assert.equal(supportsInvidiousApi({ provider: "invidious", apiListed: false }), false);
   assert.equal(supportsInvidiousApi({ provider: "invidious", apiListed: false, apiProbeCandidate: true }), true);
   assert.equal(supportsInvidiousApi({ provider: "invidious", apiListed: true }), true);
@@ -152,6 +152,7 @@ test("probes Invidious API=false entries and the four curated public Clearnet ca
     "https://invidious.nerdvpn.de",
     "https://yt.chocolatemoo53.com",
     "https://invidious.tiekoetter.com",
+    "https://invidious.f5.si",
   ]);
   assert.ok(CURATED_INVIDIOUS_INSTANCES.every((item) => item.curated && item.apiProbeCandidate));
 });
