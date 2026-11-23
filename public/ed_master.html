@@ -2864,64 +2864,87 @@ word-spacing: normal !important;
         }
 
         // Video toggle: each video starts hidden, user clicks to show/hide
+        window.openVideoAppDownloadModal = function() {
+            const isArabic = currentLanguage === 'ar';
+            const content = '<div style="max-width:460px;margin:0 auto;text-align:center;padding:8px 4px;">' +
+                '<div style="width:64px;height:64px;border-radius:18px;margin:0 auto 14px;display:flex;align-items:center;justify-content:center;background:rgba(59,130,246,.12);color:var(--primary);font-size:1.7rem;"><i class="fas fa-mobile-alt"></i></div>' +
+                '<h3 style="margin:0 0 10px;">' + (isArabic ? 'نزّل تطبيق ED-ALL لمشاهدة الفيديو دون اتصال' : 'Download ED-ALL to watch videos offline') + '</h3>' +
+                '<p style="color:var(--text-muted);line-height:1.8;margin:0 0 16px;">' +
+                (isArabic
+                    ? 'يمكنك حفظ الفيديوهات المصرح لك بها داخل التطبيق الرسمي وتشغيلها من ملفاته الخاصة. اختر إصدار Windows أو Android من صفحة الإصدارات. لا يُنزل الفيديو كملف عادي من المتصفح.'
+                    : 'Save videos you are entitled to inside the official app and play them from its private storage. Choose the Windows or Android release from the releases page. The browser does not download videos as ordinary files.') +
+                '</p>' +
+                '<div style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;">' +
+                '<button type="button" class="btn btn-primary" onclick="window.closeModal(); window.openReleasesPage();"><i class="fas fa-download"></i> ' + (isArabic ? 'عرض تطبيقات ED-ALL وتنزيلها' : 'View and download ED-ALL apps') + '</button>' +
+                '<button type="button" class="btn btn-outline" onclick="window.triggerModalClose()">' + (isArabic ? 'لاحقًا' : 'Later') + '</button>' +
+                '</div></div>';
+            window.showModal(content);
+        };
+
+        function wrapVideoWithAppDownload(markup) {
+            return '<div class="ed-video-download-entry">' + markup +
+                '<div class="ed-video-download-action" style="display:flex;justify-content:flex-end;margin:6px 0 12px;">' +
+                '<button type="button" class="btn btn-sm btn-outline" onclick="window.openVideoAppDownloadModal()">' +
+                '<i class="fas fa-download"></i> ' + (currentLanguage === 'ar' ? 'تنزيل الفيديو داخل التطبيق' : 'Download video in the app') +
+                '</button></div></div>';
+        }
+
+        // Video toggle: each video starts hidden, with a native-app download action below it.
         function renderVideoToggle(videoUrl, index) {
-            const toggleId = `videoToggle_${index}_${Date.now()}`;
-            const containerId = `videoContainer_${index}_${Date.now()}`;
-            
+            const toggleId = 'videoToggle_' + index + '_' + Date.now();
+            const containerId = 'videoContainer_' + index + '_' + Date.now();
+            let markup = '';
+
             if (is4sharedUrl(videoUrl)) {
-                return `<div style="margin:8px 0;">
-                    <button id="${toggleId}" class="btn btn-sm" style="width:100%;text-align:right;justify-content:flex-start;gap:10px;" onclick="
-                        var container = document.getElementById('${containerId}');
-                        if (container.style.display === 'none') {
-                            container.style.display = 'block';
-                            this.innerHTML = '<i class=\\'fas fa-eye-slash\\'></i> ${currentLanguage === 'ar' ? 'إخفاء الفيديو' : 'Hide Video'} (${index + 1})';
-                        } else {
-                            container.style.display = 'none';
-                            container.innerHTML = '';
-                            this.innerHTML = '<i class=\\'fas fa-play-circle\\'></i> ${currentLanguage === 'ar' ? 'مشاهدة الفيديو' : 'Watch Video'} (${index + 1})';
-                        }
-                    ">
-                        <i class="fas fa-play-circle"></i> ${currentLanguage === 'ar' ? 'مشاهدة الفيديو' : 'Watch Video'} (${index + 1})
-                    </button>
-                    <div id="${containerId}" style="display:none;margin-top:8px;">
-                        <div style="padding:15px;background:var(--bg-lighter);border-radius:var(--radius);display:flex;align-items:center;gap:12px;">
-                            <i class="fas fa-external-link-alt" style="font-size:1.5rem;color:var(--primary);"></i>
-                            <div style="flex:1;">
-                                <div style="font-weight:600;margin-bottom:4px;">${currentLanguage === 'ar' ? 'فيديو 4shared' : '4shared Video'}</div>
-                                <div style="font-size:0.85rem;color:var(--text-muted);">${currentLanguage === 'ar' ? '4shared لا يدعم التضمين المباشر. اضغط لفتح الفيديو في نافذة جديدة.' : '4shared does not support direct embedding. Click to open in a new tab.'}</div>
-                            </div>
-                            <a href="${videoUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-sm" style="text-decoration:none;">
-                                <i class="fas fa-external-link-alt"></i> ${currentLanguage === 'ar' ? 'فتح' : 'Open'}
-                            </a>
-                        </div>
-                    </div>
-                </div>`;
+                markup = '<div style="margin:8px 0;">' +
+                    '<button id="' + toggleId + '" class="btn btn-sm" style="width:100%;text-align:right;justify-content:flex-start;gap:10px;" onclick="' +
+                    "var container = document.getElementById('" + containerId + "');" +
+                    "if (container.style.display === 'none') {" +
+                    "container.style.display = 'block';" +
+                    "this.innerHTML = '<i class=\\\\'fas fa-eye-slash\\\\'></i> " + (currentLanguage === 'ar' ? 'إخفاء الفيديو' : 'Hide Video') + " (" + (index + 1) + ")';" +
+                    "} else {" +
+                    "container.style.display = 'none'; container.innerHTML = '';" +
+                    "this.innerHTML = '<i class=\\\\'fas fa-play-circle\\\\'></i> " + (currentLanguage === 'ar' ? 'مشاهدة الفيديو' : 'Watch Video') + " (" + (index + 1) + ")'; }" +
+                    '">' +
+                    '<i class="fas fa-play-circle"></i> ' + (currentLanguage === 'ar' ? 'مشاهدة الفيديو' : 'Watch Video') + ' (' + (index + 1) + ')' +
+                    '</button>' +
+                    '<div id="' + containerId + '" style="display:none;margin-top:8px;">' +
+                    '<div style="padding:15px;background:var(--bg-lighter);border-radius:var(--radius);display:flex;align-items:center;gap:12px;">' +
+                    '<i class="fas fa-external-link-alt" style="font-size:1.5rem;color:var(--primary);"></i>' +
+                    '<div style="flex:1;"><div style="font-weight:600;margin-bottom:4px;">' + (currentLanguage === 'ar' ? 'فيديو 4shared' : '4shared Video') + '</div>' +
+                    '<div style="font-size:0.85rem;color:var(--text-muted);">' + (currentLanguage === 'ar' ? '4shared لا يدعم التضمين المباشر. اضغط لفتح الفيديو في نافذة جديدة.' : '4shared does not support direct embedding. Click to open in a new tab.') + '</div></div>' +
+                    '<a href="' + edEsc(videoUrl) + '" target="_blank" rel="noopener noreferrer" class="btn btn-sm" style="text-decoration:none;"><i class="fas fa-external-link-alt"></i> ' + (currentLanguage === 'ar' ? 'فتح' : 'Open') + '</a>' +
+                    '</div></div></div>';
+                return wrapVideoWithAppDownload(markup);
             }
-            
-            const _yt = _edYtId(videoUrl);
-            if (_yt) {
-                const _t = _edPack(_yt);
-                const showLbl0 = currentLanguage === 'ar' ? 'مشاهدة الفيديو' : 'Watch Video';
-                const hideLbl0 = currentLanguage === 'ar' ? 'إخفاء الفيديو' : 'Hide Video';
-                return `<div style="margin:8px 0;">
-                <button id="${toggleId}" class="btn btn-sm" style="width:100%;text-align:right;justify-content:flex-start;gap:10px;"
-                    data-k1="${_t[0]}" data-k2="${_t[1]}" data-k3="${_t[2]}"
-                    onclick="_edOpen(this, '${containerId}', ${index + 1})">
-                    <i class="fas fa-play-circle"></i> ${showLbl0} (${index + 1})
-                </button>
-                <div id="${containerId}" data-show-label="${showLbl0}" data-hide-label="${hideLbl0}" style="display:none;margin-top:8px;"></div>
-            </div>`;
+
+            const youtubeId = _edYtId(videoUrl);
+            if (youtubeId) {
+                const packed = _edPack(youtubeId);
+                const showLabel = currentLanguage === 'ar' ? 'مشاهدة الفيديو' : 'Watch Video';
+                const hideLabel = currentLanguage === 'ar' ? 'إخفاء الفيديو' : 'Hide Video';
+                markup = '<div style="margin:8px 0;">' +
+                    '<button id="' + toggleId + '" class="btn btn-sm" style="width:100%;text-align:right;justify-content:flex-start;gap:10px;" ' +
+                    'data-k1="' + packed[0] + '" data-k2="' + packed[1] + '" data-k3="' + packed[2] + '" ' +
+                    'onclick="_edOpen(this, \'' + containerId + '\', ' + (index + 1) + ')">' +
+                    '<i class="fas fa-play-circle"></i> ' + showLabel + ' (' + (index + 1) + ')' +
+                    '</button>' +
+                    '<div id="' + containerId + '" data-show-label="' + showLabel + '" data-hide-label="' + hideLabel + '" style="display:none;margin-top:8px;"></div>' +
+                    '</div>';
+                return wrapVideoWithAppDownload(markup);
             }
+
             const embedUrl = getVideoEmbedUrl(videoUrl);
-            const showLbl = currentLanguage === 'ar' ? 'مشاهدة الفيديو' : 'Watch Video';
-            const hideLbl = currentLanguage === 'ar' ? 'إخفاء الفيديو' : 'Hide Video';
-            return `<div style="margin:8px 0;">
-                <button id="${toggleId}" class="btn btn-sm" style="width:100%;text-align:right;justify-content:flex-start;gap:10px;"
-                    onclick="toggleLessonVideo(this, '${containerId}', '${encodeURIComponent(embedUrl)}', ${index + 1})">
-                    <i class="fas fa-play-circle"></i> ${showLbl} (${index + 1})
-                </button>
-                <div id="${containerId}" data-show-label="${showLbl}" data-hide-label="${hideLbl}" style="display:none;margin-top:8px;"></div>
-            </div>`;
+            const showLabel = currentLanguage === 'ar' ? 'مشاهدة الفيديو' : 'Watch Video';
+            const hideLabel = currentLanguage === 'ar' ? 'إخفاء الفيديو' : 'Hide Video';
+            markup = '<div style="margin:8px 0;">' +
+                '<button id="' + toggleId + '" class="btn btn-sm" style="width:100%;text-align:right;justify-content:flex-start;gap:10px;" ' +
+                'onclick="toggleLessonVideo(this, \'' + containerId + '\', \'' + encodeURIComponent(embedUrl) + '\', ' + (index + 1) + ')">' +
+                '<i class="fas fa-play-circle"></i> ' + showLabel + ' (' + (index + 1) + ')' +
+                '</button>' +
+                '<div id="' + containerId + '" data-show-label="' + showLabel + '" data-hide-label="' + hideLabel + '" style="display:none;margin-top:8px;"></div>' +
+                '</div>';
+            return wrapVideoWithAppDownload(markup);
         }
 
         // ---- Video watermark (student identifier) --------------------------

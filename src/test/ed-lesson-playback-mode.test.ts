@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { runInNewContext } from "node:vm";
+import { runInNewContext, Script } from "node:vm";
 
 const html = readFileSync(resolve(process.cwd(), "public/ed_master.html"), "utf8");
 const migration = readFileSync(resolve(process.cwd(), "supabase/migrations/20261110170500_add_lesson_web_playback_mode.sql"), "utf8");
@@ -72,5 +72,53 @@ describe("per-lesson video playback mode", () => {
     expect(html).toContain("الفيديو متاح من التطبيق فقط");
     expect(html).toContain("محتوى المحاضرة وملفاتها الأخرى تظل متاحة هنا");
     expect(html).toContain("if (!canShowVideosOnWeb)");
+  });
+});
+
+
+describe("per-video native app download prompt", () => {
+  it("wraps YouTube, 4shared and other video links with an app download action", () => {
+    expect(html).toContain("function wrapVideoWithAppDownload(markup)");
+    const videoFunctionStart = html.indexOf("function renderVideoToggle(videoUrl, index)");
+    const videoFunctionEnd = html.indexOf("// ---- Video watermark", videoFunctionStart);
+    const renderer = html.slice(videoFunctionStart, videoFunctionEnd);
+    expect(renderer.match(/return wrapVideoWithAppDownload\(markup\)/g)).toHaveLength(3);
+    expect(renderer).toContain("is4sharedUrl(videoUrl)");
+    expect(renderer).toContain("_edYtId(videoUrl)");
+    expect(renderer).toContain("getVideoEmbedUrl(videoUrl)");
+  });
+
+  it("opens a centered app download modal and reuses the existing release catalogue", () => {
+    expect(html).toContain("window.openVideoAppDownloadModal = function()");
+    expect(html).toContain("window.showModal(content)");
+    expect(html).toContain("window.openReleasesPage()");
+    expect(html).toContain("نزّل تطبيق ED-ALL لمشاهدة الفيديو دون اتصال");
+    expect(html).toContain("Download ED-ALL to watch videos offline");
+    expect(html).toContain("أو Android");
+    expect(html).toContain("Windows or Android");
+  });
+
+  it("keeps native download extraction inside the official app catalogue instead of using a browser download", () => {
+    const start = html.indexOf("window.openVideoAppDownloadModal = function()");
+    const end = html.indexOf("// ---- Video watermark", start);
+    const source = html.slice(start,end);
+    expect(source).not.toContain("yt-dlp");
+    expect(source).not.toContain("NewPipe");
+    expect(source).not.toContain("window.location.href =");
+  });
+
+
+
+  it("keeps the download prompt helper and all video renderer branches syntactically valid", () => {
+    const start = html.indexOf("window.openVideoAppDownloadModal = function()");
+    const end = html.indexOf("// ---- Video watermark", start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    expect(() => new Script(html.slice(start,end))).not.toThrow();
+  });
+
+  it("keeps the app-only lesson notice and opens the same official release catalogue", () => {
+    expect(html).toContain("الفيديو متاح من التطبيق فقط");
+    expect(html).toContain("window.openReleasesPage()");
   });
 });
