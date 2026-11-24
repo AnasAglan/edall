@@ -75,3 +75,8 @@ This comparison describes named objects/signatures only; it does not prove all m
 ## No live database writes
 
 No SQL DDL, migration-history repair, INSERT, UPDATE, DELETE, or other write was made to either live database during this follow-up. No payment provider was activated and no payment keys were changed.
+
+
+## CI update after the initial capture
+
+On 2026-11-24, the updated PR #62 head `472417e3b99f61e4c0728d3d06cdb1bab0a7bcaa` completed GitHub Actions run `45309064937` successfully. The run applied all 46 repository migrations to a clean local Supabase stack, built the platform, ran all platform tests, validated Worker/browser modules, tested Paymob webhook signature verification, and validated environment-origin isolation. The companion Staging-isolation and video-player workflows on that commit also passed. This is CI evidence only; it is not evidence that the migration objects have been reconciled or applied to live Production or the older Staging project.
