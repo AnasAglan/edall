@@ -23,6 +23,14 @@ describe("teacher-wide Learning Space analytics", () => {
     expect(migration).toContain("public.admin_mfa_verified()");
   });
 
+  it("keeps administrators on the separate global analytics RPC", () => {
+    expect(ui).toContain('rpc("get_platform_analytics", {})');
+    expect(migration).toContain("ADMIN_USE_PLATFORM_ANALYTICS");
+    expect(migration).toContain("IF _is_admin THEN");
+    expect(migration).not.toContain("_is_admin\n      OR public.has_course_capability");
+    expect(migration).toContain("'scope','assigned_courses'");
+  });
+
   it("aggregates only courses where the caller has analytics capability", () => {
     expect(migration).toContain("public.has_course_capability(course.id,'analytics')");
     expect(migration).toContain("public.get_course_analytics(_course.id)");
