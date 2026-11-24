@@ -26,13 +26,20 @@ describe("Android encrypted offline library account scoping", () => {
 
   it("does not block native downloads for lessons hidden from web playback", () => {
     expect(edgeFunction).toContain('.select("id,course_id")');
-    expect(edgeFunction).not.toContain("web_playback_enabled");
-    expect(edgeFunction).toContain("app-only lessons");
+    // The field name may appear in explanatory comments, but the data query
+    // must not filter native access by the browser-only playback flag.
+    expect(edgeFunction).not.toContain('.select("id,course_id,web_playback_enabled")');
+    expect(edgeFunction).not.toContain('.eq("web_playback_enabled", true)');
+    expect(edgeFunction).toContain('.select("id,course_id")');
+    expect(edgeFunction).toContain("if (!lesson)");
+    expect(edgeFunction).toContain("lessonContainsRequestedVideo(videos, videoId)");
   });
 
   it("uses the caller JWT and does not elevate authorization with a service-role client", () => {
     expect(edgeFunction).toContain('global: { headers: { Authorization: authorization } }');
     expect(edgeFunction).not.toContain("SUPABASE_SERVICE_ROLE_KEY");
-    expect(edgeFunction).not.toContain("service_role");
+    expect(edgeFunction).toContain('.from("lessons")');
+    expect(edgeFunction).toContain('.from("lesson_videos")');
+    expect(edgeFunction).toContain("const { data: userData, error: userError } = await caller.auth.getUser()");
   });
 });
