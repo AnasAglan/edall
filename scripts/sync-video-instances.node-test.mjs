@@ -264,7 +264,7 @@ test("does not accept unlisted links outside the Invidious public-instance secti
 });
 
 
-test("prefers the Invidious Instances API and skips the fallback when it succeeds", async () => {
+test("merges official documentation candidates even when the API returns a non-empty older list", async () => {
   let docsCalled = false;
   const instances = await fetchInvidiousDirectory({
     fetchApi: async () => [
@@ -275,8 +275,13 @@ test("prefers the Invidious Instances API and skips the fallback when it succeed
       return "## List of public Invidious Instances\n* [fallback.example](https://fallback.example)";
     }
   });
-  assert.deepEqual(instances.map((item) => item.url), ["https://api.example"]);
-  assert.equal(docsCalled, false);
+  assert.deepEqual(instances.map((item) => item.url), [
+    "https://api.example",
+    "https://fallback.example"
+  ]);
+  assert.equal(docsCalled, true);
+  assert.equal(instances[0].apiListed, true);
+  assert.equal(instances[1].official, true);
 });
 
 test("falls back to the official Invidious documentation after the API fails", async () => {

@@ -179,31 +179,47 @@ export async function fetchInvidiousDirectory({
   fetchApi = () => fetchJson(INVIDIOUS_SOURCE),
   fetchDocs = () => fetchText(INVIDIOUS_DOCS_SOURCE),
 } = {}) {
-  let apiError;
+  let apiInstances = [];
+  let docsInstances = [];
+  let apiError = null;
+  let docsError = null;
+
+  // The instances API can lag the maintainers' public documentation.
+  // Read both directories and merge them so newly-approved hosts are not
+  // silently omitted just because the API returned an older non-empty list.
   try {
-    const instances = discoverInvidious(await fetchApi());
-    if (instances.length) return instances;
-    throw new Error("Invidious instances API returned no validated public HTTPS endpoints.");
+    apiInstances = discoverInvidious(await fetchApi());
   } catch (error) {
     apiError = error;
   }
 
   try {
-    const instances = discoverInvidiousFromMarkdown(await fetchDocs());
-    if (!instances.length) {
-      throw new Error("Official Invidious documentation contained no validated public HTTPS instances.");
-    }
-    console.warn(
-      "[video-registry] Invidious API unavailable; using the official documentation list as fallback:",
-      String(apiError?.message || apiError)
-    );
-    return instances;
-  } catch (docsError) {
-    throw new Error(
-      "Invidious API failed (" + String(apiError?.message || apiError) +
-      "); official documentation fallback failed (" + String(docsError?.message || docsError) + ")."
-    );
+    docsInstances = discoverInvidiousFromMarkdown(await fetchDocs());
+  } catch (error) {
+    docsError = error;
   }
+
+  const instances = uniqueByUrl([...apiInstances, ...docsInstances]);
+  if (instances.length) {
+    if (apiError) {
+      console.warn(
+        "[video-registry] Invidious API unavailable; using documentation candidates:",
+        String(apiError?.message || apiError)
+      );
+    }
+    if (docsError) {
+      console.warn(
+        "[video-registry] Official Invidious documentation unavailable; retaining API candidates:",
+        String(docsError?.message || docsError)
+      );
+    }
+    return instances;
+  }
+
+  throw new Error(
+    "Invidious API failed (" + String(apiError?.message || apiError || "no validated endpoints") +
+    "); official documentation failed (" + String(docsError?.message || docsError || "no validated endpoints") + ")."
+  );
 }
 
 function parseQuality(stream) {
@@ -715,7 +731,13 @@ async function main() {
     throw new Error("Both official instance directories failed and there is no previous registry. " + sourceErrors.join(" | "));
   }
 
-  console.log("Discovered " + piped.length + " official Piped and " + invidious.length + " official HTTPS Invidious instances.");
+  const officialInvidiousCount = invidious.filter((item) => item.official === true).length;
+  const curatedInvidiousCount = invidious.filter((item) => item.curated === true).length;
+  console.log(
+    "Discovered " + piped.length + " official Piped and " +
+    officialInvidiousCount + " official plus " + curatedInvidiousCount +
+    " curated HTTPS Invidious candidates."
+  );
   const [checkedPiped, checkedInvidious] = await Promise.all([
     mapLimit(piped, CONCURRENCY, probeInstance),
     mapLimit(invidious, CONCURRENCY, probeInstance),
