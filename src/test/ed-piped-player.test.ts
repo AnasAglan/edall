@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { runInNewContext, Script } from "node:vm";
 import { TextEncoder } from "node:util";
-import { discoverPiped, discoverInvidious, assessSamplePlayback } from "../../scripts/sync-video-instances.mjs";
+import { discoverPiped, discoverInvidious, fetchInvidiousDirectory, assessSamplePlayback } from "../../scripts/sync-video-instances.mjs";
 
 const playerSource = readFileSync(resolve(process.cwd(), "public/ed_piped_player.js"), "utf8");
 const platformHtml = readFileSync(resolve(process.cwd(), "public/ed_master.html"), "utf8");
@@ -133,6 +133,53 @@ describe("Daily extractor instance discovery", () => {
       ["inv-ygg.nadeko.net", { type: "https", uri: "https://inv-ygg.nadeko.net" }],
     ]);
     expect(instances.map(item => item.url)).toEqual(["https://inv.nadeko.net"]);
+  });
+
+  it("merges API and official documentation directories so recently listed hosts are retained", async () => {
+    const markdown = [
+      "## List of public Invidious Instances (sorted from oldest to newest):",
+      "* [Existing API host](https://api.example)",
+      "* [New documentation host](https://docs-only.example)",
+      "### Tor Onion Services:",
+      "* [Onion host](https://example.onion)",
+    ].join("\n");
+    const instances = await fetchInvidiousDirectory({
+      fetchApi: async () => [
+        ["api.example", { type: "https", uri: "https://api.example", api: true, monitor: { uptime: 99.5 } }],
+      ],
+      fetchDocs: async () => markdown,
+    });
+
+    expect(instances.map(item => item.url)).toEqual([
+      "https://api.example",
+      "https://docs-only.example",
+    ]);
+    expect(instances[0].apiListed).toBe(true);
+    expect(instances[1].official).toBe(true);
+    expect(instances[1].source).toBe("official-documentation-fallback");
+  });
+
+  it("keeps validated API candidates when the documentation source is temporarily unavailable", async () => {
+    const instances = await fetchInvidiousDirectory({
+      fetchApi: async () => [
+        ["api.example", { type: "https", uri: "https://api.example", api: true }],
+      ],
+      fetchDocs: async () => { throw new Error("docs unavailable"); },
+    });
+    expect(instances.map(item => item.url)).toEqual(["https://api.example"]);
+  });
+
+  it("uses the official documentation list when the API source is temporarily unavailable", async () => {
+    const instances = await fetchInvidiousDirectory({
+      fetchApi: async () => { throw new Error("API unavailable"); },
+      fetchDocs: async () => [
+        "## List of public Invidious Instances:",
+        "* [Docs host](https://docs-only.example)",
+        "### Tor Onion Services:",
+      ].join("\n"),
+    });
+    expect(instances.map(item => item.url)).toEqual(["https://docs-only.example"]);
+    expect(instances[0].official).toBe(true);
   });
 });
 
