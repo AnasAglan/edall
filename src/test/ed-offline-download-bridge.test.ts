@@ -24,6 +24,12 @@ describe("Android encrypted offline library account scoping", () => {
     expect(edgeFunction).toContain("authorized: true");
   });
 
+  it("does not block native downloads for lessons hidden from web playback", () => {
+    expect(edgeFunction).toContain('.select("id,course_id")');
+    expect(edgeFunction).not.toContain("web_playback_enabled");
+    expect(edgeFunction).toContain("app-only lessons");
+  });
+
   it("uses the caller JWT and does not elevate authorization with a service-role client", () => {
     expect(edgeFunction).toContain('global: { headers: { Authorization: authorization } }');
     expect(edgeFunction).not.toContain("SUPABASE_SERVICE_ROLE_KEY");
