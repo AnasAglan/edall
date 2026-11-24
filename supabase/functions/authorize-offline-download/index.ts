@@ -66,10 +66,12 @@ Deno.serve(async req => {
     }
 
     // These reads deliberately use the caller's JWT, never the service-role key.
-    // The existing lessons and lesson_videos RLS policies call can_access_lesson().
+    // Existing RLS policies decide whether this account can access the lesson.
+    // Do not gate native offline downloads on web_playback_enabled: app-only lessons
+    // intentionally hide videos from browsers while remaining available in the app.
     const { data: lesson, error: lessonError } = await caller
       .from("lessons")
-      .select("id,course_id,web_playback_enabled")
+      .select("id,course_id")
       .eq("id", lessonId)
       .eq("course_id", courseId)
       .maybeSingle();
@@ -78,8 +80,8 @@ Deno.serve(async req => {
       console.error("Offline lesson authorization lookup failed", { code: lessonError.code });
       return json({ error: "Could not verify lesson access." }, 503, cors);
     }
-    if (!lesson || lesson.web_playback_enabled !== true) {
-      return json({ error: "This lesson is not available for offline playback." }, 403, cors);
+    if (!lesson) {
+      return json({ error: "This lesson is not available to this account." }, 403, cors);
     }
 
     const { data: videos, error: videosError } = await caller
