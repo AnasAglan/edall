@@ -2890,7 +2890,7 @@ word-spacing: normal !important;
         }
 
         // Video toggle: each video starts hidden, with a native-app download action below it.
-        function renderVideoToggle(videoUrl, index) {
+        function renderVideoToggle(videoUrl, index, courseId, lessonId) {
             const toggleId = 'videoToggle_' + index + '_' + Date.now();
             const containerId = 'videoContainer_' + index + '_' + Date.now();
             let markup = '';
@@ -2923,6 +2923,21 @@ word-spacing: normal !important;
                 const packed = _edPack(youtubeId);
                 const showLabel = currentLanguage === 'ar' ? 'مشاهدة الفيديو' : 'Watch Video';
                 const hideLabel = currentLanguage === 'ar' ? 'إخفاء الفيديو' : 'Hide Video';
+                const androidOfflineBridgeReady = Boolean(
+                    window.edallDesktop &&
+                    window.edallDesktop.isAndroid === true &&
+                    typeof window.edallDesktop.downloadOfflineVideo === 'function' &&
+                    typeof window.edallDesktop.openOfflineLibrary === 'function'
+                );
+                const offlineActions = androidOfflineBridgeReady
+                    ? '<div style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin:6px 0 12px;">' +
+                        '<button type="button" class="btn btn-sm btn-outline" data-offline-video="' + youtubeId +
+                        '" data-course-id="' + edEsc(courseId || '') + '" data-lesson-id="' + edEsc(lessonId || '') +
+                        '" onclick="window.downloadYouTubeVideoOffline(this)"><i class="fas fa-download"></i> ' +
+                        (currentLanguage === 'ar' ? 'حفظ دون اتصال' : 'Save offline') + '</button>' +
+                        '<button type="button" class="btn btn-sm btn-outline" onclick="window.openYouTubeOfflineLibrary()">' +
+                        '<i class="fas fa-folder-open"></i> ' + (currentLanguage === 'ar' ? 'فيديوهاتي المحفوظة' : 'Saved videos') + '</button></div>'
+                    : '';
                 markup = '<div style="margin:8px 0;">' +
                     '<button id="' + toggleId + '" class="btn btn-sm" style="width:100%;text-align:right;justify-content:flex-start;gap:10px;" ' +
                     'data-k1="' + packed[0] + '" data-k2="' + packed[1] + '" data-k3="' + packed[2] + '" ' +
@@ -2930,6 +2945,7 @@ word-spacing: normal !important;
                     '<i class="fas fa-play-circle"></i> ' + showLabel + ' (' + (index + 1) + ')' +
                     '</button>' +
                     '<div id="' + containerId + '" data-show-label="' + showLabel + '" data-hide-label="' + hideLabel + '" style="display:none;margin-top:8px;"></div>' +
+                    offlineActions +
                     '</div>';
                 return wrapVideoWithAppDownload(markup);
             }
@@ -2947,6 +2963,61 @@ word-spacing: normal !important;
             return wrapVideoWithAppDownload(markup);
         }
 
+        window.downloadYouTubeVideoOffline = async function(button) {
+            if (!button || !window.edallDesktop || window.edallDesktop.isAndroid !== true ||
+                typeof window.edallDesktop.downloadOfflineVideo !== 'function' ||
+                typeof window.edallDesktop.openOfflineLibrary !== 'function') return;
+            const videoId = button.dataset.offlineVideo || '';
+            const courseId = button.dataset.courseId || '';
+            const lessonId = button.dataset.lessonId || '';
+            if (!/^[A-Za-z0-9_-]{11}$/.test(videoId) ||
+                !/^[0-9a-f-]{36}$/i.test(courseId) || !/^[0-9a-f-]{36}$/i.test(lessonId)) {
+                showToast(currentLanguage === 'ar' ? 'تعذر تحديد المحاضرة أو الفيديو.' : 'Could not identify the lesson or video.', 'error');
+                return;
+            }
+            const original = button.innerHTML;
+            button.disabled = true;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ' +
+                (currentLanguage === 'ar' ? 'جارٍ التحقق والتنزيل...' : 'Checking and downloading...');
+            try {
+                const { data, error } = await sb.auth.getSession();
+                const accessToken = data && data.session && data.session.access_token;
+                if (error || !accessToken) throw new Error(currentLanguage === 'ar' ? 'سجّل الدخول أولاً.' : 'Please sign in first.');
+                const quality = Math.max(144, Math.min(2160, Number(localStorage.getItem('ed_desktop_quality')) || 720));
+                const result = await window.edallDesktop.downloadOfflineVideo(
+                    videoId, quality, courseId, lessonId, accessToken, SUPABASE_URL, SUPABASE_ANON_KEY
+                );
+                if (!result || result.success !== true) throw new Error(result && result.error || 'Offline download failed.');
+                button.innerHTML = '<i class="fas fa-check"></i> ' +
+                    (currentLanguage === 'ar' ? 'تم الحفظ مشفراً' : 'Saved encrypted');
+                showToast(currentLanguage === 'ar'
+                    ? 'تم حفظ الفيديو مشفراً داخل التطبيق. يمكنك تشغيله من «فيديوهاتي المحفوظة».':
+                    'The video was saved encrypted inside the app. Open Saved videos to play it.', 'success');
+            } catch (error) {
+                button.disabled = false;
+                button.innerHTML = original;
+                showToast((currentLanguage === 'ar' ? 'تعذر حفظ الفيديو: ' : 'Could not save video: ') +
+                    String(error && error.message || error), 'error');
+            }
+        };
+
+        window.openYouTubeOfflineLibrary = async function() {
+            if (!window.edallDesktop || window.edallDesktop.isAndroid !== true ||
+                typeof window.edallDesktop.openOfflineLibrary !== 'function') return;
+            try {
+                const { data, error } = await sb.auth.getSession();
+                const userId = data && data.session && data.session.user && data.session.user.id;
+                if (error || !/^[0-9a-f-]{36}$/i.test(String(userId || ''))) {
+                    throw new Error(currentLanguage === 'ar'
+                        ? 'سجّل الدخول إلى الحساب الذي حفظ الفيديوهات.'
+                        : 'Sign in to the account that saved these videos.');
+                }
+                window.edallDesktop.openOfflineLibrary(userId);
+            } catch (error) {
+                showToast((currentLanguage === 'ar' ? 'تعذر فتح الفيديوهات المحفوظة: ' : 'Could not open saved videos: ') +
+                    String(error && error.message || error), 'error');
+            }
+        };
         // ---- Video watermark (student identifier) --------------------------
 function getWatermarkText() {
     const u = window.currentUser || (typeof currentUser !== 'undefined' ? currentUser : null);
@@ -7179,7 +7250,7 @@ window.triggerModalClose = function() {
                     modalContent += `
                         <div style="margin-bottom:20px;">
                             <h4>${currentLanguage === 'ar' ? 'فيديوهات المحاضرة' : 'Lesson Videos'} (${lesson.videos.length})</h4>
-                            ${lesson.videos.map((video, vidIdx) => renderVideoToggle(video, vidIdx)).join('')}
+                            ${lesson.videos.map((video, vidIdx) => renderVideoToggle(video, vidIdx, courseId, lessonId)).join('')}
                             <button class="btn btn-sm" style="margin-top:10px;" onclick="trackLessonProgress('${courseId}', '${lessonId}', 'videoWatched', true)">
                                 <i class="fas fa-check"></i> ${currentLanguage === 'ar' ? 'تحديد كمشاهدة' : 'Mark as Watched'}
                             </button>
