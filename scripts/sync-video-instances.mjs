@@ -731,7 +731,13 @@ async function main() {
     throw new Error("Both official instance directories failed and there is no previous registry. " + sourceErrors.join(" | "));
   }
 
-  console.log("Discovered " + piped.length + " official Piped and " + invidious.length + " official HTTPS Invidious instances.");
+  const officialInvidiousCount = invidious.filter((item) => item.official === true).length;
+  const curatedInvidiousCount = invidious.filter((item) => item.curated === true).length;
+  console.log(
+    "Discovered " + piped.length + " official Piped and " +
+    officialInvidiousCount + " official plus " + curatedInvidiousCount +
+    " curated HTTPS Invidious candidates."
+  );
   const [checkedPiped, checkedInvidious] = await Promise.all([
     mapLimit(piped, CONCURRENCY, probeInstance),
     mapLimit(invidious, CONCURRENCY, probeInstance),
