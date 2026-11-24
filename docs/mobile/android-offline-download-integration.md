@@ -7,8 +7,8 @@ This branch adds only the server-side authorization gate and a web UI integratio
 The authorization Edge Function uses the signed-in user's JWT and the existing Supabase Row Level Security policies to verify:
 - the caller's session is valid;
 - the requested lesson belongs to the requested course and is accessible under the current RLS rules;
-- web playback is enabled for the lesson;
-- the exact requested YouTube video ID is attached to that lesson.
+- the exact requested YouTube video ID is attached to that lesson;
+- app-only lessons remain eligible for native offline download even when browser playback is disabled.
 
 It returns only an authorization result and identifiers. It does not return an extraction URL, download a video, or bypass NewPipe.
 
