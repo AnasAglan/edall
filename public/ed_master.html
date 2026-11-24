@@ -2924,6 +2924,8 @@ word-spacing: normal !important;
                 const showLabel = currentLanguage === 'ar' ? 'مشاهدة الفيديو' : 'Watch Video';
                 const hideLabel = currentLanguage === 'ar' ? 'إخفاء الفيديو' : 'Hide Video';
                 const androidOfflineBridgeReady = Boolean(
+                    /^[0-9a-f-]{36}$/i.test(String(courseId || '')) &&
+                    /^[0-9a-f-]{36}$/i.test(String(lessonId || '')) &&
                     window.edallDesktop &&
                     window.edallDesktop.isAndroid === true &&
                     typeof window.edallDesktop.downloadOfflineVideo === 'function' &&
