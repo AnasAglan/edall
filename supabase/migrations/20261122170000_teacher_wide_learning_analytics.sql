@@ -55,15 +55,16 @@ BEGIN
     RAISE EXCEPTION 'ADMIN_MFA_REQUIRED';
   END IF;
 
-  -- A global admin does not accidentally receive a course-scoped teacher view.
-  -- Their global dashboard remains get_platform_analytics().
+  -- Global administrators must use get_platform_analytics() from the admin UI.
+  -- Do not let this teacher-scoped RPC bypass get_course_analytics() capabilities.
+  IF _is_admin THEN
+    RAISE EXCEPTION 'ADMIN_USE_PLATFORM_ANALYTICS';
+  END IF;
+
   FOR _course IN
     SELECT course.id,course.title
     FROM public.courses AS course
-    WHERE (
-      _is_admin
-      OR public.has_course_capability(course.id,'analytics')
-    )
+    WHERE public.has_course_capability(course.id,'analytics')
     ORDER BY course.title,course.id
   LOOP
     _course_data := public.get_course_analytics(_course.id);
@@ -128,7 +129,7 @@ BEGIN
   END LOOP;
 
   RETURN jsonb_build_object(
-    'scope',CASE WHEN _is_admin THEN 'administrator' ELSE 'assigned_courses' END,
+    'scope','assigned_courses',
     'totals',_totals,
     'courses',_course_rows
   );
