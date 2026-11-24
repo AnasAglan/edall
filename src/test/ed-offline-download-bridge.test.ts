@@ -17,6 +17,12 @@ describe("Android encrypted offline library account scoping", () => {
     expect(html).not.toContain('onclick="window.edallDesktop.openOfflineLibrary()"');
   });
 
+  it("only exposes native download actions with valid course and lesson identifiers", () => {
+    expect(html).toContain("test(String(courseId || ''))");
+    expect(html).toContain("test(String(lessonId || ''))");
+    expect(html).toContain("window.edallDesktop.isAndroid === true");
+  });
+
   it("returns the authenticated server-side user id after the lesson/video authorization succeeds", () => {
     expect(edgeFunction).toContain("const { data: userData, error: userError } = await caller.auth.getUser()");
     expect(edgeFunction).toContain("lessonContainsRequestedVideo(videos, videoId)");
