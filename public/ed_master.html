@@ -2902,7 +2902,7 @@ word-spacing: normal !important;
                         '" data-course-id="' + edEsc(courseId || '') + '" data-lesson-id="' + edEsc(lessonId || '') +
                         '" onclick="window.downloadYouTubeVideoOffline(this)"><i class="fas fa-download"></i> ' +
                         (currentLanguage === 'ar' ? 'حفظ دون اتصال' : 'Save offline') + '</button>' +
-                        '<button type="button" class="btn btn-sm btn-outline" onclick="window.edallDesktop.openOfflineLibrary()">' +
+                        '<button type="button" class="btn btn-sm btn-outline" onclick="window.openYouTubeOfflineLibrary()">' +
                         '<i class="fas fa-folder-open"></i> ' + (currentLanguage === 'ar' ? 'فيديوهاتي المحفوظة' : 'Saved videos') + '</button></div>'
                     : '';
                 return `<div style="margin:8px 0;">
@@ -2965,6 +2965,24 @@ word-spacing: normal !important;
                 button.disabled = false;
                 button.innerHTML = original;
                 showToast((currentLanguage === 'ar' ? 'تعذر حفظ الفيديو: ' : 'Could not save video: ') +
+                    String(error && error.message || error), 'error');
+            }
+        };
+
+        window.openYouTubeOfflineLibrary = async function() {
+            if (!window.edallDesktop || window.edallDesktop.isAndroid !== true ||
+                typeof window.edallDesktop.openOfflineLibrary !== 'function') return;
+            try {
+                const { data, error } = await sb.auth.getSession();
+                const userId = data && data.session && data.session.user && data.session.user.id;
+                if (error || !/^[0-9a-f-]{36}$/i.test(String(userId || ''))) {
+                    throw new Error(currentLanguage === 'ar'
+                        ? 'سجّل الدخول إلى الحساب الذي حفظ الفيديوهات.'
+                        : 'Sign in to the account that saved these videos.');
+                }
+                window.edallDesktop.openOfflineLibrary(userId);
+            } catch (error) {
+                showToast((currentLanguage === 'ar' ? 'تعذر فتح الفيديوهات المحفوظة: ' : 'Could not open saved videos: ') +
                     String(error && error.message || error), 'error');
             }
         };
