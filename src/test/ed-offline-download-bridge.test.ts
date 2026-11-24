@@ -7,6 +7,10 @@ const edgeFunction = readFileSync(
   resolve(process.cwd(), "supabase/functions/authorize-offline-download/index.ts"),
   "utf8",
 );
+const lessonRlsMigration = readFileSync(
+  resolve(process.cwd(), "supabase/migrations/20261115113000_enforce_course_and_admin_mfa.sql"),
+  "utf8",
+);
 
 describe("Android encrypted offline library account scoping", () => {
   it("only opens the local library after reading the current authenticated user", () => {
@@ -21,6 +25,17 @@ describe("Android encrypted offline library account scoping", () => {
     expect(html).toContain("test(String(courseId || ''))");
     expect(html).toContain("test(String(lessonId || ''))");
     expect(html).toContain("window.edallDesktop.isAndroid === true");
+  });
+
+  it("relies on the platform's existing lesson entitlement RLS policy", () => {
+    expect(lessonRlsMigration).toContain('CREATE POLICY "Entitled users can view lessons"');
+    expect(lessonRlsMigration).toContain("USING (public.can_access_lesson(id))");
+    expect(lessonRlsMigration).toContain("e.course_id=c.id AND e.user_id=auth.uid()");
+    expect(lessonRlsMigration).toContain("c.price <= 0");
+    expect(lessonRlsMigration).toContain("l.is_free = true");
+    expect(lessonRlsMigration).toContain("public.has_course_capability(c.id,'content')");
+    expect(edgeFunction).toContain('.from("lessons")');
+    expect(edgeFunction).toContain('.from("lesson_videos")');
   });
 
   it("returns the authenticated server-side user id after the lesson/video authorization succeeds", () => {
