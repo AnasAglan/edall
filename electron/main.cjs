@@ -1,12 +1,17 @@
-const { app, BrowserWindow, ipcMain, Menu, protocol, net, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, protocol, net, shell, safeStorage } = require('electron');
 const { execFile } = require('node:child_process');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { Readable } = require('node:stream');
+const { fileURLToPath } = require('node:url');
+const { OfflineLibrary } = require('./offline-library.cjs');
+const { assertSafeStorageAvailable } = require('./safe-storage-adapter.cjs');
 const ORIGIN = 'https://edall.lovable.app';
 const HOME = ORIGIN + '/ed_master.html';
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const streams = new Map(), jobs = new Map(), cache = new Map();
-let windowRef, toolReady;
+let windowRef, toolReady, offlineLibrary, activeOfflineUserId = null, offlineAccountSyncRevision = 0;
 protocol.registerSchemesAsPrivileged([{ scheme: 'edmedia', privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true, corsEnabled: true } }]);
 if (!app.requestSingleInstanceLock()) { app.quit(); }
 // Lets the website open the app through edall:// links.
@@ -26,6 +31,178 @@ const frameAllowed = raw => {
     ].some(host => url.hostname === host || (host !== 'edall.lovable.app' && url.hostname.endsWith('.' + host)));
   } catch { return false; }
 };
+function isOfflineUiUrl(raw) {
+  try {
+    const url = new URL(raw);
+    return url.protocol === 'file:' &&
+      path.resolve(fileURLToPath(url)) === path.resolve(__dirname, 'offline.html');
+  } catch { return false; }
+}
+function assertMainFrame(event, allowOfflineUi = false) {
+  if (
+    !windowRef ||
+    windowRef.isDestroyed() ||
+    event.sender !== windowRef.webContents ||
+    event.senderFrame !== event.sender.mainFrame
+  ) throw new Error('Access denied');
+  try {
+    if (new URL(event.senderFrame.url).origin === ORIGIN) return;
+  } catch {}
+  if (allowOfflineUi && isOfflineUiUrl(event.senderFrame.url)) return;
+  throw new Error('Access denied');
+}
+function getRegisteredStream(raw) {
+  let url;
+  try { url = new URL(raw); } catch { throw new Error('Offline source is invalid.'); }
+  if (url.protocol !== 'edmedia:' || url.hostname !== 'stream') {
+    throw new Error('Only the active desktop yt-dlp stream can be saved.');
+  }
+  const stream = streams.get(url.pathname.slice(1));
+  if (!stream || stream.expire < Date.now()) throw new Error('The media source expired; reopen the lesson and try again.');
+  return stream;
+}
+async function authorizeOfflineDownload({ courseId, lessonId, videoId, accessToken, supabaseUrl, publishableKey }) {
+  if (!UUID_PATTERN.test(String(courseId || '')) || !UUID_PATTERN.test(String(lessonId || ''))) {
+    throw new Error('A valid course and lesson are required for offline authorization.');
+  }
+  if (!/^[A-Za-z0-9_-]{11}$/.test(String(videoId || ''))) {
+    throw new Error('Invalid video ID.');
+  }
+  if (typeof accessToken !== 'string' || accessToken.length < 40 || accessToken.length > 8192) {
+    throw new Error('Sign in to ED-ALL before saving this lesson.');
+  }
+  if (typeof publishableKey !== 'string' || !publishableKey.trim() || publishableKey.length > 2048) {
+    throw new Error('The platform public backend key is unavailable.');
+  }
+  // Never accept a privileged service-role key from the renderer.
+  if (publishableKey.split('.').length === 3) {
+    try {
+      const payload = JSON.parse(Buffer.from(publishableKey.split('.')[1], 'base64url').toString('utf8'));
+      if (payload.role === 'service_role') throw new Error('Privileged backend keys are not accepted.');
+    } catch (error) {
+      if (error && error.message === 'Privileged backend keys are not accepted.') throw error;
+    }
+  }
+  let backend;
+  try { backend = new URL(String(supabaseUrl || '')); }
+  catch { throw new Error('The platform backend URL is invalid.'); }
+  const host = backend.hostname.toLowerCase();
+  if (
+    backend.protocol !== 'https:' ||
+    backend.username || backend.password ||
+    !(host.endsWith('.supabase.co') || host.endsWith('.lovable.cloud')) ||
+    backend.search || backend.hash
+  ) throw new Error('The platform backend URL is not an approved HTTPS Supabase endpoint.');
+
+  const endpoint = new URL('/functions/v1/authorize-offline-download', backend.origin);
+  let response;
+  try {
+    response = await fetch(endpoint, {
+      method: 'POST',
+      redirect: 'error',
+      cache: 'no-store',
+      signal: AbortSignal.timeout(30000),
+      headers: {
+        Authorization: 'Bearer ' + accessToken,
+        apikey: publishableKey,
+        Origin: ORIGIN,
+        Accept: 'application/json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        course_id: courseId,
+        lesson_id: lessonId,
+        video_id: videoId
+      })
+    });
+  } catch {
+    throw new Error('Could not contact ED-ALL to authorize this offline download.');
+  }
+
+  const result = await response.json().catch(() => null);
+  if (!response.ok || !result || result.authorized !== true) {
+    const message = result && typeof result.error === 'string' ? result.error : '';
+    throw new Error(message || 'This lesson is not authorized for offline download by the current account.');
+  }
+  if (
+    !UUID_PATTERN.test(String(result.user_id || '')) ||
+    result.course_id !== courseId ||
+    result.lesson_id !== lessonId ||
+    result.video_id !== videoId
+  ) throw new Error('The authorization service returned an invalid account or lesson binding.');
+  return result.user_id;
+}
+
+async function verifyOfflineAccountSession({ userId, accessToken, supabaseUrl, publishableKey }) {
+  if (!UUID_PATTERN.test(String(userId || ''))) throw new Error('Invalid ED-ALL account ID.');
+  if (typeof accessToken !== 'string' || accessToken.length < 40 || accessToken.length > 8192) {
+    throw new Error('An active ED-ALL session is required.');
+  }
+  if (typeof publishableKey !== 'string' || !publishableKey.trim() || publishableKey.length > 2048) {
+    throw new Error('The platform public backend key is unavailable.');
+  }
+  let backend;
+  try { backend = new URL(String(supabaseUrl || '')); }
+  catch { throw new Error('The platform backend URL is invalid.'); }
+  const host = backend.hostname.toLowerCase();
+  if (
+    backend.protocol !== 'https:' || backend.username || backend.password ||
+    !(host.endsWith('.supabase.co') || host.endsWith('.lovable.cloud')) ||
+    backend.search || backend.hash
+  ) throw new Error('The platform backend URL is not an approved HTTPS Supabase endpoint.');
+
+  let response;
+  try {
+    response = await fetch(new URL('/auth/v1/user', backend.origin), {
+      method: 'GET',
+      redirect: 'error',
+      cache: 'no-store',
+      signal: AbortSignal.timeout(15000),
+      headers: {
+        Authorization: 'Bearer ' + accessToken,
+        apikey: publishableKey,
+        Accept: 'application/json'
+      }
+    });
+  } catch {
+    throw new Error('Could not verify the current ED-ALL account with the platform.');
+  }
+  const profile = await response.json().catch(() => null);
+  if (!response.ok || !profile || profile.id !== userId) {
+    throw new Error('The current ED-ALL session does not match this account.');
+  }
+  return userId;
+}
+
+async function downloadOfflineVideo(id, height, courseId, lessonId, accessToken, supabaseUrl, publishableKey) {
+  if (process.platform !== 'win32') {
+    throw new Error('Encrypted offline downloads are currently supported on Windows only.');
+  }
+  if (!offlineLibrary) throw new Error('Encrypted offline storage is unavailable.');
+  await assertSafeStorageAvailable(safeStorage);
+  if (!/^[a-zA-Z0-9_-]{11}$/.test(String(id))) throw new Error('Invalid video ID.');
+  // Server entitlement is checked before any media extraction or download begins.
+  const userId = await authorizeOfflineDownload({
+    courseId, lessonId, videoId: String(id), accessToken, supabaseUrl, publishableKey
+  });
+  const bundle = await extract(String(id), false);
+  const selected = bundle.videos.find(item => item.h === Number(height));
+  if (!selected) throw new Error('The selected desktop video quality is unavailable.');
+  const video = getRegisteredStream(selected.url);
+  const audio = selected.hasAudio ? null : (bundle.audio ? getRegisteredStream(bundle.audio.url) : null);
+  if (!selected.hasAudio && !audio) throw new Error('This quality has no compatible audio stream and cannot be saved.');
+  const saved = await offlineLibrary.save({
+    userId,
+    title: bundle.title,
+    videoId: String(id),
+    height: selected.h,
+    video: { ...video, mimeType: selected.mimeType || video.mimeType || 'video/mp4' },
+    audio: audio ? { ...audio, mimeType: bundle.audio.mimeType || audio.mimeType || 'audio/mp4' } : null
+  });
+  await offlineLibrary.rememberAccount(userId);
+  activeOfflineUserId = userId;
+  return saved;
+}
 async function prepareTools() {
   const dir = path.join(app.getPath('userData'), 'tools');
   await fs.mkdir(dir, { recursive: true });
@@ -54,8 +231,11 @@ function registerStream(format, commonHeaders) {
   for (const [key, value] of Object.entries({ ...commonHeaders, ...format.http_headers })) {
     if (['user-agent', 'referer', 'origin', 'accept', 'accept-language'].includes(key.toLowerCase()) && typeof value === 'string' && !/[\r\n]/.test(value)) headers[key] = value;
   }
-  streams.set(token, { url: url.href, headers, expire });
-  return { url: 'edmedia://stream/' + token, expire };
+  const mimeType = format.vcodec === 'none'
+    ? (format.ext === 'webm' ? 'audio/webm' : 'audio/mp4')
+    : (format.ext === 'webm' ? 'video/webm' : 'video/mp4');
+  streams.set(token, { url: url.href, headers, expire, mimeType });
+  return { url: 'edmedia://stream/' + token, expire, mimeType };
 }
 async function extract(id, force) {
   const previous = cache.get(id);
@@ -129,10 +309,82 @@ const editMenu = Menu.buildFromTemplate([
 Menu.setApplicationMenu(editMenu);
 
   toolReady = prepareTools();
+  offlineLibrary = new OfflineLibrary({
+    directory: path.join(app.getPath('userData'), 'offline-media'),
+    safeStorage,
+    fetchMedia: async reference => {
+      const upstream = await net.fetch(reference.url, {
+        headers: reference.headers,
+        signal: AbortSignal.timeout(2 * 60 * 60 * 1000),
+        redirect: 'error'
+      });
+      if (!upstream.ok || !upstream.body) {
+        return { status: upstream.status, body: null, contentType: reference.mimeType };
+      }
+      return {
+        status: upstream.status,
+        contentType: upstream.headers.get('content-type') || reference.mimeType,
+        body: Readable.fromWeb(upstream.body)
+      };
+    }
+  });
+  activeOfflineUserId = await offlineLibrary.getRememberedAccount();
+
+  ipcMain.handle('edall:set-offline-account', async (event, userId, accessToken, supabaseUrl, publishableKey, revision) => {
+    assertMainFrame(event);
+    if (!Number.isSafeInteger(revision) || revision <= offlineAccountSyncRevision) return false;
+    const verifiedUserId = await verifyOfflineAccountSession({ userId, accessToken, supabaseUrl, publishableKey });
+    if (revision <= offlineAccountSyncRevision) return false;
+    offlineAccountSyncRevision = revision;
+    await offlineLibrary.rememberAccount(verifiedUserId);
+    activeOfflineUserId = verifiedUserId;
+    return true;
+  });
+  ipcMain.handle('edall:clear-offline-account', async (event, revision) => {
+    assertMainFrame(event);
+    if (!Number.isSafeInteger(revision) || revision <= offlineAccountSyncRevision) return false;
+    offlineAccountSyncRevision = revision;
+    await offlineLibrary.clearRememberedAccount();
+    activeOfflineUserId = null;
+    return true;
+  });
 
   ipcMain.handle('edall:formats', (event, id, force) => {
-    if (!windowRef || event.sender !== windowRef.webContents || event.senderFrame !== event.sender.mainFrame || new URL(event.senderFrame.url).origin !== ORIGIN || !/^[a-zA-Z0-9_-]{11}$/.test(id)) throw new Error('Access denied');
+    assertMainFrame(event);
+    if (!/^[a-zA-Z0-9_-]{11}$/.test(id)) throw new Error('Access denied');
     return extract(id, force === true);
+  });
+  ipcMain.handle('edall:download-offline', async (event, id, height, courseId, lessonId, accessToken, supabaseUrl, publishableKey) => {
+    assertMainFrame(event);
+    return downloadOfflineVideo(id, height, courseId, lessonId, accessToken, supabaseUrl, publishableKey);
+  });
+  ipcMain.handle('edall:list-offline', async event => {
+    assertMainFrame(event, true);
+    if (!UUID_PATTERN.test(String(activeOfflineUserId || ''))) {
+      throw new Error('Open Saved Downloads from the signed-in ED-ALL account first.');
+    }
+    return offlineLibrary.list(activeOfflineUserId);
+  });
+  ipcMain.handle('edall:delete-offline', async (event, id) => {
+    assertMainFrame(event, true);
+    if (!UUID_PATTERN.test(String(activeOfflineUserId || ''))) {
+      throw new Error('No authenticated ED-ALL account is selected.');
+    }
+    return offlineLibrary.remove(id, activeOfflineUserId);
+  });
+  ipcMain.handle('edall:open-offline-library', async (event, userId) => {
+    assertMainFrame(event);
+    if (!UUID_PATTERN.test(String(userId || '')) || activeOfflineUserId !== userId) {
+      throw new Error('Sign in to the ED-ALL account whose saved downloads you want to open.');
+    }
+    await offlineLibrary.rememberAccount(userId);
+    await windowRef.loadFile(path.join(__dirname, 'offline.html'), { query: { userId } });
+    return true;
+  });
+  ipcMain.handle('edall:return-to-platform', async event => {
+    assertMainFrame(event, true);
+    await windowRef.loadURL(HOME);
+    return true;
   });
 
 ipcMain.handle('edall:video-fullscreen', (event, enabled) => {
@@ -171,6 +423,37 @@ ipcMain.handle('edall:video-fullscreen', (event, enabled) => {
 
   protocol.handle('edmedia', async request => {
     const url = new URL(request.url);
+    const offlineRole = url.hostname === 'offline-v' ? 'video' : url.hostname === 'offline-a' ? 'audio' : null;
+    if (offlineRole) {
+      try {
+        const id = url.pathname.slice(1);
+        if (!UUID_PATTERN.test(String(activeOfflineUserId || ''))) {
+          return new Response('Offline account authorization required', { status: 403 });
+        }
+        const saved = await offlineLibrary.createResponse(id, offlineRole, request.headers.get('range'), activeOfflineUserId);
+        const headers = new Headers(saved.headers);
+        const requestOrigin = request.headers.get('origin');
+        if (requestOrigin && requestOrigin !== ORIGIN && requestOrigin !== 'null') {
+          return new Response('Origin denied', { status: 403 });
+        }
+        headers.set('Access-Control-Allow-Origin', requestOrigin || ORIGIN);
+        return new Response(Readable.toWeb(saved.body), { status: saved.status, headers });
+      } catch (error) {
+        if (error && error.statusCode === 416) {
+          return new Response(null, {
+            status: 416,
+            headers: {
+              'Content-Range': error.contentRange || 'bytes */0',
+              'Access-Control-Allow-Origin': request.headers.get('origin') === 'null' ? 'null' : ORIGIN
+            }
+          });
+        }
+        return new Response('Offline media unavailable', {
+          status: 404,
+          headers: { 'Access-Control-Allow-Origin': ORIGIN, 'Cache-Control': 'no-store' }
+        });
+      }
+    }
     const stream = url.hostname === 'stream' && streams.get(url.pathname.slice(1));
     if (!stream || stream.expire < Date.now()) return new Response('Expired', { status: 410 });
     const headers = { ...stream.headers };
@@ -191,9 +474,12 @@ ipcMain.handle('edall:video-fullscreen', (event, enabled) => {
   windowRef.webContents.setWindowOpenHandler(({ url }) => { openOutside(url); return { action: 'deny' }; });
   windowRef.webContents.on('will-navigate', (event, raw) => {
     if (raw.startsWith('edall-restart:')) { event.preventDefault(); app.relaunch(); app.exit(0); return; }
+    if (isOfflineUiUrl(raw)) return;
     try { const u = new URL(raw); if (u.origin !== ORIGIN || /\.pdf$/i.test(u.pathname)) { event.preventDefault(); openOutside(raw); } } catch { event.preventDefault(); }
   });
-  windowRef.webContents.on('will-frame-navigate', (event, details) => { if (!frameAllowed(details.url)) event.preventDefault(); });
+  windowRef.webContents.on('will-frame-navigate', (event, details) => {
+    if (!frameAllowed(details.url) && !isOfflineUiUrl(details.url)) event.preventDefault();
+  });
   windowRef.webContents.on('will-attach-webview', event => event.preventDefault());
   windowRef.webContents.on('before-input-event', (event, input) => { if (input.key === 'F12' || (input.control && input.shift && ['i','j','c'].includes(input.key.toLowerCase()))) event.preventDefault(); });
   windowRef.webContents.session.setPermissionCheckHandler((_wc, permission) => {
@@ -217,8 +503,19 @@ ipcMain.handle('edall:video-fullscreen', (event, enabled) => {
     menu.popup({ window: windowRef });
   });
 
-  const showOffline = () => windowRef.loadFile(path.join(__dirname, 'offline.html'));
-  windowRef.webContents.on('did-fail-load', (_e, code, _d, url, isMain) => { if (isMain && code !== -3 && !String(url).startsWith('file:')) showOffline(); });
+  const showOffline = async () => {
+    if (!UUID_PATTERN.test(String(activeOfflineUserId || ''))) {
+      activeOfflineUserId = await offlineLibrary.getRememberedAccount();
+    }
+    return windowRef.loadFile(path.join(__dirname, 'offline.html'), {
+      query: { userId: UUID_PATTERN.test(String(activeOfflineUserId || '')) ? activeOfflineUserId : '' }
+    });
+  };
+  windowRef.webContents.on('did-fail-load', (_e, code, _d, url, isMain) => {
+    if (isMain && code !== -3 && !String(url).startsWith('file:')) {
+      showOffline().catch(error => console.warn('[ED-ALL Desktop] Offline library could not open:', error && error.message));
+    }
+  });
   let online = net.isOnline();
   if (online) { try { const r = await net.fetch(ORIGIN + '/robots.txt', { bypassCustomProtocolHandlers: true, signal: AbortSignal.timeout(8000), cache: 'no-store' }); online = r.ok; } catch { online = false; } }
   if (!online) return showOffline();
