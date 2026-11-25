@@ -2402,7 +2402,7 @@ word-spacing: normal !important;
         // Keep the desktop's encrypted offline library bound to the last
         // server-verified ED-ALL account. Tokens are passed only through IPC and
         // are never persisted by the desktop main process.
-        let desktopOfflineAccountRevision = 0;
+        let desktopOfflineAccountRevision = Date.now() * 1000;
         const syncDesktopOfflineAccount = session => {
             const bridge = window.edallDesktop;
             if (!bridge || bridge.isDesktop !== true) return;
@@ -2425,8 +2425,10 @@ word-spacing: normal !important;
         if (window.edallDesktop && window.edallDesktop.isDesktop === true) {
             sb.auth.onAuthStateChange((_event, session) => syncDesktopOfflineAccount(session));
             sb.auth.getSession().then(({ data, error }) => {
-                syncDesktopOfflineAccount(error ? null : data && data.session);
-            }).catch(() => syncDesktopOfflineAccount(null));
+                if (!error) syncDesktopOfflineAccount(data && data.session);
+            }).catch(() => {
+                // Preserve the last verified local account during a transient auth/network failure.
+            });
         }
                 // دالة تعقيم وحماية النصوص
         function edEsc(str) {
