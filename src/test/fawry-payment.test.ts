@@ -15,6 +15,9 @@ import {
 } from "../../supabase/functions/_shared/fawry";
 
 const SECURE_KEY = "test-secure-key";
+const fawryCheckoutHandler = readFileSync(resolve(process.cwd(), "supabase/functions/create-fawry-payment-intention/index.ts"), "utf8");
+const fawryWebhookHandler = readFileSync(resolve(process.cwd(), "supabase/functions/fawry-webhook/index.ts"), "utf8");
+const paymobWebhookHandler = readFileSync(resolve(process.cwd(), "supabase/functions/paymob-webhook/index.ts"), "utf8");
 const readEnv = (values: Record<string, string | undefined>) => (name: string) => values[name];
 
 describe("dormant Fawry payment provider", () => {
@@ -129,6 +132,29 @@ describe("dormant Fawry payment provider", () => {
     expect(migration).toContain("  false,");
     expect(migration).toContain("ON CONFLICT (provider_code) DO UPDATE");
     expect(migration).toContain("SET enabled = false");
+  });
+
+  it("authorizes Fawry callbacks before any payment fulfillment", () => {
+    expect(fawryWebhookHandler.indexOf("verifyFawryNotificationSignature")).toBeLessThan(fawryWebhookHandler.indexOf("fulfill_payment_order"));
+    expect(fawryWebhookHandler).toContain("isFawryReferenceMatch(order.metadata, order.provider_reference, fawryRefNumber)");
+    expect(fawryWebhookHandler).toContain("hasSufficientFawryPaidAmount(paymentAmount, orderAmount)");
+    expect(fawryWebhookHandler).toContain('isFawryPaidStatus(orderStatus)');
+    expect(fawryWebhookHandler).toContain('_provider: "fawry"');
+    expect(fawryWebhookHandler).not.toContain('_provider: "primary"');
+  });
+
+  it("keeps Fawry checkout disabled unless the server flag and DB provider gate both pass", () => {
+    expect(fawryCheckoutHandler).toContain("isFawryEnabled((name) => Deno.env.get(name))");
+    expect(fawryCheckoutHandler).toContain('create_payment_order_for_provider');
+    expect(fawryCheckoutHandler).toContain('_provider_code: "fawry"');
+    expect(fawryCheckoutHandler).not.toContain('.from("payment_provider_settings").upsert');
+  });
+
+  it("keeps Paymob callbacks bound to the independent primary provider", () => {
+    expect(paymobWebhookHandler).toContain("verifyPaymobTransactionHmac");
+    expect(paymobWebhookHandler).toContain('order.provider!=="primary"');
+    expect(paymobWebhookHandler).toContain('_provider:"primary"');
+    expect(paymobWebhookHandler).not.toContain('_provider:"fawry"');
   });
 
 });
