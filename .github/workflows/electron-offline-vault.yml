@@ -8,6 +8,8 @@ on:
       - "electron/offline-vault.test.cjs"
       - "electron/offline-library.cjs"
       - "electron/offline-library.test.cjs"
+      - "electron/offline-account-authorization.test.cjs"
+      - "public/ed_master.html"
       - "electron/main.cjs"
       - "electron/preload.cjs"
       - "electron/offline.html"
@@ -21,6 +23,8 @@ on:
       - "electron/offline-vault.test.cjs"
       - "electron/offline-library.cjs"
       - "electron/offline-library.test.cjs"
+      - "electron/offline-account-authorization.test.cjs"
+      - "public/ed_master.html"
       - "electron/main.cjs"
       - "electron/preload.cjs"
       - "electron/offline.html"
@@ -46,7 +50,7 @@ jobs:
           node --check electron/offline-vault.cjs
           node --check electron/offline-library.cjs
           node --check electron/offline.js
-          node --test electron/offline-vault.test.cjs electron/offline-library.test.cjs
+          node --test electron/offline-vault.test.cjs electron/offline-library.test.cjs electron/offline-account-authorization.test.cjs
 
   windows-offline-tests:
     runs-on: windows-latest
@@ -64,5 +68,5 @@ jobs:
           node --check electron/offline-vault.cjs
           node --check electron/offline-library.cjs
           node --check electron/offline.js
-      - name: Run encrypted offline storage tests on Windows
-        run: node --test electron/offline-vault.test.cjs electron/offline-library.test.cjs
+      - name: Run encrypted offline storage and account-scope tests on Windows
+        run: node --test electron/offline-vault.test.cjs electron/offline-library.test.cjs electron/offline-account-authorization.test.cjs
