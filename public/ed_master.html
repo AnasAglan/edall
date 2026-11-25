@@ -2851,7 +2851,7 @@ word-spacing: normal !important;
         }
 
         // Video toggle: each video starts hidden, user clicks to show/hide
-        function renderVideoToggle(videoUrl, index) {
+        function renderVideoToggle(videoUrl, index, courseId, lessonId) {
             const toggleId = `videoToggle_${index}_${Date.now()}`;
             const containerId = `videoContainer_${index}_${Date.now()}`;
             
@@ -2893,7 +2893,8 @@ word-spacing: normal !important;
                 return `<div style="margin:8px 0;">
                 <button id="${toggleId}" class="btn btn-sm" style="width:100%;text-align:right;justify-content:flex-start;gap:10px;"
                     data-k1="${_t[0]}" data-k2="${_t[1]}" data-k3="${_t[2]}"
-                    onclick="_edOpen(this, '${containerId}', ${index + 1})">
+                    data-course-id="${edEsc(courseId || '')}" data-lesson-id="${edEsc(lessonId || '')}"
+                    onclick="_edOpen(this, '${containerId}', ${index + 1}, this.dataset.courseId, this.dataset.lessonId)">
                     <i class="fas fa-play-circle"></i> ${showLbl0} (${index + 1})
                 </button>
                 <div id="${containerId}" data-show-label="${showLbl0}" data-hide-label="${hideLbl0}" style="display:none;margin-top:8px;"></div>
@@ -3323,7 +3324,7 @@ if (existingWatermark && !layerHost.contains(existingWatermark)) {
         }
         const EDALL_DOWNLOAD_URL = 'https://github.com/AnasAglan/ED-ALL/releases/download/Education/EdAll-Setup.exe';
         // Desktop-only HTML5 playback. Normal browsers are asked to install the desktop app.
-        async function _edDesktopOpen(container, vid) {
+        async function _edDesktopOpen(container, vid, courseId, lessonId) {
             const bridge = window.edallDesktop;
             const wrap = document.createElement('div');
             wrap.className = 'edv-wrap ed-desktop-player';
@@ -3606,7 +3607,10 @@ cleanups.push(() => {
 
                 // Windows-only encrypted offline saving. This uses the already
                 // selected local yt-dlp stream; browser/Piped/Android paths do not see it.
-                if (typeof bridge.downloadOffline === 'function') {
+                const offlineContextValid =
+                    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(courseId || '')) &&
+                    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(lessonId || ''));
+                if (typeof bridge.downloadOffline === 'function' && offlineContextValid) {
                     const offlineActions = document.createElement('div');
                     offlineActions.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;padding:9px 4px;direction:rtl;';
                     const makeOfflineButton = label => {
@@ -3624,7 +3628,15 @@ cleanups.push(() => {
                         saveOfflineButton.disabled = true;
                         saveOfflineButton.textContent = currentLanguage === 'ar' ? 'جارٍ التنزيل والتشفير...' : 'Downloading and encrypting...';
                         try {
-                            const saved = await bridge.downloadOffline(vid, quality);
+                            const { data: authData, error: authError } = await sb.auth.getSession();
+                            const session = authData && authData.session;
+                            if (authError || !session || !session.access_token || !session.user || !session.user.id) {
+                                throw new Error(currentLanguage === 'ar' ? 'سجّل الدخول أولاً إلى حساب ED-ALL.' : 'Sign in to your ED-ALL account first.');
+                            }
+                            const saved = await bridge.downloadOffline(
+                                vid, quality, courseId, lessonId, session.access_token,
+                                SUPABASE_URL, SUPABASE_ANON_KEY
+                            );
                             saveOfflineButton.textContent = currentLanguage === 'ar' ? 'تم الحفظ المشفّر' : 'Encrypted and saved';
                             showToast(
                                 currentLanguage === 'ar'
@@ -3645,8 +3657,20 @@ cleanups.push(() => {
                         }
                     });
                     listen(openOfflineButton, 'click', async () => {
-                        try { await bridge.openOfflineLibrary(); }
-                        catch { showToast(currentLanguage === 'ar' ? 'تعذر فتح مكتبة التنزيلات.' : 'Could not open the download library.', 'error'); }
+                        try {
+                            const { data: authData, error: authError } = await sb.auth.getSession();
+                            const userId = authData && authData.session && authData.session.user && authData.session.user.id;
+                            if (authError || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(userId || ''))) {
+                                throw new Error(currentLanguage === 'ar' ? 'سجّل الدخول إلى الحساب المطلوب.' : 'Sign in to the account whose downloads you want to open.');
+                            }
+                            await bridge.openOfflineLibrary(userId);
+                        } catch (error) {
+                            showToast(
+                                error && error.message ? error.message :
+                                    (currentLanguage === 'ar' ? 'تعذر فتح مكتبة التنزيلات.' : 'Could not open the download library.'),
+                                'error'
+                            );
+                        }
                     });
                     offlineActions.append(saveOfflineButton, openOfflineButton);
                     wrap.appendChild(offlineActions);
@@ -3657,7 +3681,7 @@ cleanups.push(() => {
             } catch (err) { if (!disposed) { _edClose(container); throw err; } }
         }
 
-        async function _edOpen(btn, containerId, num) {
+        async function _edOpen(btn, containerId, num, courseId, lessonId) {
             const container = document.getElementById(containerId);
             if (!container || !btn) return;
 
@@ -3703,7 +3727,7 @@ cleanups.push(() => {
                 // and never fall back to Piped if the local desktop extractor fails.
                 if (isDesktop) {
                     try {
-                        await _edDesktopOpen(container, vid);
+                        await _edDesktopOpen(container, vid, courseId, lessonId);
                         setButton(true, false);
                     } catch (desktopError) {
                         console.error('[ED-ALL] Desktop yt-dlp playback failed:', desktopError);
@@ -7176,7 +7200,7 @@ window.triggerModalClose = function() {
                     modalContent += `
                         <div style="margin-bottom:20px;">
                             <h4>${currentLanguage === 'ar' ? 'فيديوهات المحاضرة' : 'Lesson Videos'} (${lesson.videos.length})</h4>
-                            ${lesson.videos.map((video, vidIdx) => renderVideoToggle(video, vidIdx)).join('')}
+                            ${lesson.videos.map((video, vidIdx) => renderVideoToggle(video, vidIdx, courseId, lessonId)).join('')}
                             <button class="btn btn-sm" style="margin-top:10px;" onclick="trackLessonProgress('${courseId}', '${lessonId}', 'videoWatched', true)">
                                 <i class="fas fa-check"></i> ${currentLanguage === 'ar' ? 'تحديد كمشاهدة' : 'Mark as Watched'}
                             </button>
