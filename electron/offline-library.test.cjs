@@ -253,3 +253,17 @@ test('requires a valid account ID before saving or listing offline media', async
   }), /valid ED-ALL account/);
   await assert.rejects(() => library.list(), /valid ED-ALL account/);
 });
+
+test('persists the last authorized ED-ALL account only inside OS-protected storage', async t => {
+  const library = await createLibrary(t, async () => ({
+    status: 200,
+    contentType: 'video/mp4',
+    body: Readable.from([Buffer.from('x')])
+  }));
+  assert.equal(await library.getRememberedAccount(), null);
+  await library.rememberAccount(USER_A);
+  assert.equal(await library.getRememberedAccount(), USER_A);
+  await assert.rejects(() => library.rememberAccount('not-a-user'), /valid ED-ALL account/);
+  await library.clearRememberedAccount();
+  assert.equal(await library.getRememberedAccount(), null);
+});
