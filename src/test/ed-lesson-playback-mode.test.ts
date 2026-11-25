@@ -79,9 +79,10 @@ describe("per-lesson video playback mode", () => {
 describe("per-video native app download prompt", () => {
   it("wraps YouTube, 4shared and other video links with an app download action", () => {
     expect(html).toContain("function wrapVideoWithAppDownload(markup)");
-    const videoFunctionStart = html.indexOf("function renderVideoToggle(videoUrl, index)");
+    const videoFunctionStart = html.indexOf("function renderVideoToggle(videoUrl, index, courseId, lessonId)");
     const videoFunctionEnd = html.indexOf("// ---- Video watermark", videoFunctionStart);
     const renderer = html.slice(videoFunctionStart, videoFunctionEnd);
+    expect(renderer).toContain("courseId, lessonId");
     expect(renderer.match(/return wrapVideoWithAppDownload\(markup\)/g)).toHaveLength(3);
     expect(renderer).toContain("is4sharedUrl(videoUrl)");
     expect(renderer).toContain("_edYtId(videoUrl)");

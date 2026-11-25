@@ -7,6 +7,9 @@ content_path = "./supabase/templates/confirmation.html"
 [functions.create-payment-intention]
 verify_jwt = true
 
+[functions.authorize-offline-download]
+verify_jwt = true
+
 [functions.paymob-webhook]
 verify_jwt = false
 
