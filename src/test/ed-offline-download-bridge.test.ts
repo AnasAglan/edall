@@ -7,7 +7,11 @@ const edgeFunction = readFileSync(
   resolve(process.cwd(), "supabase/functions/authorize-offline-download/index.ts"),
   "utf8",
 );
-const lessonRlsMigration = readFileSync(
+const lessonPolicyMigration = readFileSync(
+  resolve(process.cwd(), "supabase/migrations/20261114120000_harden_platform_security.sql"),
+  "utf8",
+);
+const lessonAccessMigration = readFileSync(
   resolve(process.cwd(), "supabase/migrations/20261115113000_enforce_course_and_admin_mfa.sql"),
   "utf8",
 );
@@ -28,12 +32,13 @@ describe("Android encrypted offline library account scoping", () => {
   });
 
   it("relies on the platform's existing lesson entitlement RLS policy", () => {
-    expect(lessonRlsMigration).toContain('CREATE POLICY "Entitled users can view lessons"');
-    expect(lessonRlsMigration).toContain("USING (public.can_access_lesson(id))");
-    expect(lessonRlsMigration).toContain("e.course_id=c.id AND e.user_id=auth.uid()");
-    expect(lessonRlsMigration).toContain("c.price <= 0");
-    expect(lessonRlsMigration).toContain("l.is_free = true");
-    expect(lessonRlsMigration).toContain("public.has_course_capability(c.id,'content')");
+    expect(lessonPolicyMigration).toContain('CREATE POLICY "Entitled users can view lessons"');
+    expect(lessonPolicyMigration).toContain("USING (public.can_access_lesson(id))");
+    expect(lessonAccessMigration).toContain("CREATE OR REPLACE FUNCTION public.can_access_lesson(_lesson_id uuid)");
+    expect(lessonAccessMigration).toContain("e.course_id=c.id AND e.user_id=auth.uid()");
+    expect(lessonAccessMigration).toContain("c.price <= 0");
+    expect(lessonAccessMigration).toContain("l.is_free = true");
+    expect(lessonAccessMigration).toContain("public.has_course_capability(c.id,'content')");
     expect(edgeFunction).toContain('.from("lessons")');
     expect(edgeFunction).toContain('.from("lesson_videos")');
   });
@@ -46,12 +51,10 @@ describe("Android encrypted offline library account scoping", () => {
   });
 
   it("does not block native downloads for lessons hidden from web playback", () => {
+    // Native access is not tied to the browser-only playback flag.
     expect(edgeFunction).toContain('.select("id,course_id")');
-    // The field name may appear in explanatory comments, but the data query
-    // must not filter native access by the browser-only playback flag.
     expect(edgeFunction).not.toContain('.select("id,course_id,web_playback_enabled")');
     expect(edgeFunction).not.toContain('.eq("web_playback_enabled", true)');
-    expect(edgeFunction).toContain('.select("id,course_id")');
     expect(edgeFunction).toContain("if (!lesson)");
     expect(edgeFunction).toContain("lessonContainsRequestedVideo(videos, videoId)");
   });
