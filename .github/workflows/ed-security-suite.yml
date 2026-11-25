@@ -96,6 +96,9 @@ jobs:
           deno check supabase/functions/create-payment-intention/index.ts
           deno check supabase/functions/authorize-offline-download/index.ts
           deno check supabase/functions/paymob-webhook/index.ts
+          deno check supabase/functions/create-fawry-payment-intention/index.ts
+          deno check supabase/functions/fawry-webhook/index.ts
+          deno check supabase/functions/_shared/fawry.ts
           deno check supabase/functions/_shared/app-origin.ts
           deno check supabase/functions/_shared/paymob-hmac.ts
       - name: Test Paymob webhook signature verification
