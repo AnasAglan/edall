@@ -1,15 +1,67 @@
 <!doctype html>
-<html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>EdAll</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EdAll - التنزيلات المشفرة</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; media-src edmedia:; font-src 'self'">
 <style>
-body{margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#0f1115;color:#f2f2f2;font-family:"Segoe UI",Tahoma,sans-serif;text-align:center}
-.box{max-width:420px;padding:32px}
-h1{font-size:1.4rem;margin:0 0 10px}
-p{opacity:.75;margin:0 0 24px}
-a{display:inline-block;padding:12px 28px;border-radius:10px;background:#2f7cf6;color:#fff;text-decoration:none;font-weight:700}
-</style></head>
-<body><div class="box">
-<h1>تحقق من اتصالك بالإنترنت وأعد تشغيل البرنامج</h1>
-<p>Check your internet connection and restart the app.</p>
-<a href="edall-restart://now">إعادة التشغيل</a>
-</div></body></html>
+:root{color-scheme:dark;font-family:"Segoe UI",Tahoma,sans-serif;background:#0f1115;color:#f2f3f5}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:#0f1115;color:#f2f3f5}
+header{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:18px max(18px,calc((100vw - 1050px)/2));border-bottom:1px solid #2b303a;background:#141820}
+h1{font-size:20px;margin:0 0 4px}
+.sub{font-size:13px;color:#aab3c1}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+button{border:1px solid #414b5b;border-radius:9px;background:#202735;color:#f5f7fa;padding:9px 13px;font:inherit;cursor:pointer}
+button:hover{background:#2b3749}
+button:disabled{opacity:.55;cursor:wait}
+main{max-width:1050px;margin:0 auto;padding:24px 18px}
+.notice{padding:12px 14px;border:1px solid #354253;border-radius:10px;color:#bdc7d5;background:#151c26;line-height:1.6;font-size:13px;margin-bottom:18px}
+.layout{display:grid;grid-template-columns:minmax(260px,360px) minmax(0,1fr);gap:18px}
+.list{display:flex;flex-direction:column;gap:10px}
+.item{padding:14px;border:1px solid #303846;border-radius:12px;background:#171d26}
+.item h3{font-size:15px;margin:0 0 7px;overflow-wrap:anywhere}
+.meta{font-size:12px;color:#aab3c1;line-height:1.7;margin-bottom:10px}
+.item-actions{display:flex;gap:8px}
+.primary{background:#1769d2;border-color:#287de8}
+.danger{color:#ffaaaa}
+.viewer{padding:14px;border:1px solid #303846;border-radius:12px;background:#171d26;min-height:220px}
+.viewer h2{font-size:16px;margin:0 0 12px}
+video{display:block;width:100%;max-height:65vh;background:#000;border-radius:9px}
+.empty{padding:28px 14px;border:1px dashed #394556;border-radius:12px;color:#aab3c1;text-align:center;line-height:1.7}
+#status{min-height:24px;color:#9fc5ff;font-size:13px;margin-top:12px}
+@media(max-width:760px){.layout{grid-template-columns:1fr}.viewer{order:-1}header{align-items:flex-start}}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>التنزيلات المحفوظة مشفّرة</h1>
+    <div class="sub">ED-ALL Desktop • Encrypted offline library</div>
+  </div>
+  <div class="actions">
+    <button id="refresh">تحديث القائمة</button>
+    <button id="back" class="primary">العودة إلى المنصة</button>
+  </div>
+</header>
+<main>
+  <div class="notice">
+    تُحفظ الملفات مشفّرة على الجهاز، ويُحمى مفتاحها بواسطة تخزين نظام التشغيل لحساب Windows الحالي.
+    لا يتم إنشاء ملفات فيديو مؤقتة غير مشفّرة. هذه حماية للملفات أثناء التخزين وليست DRM غير قابل للتجاوز.
+  </div>
+  <div class="layout">
+    <section>
+      <div id="downloads" class="list" aria-live="polite"></div>
+    </section>
+    <section class="viewer">
+      <h2 id="nowPlaying">اختر درساً محفوظاً لتشغيله</h2>
+      <video id="video" controls playsinline preload="metadata"></video>
+      <audio id="audio" hidden preload="auto"></audio>
+      <div id="status" role="status" aria-live="polite"></div>
+    </section>
+  </div>
+</main>
+<script src="./offline.js" defer></script>
+</body>
+</html>
