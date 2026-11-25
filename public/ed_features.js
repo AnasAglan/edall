@@ -893,6 +893,9 @@
         case "issue-certificate":
           await rpc("issue_course_certificate",{_course_id:course,_student_id:v.student_id});
           break;
+        case "set-final-lesson":
+          await rpc("set_course_final_lesson",{_course_id:course,_lesson_id:v.lesson_id || null});
+          break;
         case "create-topic":
           await rpc("create_discussion_topic",{_course_id:course,_lesson_id:v.lesson_id || null,_title:v.title,_content:v.content});
           break;
