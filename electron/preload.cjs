@@ -16,7 +16,11 @@ if (process.isMainFrame && isPlatform) {
     downloadOffline: (id, height, courseId, lessonId, accessToken, supabaseUrl, publishableKey) =>
       ipcRenderer.invoke('edall:download-offline', id, Number(height), courseId, lessonId, accessToken, supabaseUrl, publishableKey),
     openOfflineLibrary: (userId) =>
-      ipcRenderer.invoke('edall:open-offline-library', userId)
+      ipcRenderer.invoke('edall:open-offline-library', userId),
+    setOfflineAccount: (userId, accessToken, supabaseUrl, publishableKey, revision) =>
+      ipcRenderer.invoke('edall:set-offline-account', userId, accessToken, supabaseUrl, publishableKey, Number(revision)),
+    clearOfflineAccount: (revision) =>
+      ipcRenderer.invoke('edall:clear-offline-account', Number(revision))
   }));
 } else if (process.isMainFrame && isOfflinePage) {
   contextBridge.exposeInMainWorld('edallDesktop', Object.freeze({
