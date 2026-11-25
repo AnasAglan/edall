@@ -51,7 +51,8 @@ class OfflineLibrary {
     const manifest = JSON.parse(json);
     if (
       manifest.id !== id ||
-      manifest.version !== 1 ||
+      manifest.version !== 2 ||
+      !UUID_PATTERN.test(String(manifest.userId || '')) ||
       !manifest.video ||
       !manifest.video.encryptedKey ||
       !Array.isArray(manifest.video.chunks)
@@ -59,8 +60,9 @@ class OfflineLibrary {
     return manifest;
   }
 
-  async save({ title, videoId, height, video, audio = null }) {
+  async save({ userId, title, videoId, height, video, audio = null }) {
     await assertSafeStorageAvailable(this.safeStorage);
+    if (!UUID_PATTERN.test(String(userId || ''))) throw new Error('A valid ED-ALL account is required.');
     if (!/^[a-zA-Z0-9_-]{11}$/.test(String(videoId))) throw new Error('Invalid video reference.');
     if (!Number.isInteger(Number(height)) || Number(height) < 144 || Number(height) > 4320) {
       throw new Error('Invalid video quality.');
@@ -118,8 +120,9 @@ class OfflineLibrary {
       if (audio) audioDescriptor = await encryptOne('audio', audio);
 
       const manifest = {
-        version: 1,
+        version: 2,
         id,
+        userId: String(userId),
         title: cleanTitle,
         videoId: String(videoId),
         height: Number(height),
@@ -154,7 +157,8 @@ class OfflineLibrary {
     };
   }
 
-  async list() {
+  async list(userId) {
+    if (!UUID_PATTERN.test(String(userId || ''))) throw new Error('A valid ED-ALL account is required.');
     await fs.mkdir(this.directory, { recursive: true });
     const names = await fs.readdir(this.directory);
     const entries = [];
@@ -163,30 +167,35 @@ class OfflineLibrary {
       const id = name.slice(0, -'.manifest'.length);
       if (!UUID_PATTERN.test(id)) continue;
       try {
-        entries.push(this.publicEntry(await this.readManifest(id)));
+        const manifest = await this.readManifest(id);
+        if (manifest.userId === userId) entries.push(this.publicEntry(manifest));
       } catch {
-        // Keep corrupt manifests for support recovery, but do not render untrusted content.
+        // Legacy or corrupt manifests are not visible to any account.
       }
     }
     return entries.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
   }
 
-  async remove(id) {
+  async remove(id, userId) {
+    if (!UUID_PATTERN.test(String(userId || ''))) throw new Error('A valid ED-ALL account is required.');
     const target = this.manifestPath(id);
     let manifest;
-    try { manifest = await this.readManifest(id); } catch { manifest = null; }
+    try { manifest = await this.readManifest(id); } catch { return false; }
+    if (manifest.userId !== userId) return false;
     await Promise.all([
       fs.unlink(this.mediaPath(id, 'video')).catch(() => {}),
       fs.unlink(this.mediaPath(id, 'audio')).catch(() => {}),
       fs.unlink(target).catch(() => {}),
       fs.unlink(target + '.part').catch(() => {})
     ]);
-    return Boolean(manifest);
+    return true;
   }
 
-  async createResponse(id, role, rangeHeader) {
+  async createResponse(id, role, rangeHeader, userId) {
+    if (!UUID_PATTERN.test(String(userId || ''))) throw new Error('A valid ED-ALL account is required.');
     if (!['video', 'audio'].includes(role)) throw new Error('Invalid offline media type.');
     const manifest = await this.readManifest(id);
+    if (manifest.userId !== userId) throw new Error('This offline item belongs to another ED-ALL account.');
     const descriptor = role === 'video' ? manifest.video : manifest.audio;
     if (!descriptor) throw new Error('This offline download has no separate audio track.');
     return createEncryptedMediaResponse({
