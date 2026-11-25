@@ -74,8 +74,8 @@ test('saves encrypted video and audio without plaintext files and lists safe met
   assert.equal(entries.length, 1);
   assert.equal(entries[0].id, saved.id);
 
-  const video = await library.createResponse(saved.id, 'video', USER_A);
-  const audio = await library.createResponse(saved.id, 'audio', USER_A);
+  const video = await library.createResponse(saved.id, 'video', undefined, USER_A);
+  const audio = await library.createResponse(saved.id, 'audio', undefined, USER_A);
   assert.deepEqual(await collect(video.body), videoExpected);
   assert.deepEqual(await collect(audio.body), audioExpected);
 
@@ -136,7 +136,7 @@ test('saves, lists and plays manifests using modern async Electron safeStorage',
   const listed = await library.list(USER_A);
   assert.equal(listed.length, 1);
   assert.equal(listed[0].id, saved.id);
-  const playback = await library.createResponse(saved.id, 'video', USER_A);
+  const playback = await library.createResponse(saved.id, 'video', undefined, USER_A);
   assert.deepEqual(await collect(playback.body), expected);
 });
 
@@ -149,7 +149,7 @@ test('rejects malformed video IDs, path traversal IDs and failed provider respon
     height: 360,
     video: { url: 'x', mimeType: 'video/mp4' }
   }));
-  await assert.rejects(() => library.createResponse('../../secrets', 'video'));
+  await assert.rejects(() => library.createResponse('../../secrets', 'video', undefined, USER_A));
   await assert.rejects(() => library.save({
     userId: USER_A,
     title: 'Denied',
@@ -167,6 +167,7 @@ test('rejects successful HTTP responses that are not media or have the wrong tra
     body: Readable.from([Buffer.from('<html>provider error</html>')])
   }));
   await assert.rejects(() => htmlLibrary.save({
+    userId: USER_A,
     title: 'Not a video',
     videoId: 'abcdefghijk',
     height: 360,
@@ -180,6 +181,7 @@ test('rejects successful HTTP responses that are not media or have the wrong tra
     body: Readable.from([Buffer.from('not-audio')])
   }));
   await assert.rejects(() => wrongTrackLibrary.save({
+    userId: USER_A,
     title: 'Wrong audio track',
     videoId: 'abcdefghijk',
     height: 360,
