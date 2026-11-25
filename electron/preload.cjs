@@ -13,10 +13,10 @@ if (process.isMainFrame && isPlatform) {
       ipcRenderer.invoke('edall:formats', id, force === true),
     setVideoFullscreen: (enabled) =>
       ipcRenderer.invoke('edall:video-fullscreen', enabled === true),
-    downloadOffline: (id, height) =>
-      ipcRenderer.invoke('edall:download-offline', id, Number(height)),
-    openOfflineLibrary: () =>
-      ipcRenderer.invoke('edall:open-offline-library')
+    downloadOffline: (id, height, courseId, lessonId, accessToken, supabaseUrl, publishableKey) =>
+      ipcRenderer.invoke('edall:download-offline', id, Number(height), courseId, lessonId, accessToken, supabaseUrl, publishableKey),
+    openOfflineLibrary: (userId) =>
+      ipcRenderer.invoke('edall:open-offline-library', userId)
   }));
 } else if (process.isMainFrame && isOfflinePage) {
   contextBridge.exposeInMainWorld('edallDesktop', Object.freeze({
