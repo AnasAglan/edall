@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-24T12:36:09.089Z",
+  "generatedAt": "2026-11-25T11:26:24.863Z",
   "refreshedDaily": true,
   "sourcesUpdated": {
     "piped": true,
@@ -13,8 +13,8 @@
         "provider": "piped",
         "official": true,
         "status": "healthy",
-        "score": 109531,
-        "responseMs": 3378,
+        "score": 109537,
+        "responseMs": 3258,
         "mediaProbe": {
           "ok": true,
           "isManifest": false,
@@ -118,8 +118,8 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-24T12:36:09.089Z",
-        "lastSuccessAt": "2026-11-24T12:36:09.089Z",
+        "lastCheckedAt": "2026-11-25T11:26:15.852Z",
+        "lastSuccessAt": "2026-11-25T11:26:15.852Z",
         "apiVerified": true,
         "error": null
       },
@@ -128,8 +128,8 @@
         "provider": "piped",
         "official": true,
         "status": "degraded",
-        "score": 109179,
-        "responseMs": 5415,
+        "score": 109202,
+        "responseMs": 4956,
         "mediaProbe": {
           "ok": true,
           "isManifest": false,
@@ -220,8 +220,8 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-24T12:36:07.721Z",
-        "lastSuccessAt": "2026-11-24T12:36:07.721Z",
+        "lastCheckedAt": "2026-11-25T11:26:14.576Z",
+        "lastSuccessAt": "2026-11-25T11:26:14.576Z",
         "apiVerified": true,
         "error": null
       },
@@ -231,7 +231,7 @@
         "official": true,
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 100,
+        "responseMs": 394,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -243,7 +243,7 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-24T12:36:02.250Z",
+        "lastCheckedAt": "2026-11-25T11:26:09.599Z",
         "lastSuccessAt": null,
         "apiVerified": false,
         "error": "API was reachable, but no sample returned a browser-playable video+audio path: Directory fetch failed after 1 attempt: HTTP 403 from https://pipedapi.kavin.rocks/streams/dQw4w9WgXcQ | Directory fetch failed after 1 attempt: HTTP 403 from https://pipedapi.kavin.rocks/streams/aqz-KE-bpKQ"
@@ -254,7 +254,7 @@
         "official": true,
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 154,
+        "responseMs": 412,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -266,7 +266,7 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-24T12:36:02.306Z",
+        "lastCheckedAt": "2026-11-25T11:26:09.620Z",
         "lastSuccessAt": null,
         "apiVerified": false,
         "error": "API was reachable, but no sample returned a browser-playable video+audio path: Directory fetch failed after 1 attempt: HTTP 403 from https://pipedapi.leptons.xyz/streams/dQw4w9WgXcQ | Directory fetch failed after 1 attempt: HTTP 403 from https://pipedapi.leptons.xyz/streams/aqz-KE-bpKQ"
@@ -277,7 +277,7 @@
         "official": true,
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 2212,
+        "responseMs": 1874,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -289,7 +289,7 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-24T12:36:07.755Z",
+        "lastCheckedAt": "2026-11-25T11:26:14.383Z",
         "lastSuccessAt": null,
         "apiVerified": false,
         "error": "API was reachable, but no sample returned a browser-playable video+audio path: Directory fetch failed after 3 attempts: HTTP 502 from https://pipedapi.reallyaweso.me/streams/dQw4w9WgXcQ | Directory fetch failed after 3 attempts: HTTP 502 from https://pipedapi.reallyaweso.me/streams/aqz-KE-bpKQ"
@@ -300,7 +300,7 @@
         "official": true,
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 2796,
+        "responseMs": 3034,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -312,33 +312,10 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-24T12:36:08.741Z",
+        "lastCheckedAt": "2026-11-25T11:26:15.765Z",
         "lastSuccessAt": null,
         "apiVerified": false,
         "error": "API was reachable, but no sample returned a browser-playable video+audio path: Directory fetch failed after 3 attempts: fetch failed | Directory fetch failed after 3 attempts: fetch failed"
-      },
-      {
-        "url": "https://pipedapi.orangenet.cc",
-        "provider": "piped",
-        "official": true,
-        "status": "unhealthy",
-        "score": 0,
-        "responseMs": 2870,
-        "mediaProbe": null,
-        "manifestProbe": null,
-        "videoCount": 0,
-        "audioCount": 0,
-        "audioAvailable": false,
-        "heights": [],
-        "sampleChecks": [],
-        "testedVideoIds": [
-          "dQw4w9WgXcQ",
-          "aqz-KE-bpKQ"
-        ],
-        "lastCheckedAt": "2026-11-24T12:36:08.859Z",
-        "lastSuccessAt": null,
-        "apiVerified": false,
-        "error": "API was reachable, but no sample returned a browser-playable video+audio path: Directory fetch failed after 3 attempts: HTTP 502 from https://pipedapi.orangenet.cc/streams/dQw4w9WgXcQ | Directory fetch failed after 3 attempts: HTTP 502 from https://pipedapi.orangenet.cc/streams/aqz-KE-bpKQ"
       },
       {
         "url": "https://pipedapi.adminforge.de",
@@ -346,7 +323,7 @@
         "official": true,
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 3163,
+        "responseMs": 3131,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -358,7 +335,7 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-24T12:36:05.319Z",
+        "lastCheckedAt": "2026-11-25T11:26:12.347Z",
         "lastSuccessAt": null,
         "apiVerified": false,
         "error": "API was reachable, but no sample returned a browser-playable video+audio path: Directory fetch failed after 1 attempt: HTTP 403 from https://pipedapi.adminforge.de/streams/dQw4w9WgXcQ | Directory fetch failed after 1 attempt: HTTP 403 from https://pipedapi.adminforge.de/streams/aqz-KE-bpKQ"
@@ -369,7 +346,7 @@
         "official": true,
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 3372,
+        "responseMs": 3161,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -381,7 +358,7 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-24T12:36:08.691Z",
+        "lastCheckedAt": "2026-11-25T11:26:15.508Z",
         "lastSuccessAt": null,
         "apiVerified": false,
         "error": "API was reachable, but no sample returned a browser-playable video+audio path: Directory fetch failed after 3 attempts: fetch failed | Directory fetch failed after 3 attempts: fetch failed"
@@ -392,7 +369,7 @@
         "official": true,
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 3390,
+        "responseMs": 3298,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -404,7 +381,7 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-24T12:36:05.543Z",
+        "lastCheckedAt": "2026-11-25T11:26:12.509Z",
         "lastSuccessAt": null,
         "apiVerified": false,
         "error": "API was reachable, but no sample returned a browser-playable video+audio path: Directory fetch failed after 3 attempts: fetch failed | Directory fetch failed after 3 attempts: fetch failed"
@@ -415,7 +392,7 @@
         "official": true,
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 3556,
+        "responseMs": 3380,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -427,7 +404,7 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-24T12:36:05.711Z",
+        "lastCheckedAt": "2026-11-25T11:26:12.594Z",
         "lastSuccessAt": null,
         "apiVerified": false,
         "error": "API was reachable, but no sample returned a browser-playable video+audio path: Directory fetch failed after 3 attempts: fetch failed | Directory fetch failed after 3 attempts: fetch failed"
@@ -438,7 +415,7 @@
         "official": true,
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 3788,
+        "responseMs": 3514,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -450,7 +427,7 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-24T12:36:05.945Z",
+        "lastCheckedAt": "2026-11-25T11:26:12.731Z",
         "lastSuccessAt": null,
         "apiVerified": false,
         "error": "API was reachable, but no sample returned a browser-playable video+audio path: Directory fetch failed after 3 attempts: fetch failed | Directory fetch failed after 3 attempts: fetch failed"
@@ -461,7 +438,7 @@
         "official": true,
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 3831,
+        "responseMs": 3525,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -473,7 +450,7 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-24T12:36:05.989Z",
+        "lastCheckedAt": "2026-11-25T11:26:12.743Z",
         "lastSuccessAt": null,
         "apiVerified": false,
         "error": "API was reachable, but no sample returned a browser-playable video+audio path: Directory fetch failed after 3 attempts: fetch failed | Directory fetch failed after 3 attempts: fetch failed"
@@ -484,7 +461,7 @@
         "official": true,
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 4085,
+        "responseMs": 3782,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -496,7 +473,7 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-24T12:36:06.240Z",
+        "lastCheckedAt": "2026-11-25T11:26:12.995Z",
         "lastSuccessAt": null,
         "apiVerified": false,
         "error": "API was reachable, but no sample returned a browser-playable video+audio path: Directory fetch failed after 3 attempts: fetch failed | Directory fetch failed after 3 attempts: fetch failed"
@@ -507,7 +484,7 @@
         "official": true,
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 4815,
+        "responseMs": 4539,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -519,10 +496,33 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-24T12:36:07.065Z",
+        "lastCheckedAt": "2026-11-25T11:26:14.138Z",
         "lastSuccessAt": null,
         "apiVerified": false,
         "error": "API was reachable, but no sample returned a browser-playable video+audio path: Directory fetch failed after 3 attempts: fetch failed | Directory fetch failed after 3 attempts: fetch failed"
+      },
+      {
+        "url": "https://pipedapi.orangenet.cc",
+        "provider": "piped",
+        "official": true,
+        "status": "unhealthy",
+        "score": 0,
+        "responseMs": 12120,
+        "mediaProbe": null,
+        "manifestProbe": null,
+        "videoCount": 0,
+        "audioCount": 0,
+        "audioAvailable": false,
+        "heights": [],
+        "sampleChecks": [],
+        "testedVideoIds": [
+          "dQw4w9WgXcQ",
+          "aqz-KE-bpKQ"
+        ],
+        "lastCheckedAt": "2026-11-25T11:26:24.863Z",
+        "lastSuccessAt": null,
+        "apiVerified": false,
+        "error": "API was reachable, but no sample returned a browser-playable video+audio path: Directory fetch failed after 3 attempts: HTTP 502 from https://pipedapi.orangenet.cc/streams/dQw4w9WgXcQ | Directory fetch failed after 3 attempts: HTTP 502 from https://pipedapi.orangenet.cc/streams/aqz-KE-bpKQ"
       }
     ],
     "invidious": [
@@ -535,8 +535,8 @@
         "apiProbeCandidate": true,
         "source": "official-documentation-fallback",
         "status": "degraded",
-        "score": 217058,
-        "responseMs": 6834,
+        "score": 217075,
+        "responseMs": 6503,
         "mediaProbe": {
           "ok": true,
           "isManifest": false,
@@ -662,37 +662,10 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-24T12:36:08.995Z",
-        "lastSuccessAt": "2026-11-24T12:36:08.995Z",
+        "lastCheckedAt": "2026-11-25T11:26:15.725Z",
+        "lastSuccessAt": "2026-11-25T11:26:15.725Z",
         "apiVerified": true,
         "error": null
-      },
-      {
-        "url": "https://invidious.nerdvpn.de",
-        "provider": "invidious",
-        "official": true,
-        "apiListed": false,
-        "directoryApiListed": false,
-        "apiProbeCandidate": true,
-        "source": "official-documentation-fallback",
-        "status": "unhealthy",
-        "score": 0,
-        "responseMs": 1329,
-        "mediaProbe": null,
-        "manifestProbe": null,
-        "videoCount": 0,
-        "audioCount": 0,
-        "audioAvailable": false,
-        "heights": [],
-        "sampleChecks": [],
-        "testedVideoIds": [
-          "dQw4w9WgXcQ",
-          "aqz-KE-bpKQ"
-        ],
-        "lastCheckedAt": "2026-11-24T12:36:03.489Z",
-        "lastSuccessAt": null,
-        "apiVerified": false,
-        "error": "API was reachable, but no sample returned a browser-playable video+audio path: Directory fetch failed after 1 attempt: HTTP 403 from https://invidious.nerdvpn.de/api/v1/videos/dQw4w9WgXcQ?fields=title,lengthSeconds,liveNow,hlsUrl,dashUrl,formatStreams,adaptiv | Directory fetch failed after 1 attempt: HTTP 403 from https://invidious.nerdvpn.de/api/v1/videos/aqz-KE-bpKQ?fields=title,lengthSeconds,liveNow,hlsUrl,dashUrl,formatStreams,adaptiv"
       },
       {
         "url": "https://inv.nadeko.net",
@@ -704,7 +677,7 @@
         "source": "official-documentation-fallback",
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 1336,
+        "responseMs": 1306,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -716,10 +689,37 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-24T12:36:03.494Z",
+        "lastCheckedAt": "2026-11-25T11:26:10.526Z",
         "lastSuccessAt": null,
         "apiVerified": false,
         "error": "API was reachable, but no sample returned a browser-playable video+audio path: Directory fetch failed after 1 attempt: HTTP 403 from https://inv.nadeko.net/api/v1/videos/dQw4w9WgXcQ?fields=title,lengthSeconds,liveNow,hlsUrl,dashUrl,formatStreams,adaptiveForma | Directory fetch failed after 1 attempt: HTTP 403 from https://inv.nadeko.net/api/v1/videos/aqz-KE-bpKQ?fields=title,lengthSeconds,liveNow,hlsUrl,dashUrl,formatStreams,adaptiveForma"
+      },
+      {
+        "url": "https://invidious.nerdvpn.de",
+        "provider": "invidious",
+        "official": true,
+        "apiListed": false,
+        "directoryApiListed": false,
+        "apiProbeCandidate": true,
+        "source": "official-documentation-fallback",
+        "status": "unhealthy",
+        "score": 0,
+        "responseMs": 1369,
+        "mediaProbe": null,
+        "manifestProbe": null,
+        "videoCount": 0,
+        "audioCount": 0,
+        "audioAvailable": false,
+        "heights": [],
+        "sampleChecks": [],
+        "testedVideoIds": [
+          "dQw4w9WgXcQ",
+          "aqz-KE-bpKQ"
+        ],
+        "lastCheckedAt": "2026-11-25T11:26:10.590Z",
+        "lastSuccessAt": null,
+        "apiVerified": false,
+        "error": "API was reachable, but no sample returned a browser-playable video+audio path: Directory fetch failed after 1 attempt: HTTP 403 from https://invidious.nerdvpn.de/api/v1/videos/dQw4w9WgXcQ?fields=title,lengthSeconds,liveNow,hlsUrl,dashUrl,formatStreams,adaptiv | Directory fetch failed after 1 attempt: HTTP 403 from https://invidious.nerdvpn.de/api/v1/videos/aqz-KE-bpKQ?fields=title,lengthSeconds,liveNow,hlsUrl,dashUrl,formatStreams,adaptiv"
       },
       {
         "url": "https://invidious.tiekoetter.com",
@@ -731,7 +731,7 @@
         "source": "official-documentation-fallback",
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 1970,
+        "responseMs": 1950,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -743,7 +743,7 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-24T12:36:04.132Z",
+        "lastCheckedAt": "2026-11-25T11:26:11.173Z",
         "lastSuccessAt": null,
         "apiVerified": false,
         "error": "API was reachable, but no sample returned a browser-playable video+audio path: Directory fetch failed after 1 attempt: HTTP 403 from https://invidious.tiekoetter.com/api/v1/videos/dQw4w9WgXcQ?fields=title,lengthSeconds,liveNow,hlsUrl,dashUrl,formatStreams,ada | Directory fetch failed after 1 attempt: HTTP 403 from https://invidious.tiekoetter.com/api/v1/videos/aqz-KE-bpKQ?fields=title,lengthSeconds,liveNow,hlsUrl,dashUrl,formatStreams,ada"
@@ -758,7 +758,7 @@
         "source": "curated-public-clearnet",
         "status": "unhealthy",
         "score": 0,
-        "responseMs": 2570,
+        "responseMs": 2486,
         "mediaProbe": null,
         "manifestProbe": null,
         "videoCount": 0,
@@ -770,7 +770,7 @@
           "dQw4w9WgXcQ",
           "aqz-KE-bpKQ"
         ],
-        "lastCheckedAt": "2026-11-24T12:36:04.732Z",
+        "lastCheckedAt": "2026-11-25T11:26:11.710Z",
         "lastSuccessAt": null,
         "apiVerified": false,
         "error": "API was reachable, but no sample returned a browser-playable video+audio path: Directory fetch failed after 3 attempts: HTTP 530 from https://invidious.f5.si/api/v1/videos/dQw4w9WgXcQ?fields=title,lengthSeconds,liveNow,hlsUrl,dashUrl,formatStreams,adaptiveFor | Directory fetch failed after 3 attempts: HTTP 530 from https://invidious.f5.si/api/v1/videos/aqz-KE-bpKQ?fields=title,lengthSeconds,liveNow,hlsUrl,dashUrl,formatStreams,adaptiveFor"
