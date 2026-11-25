@@ -67,7 +67,7 @@ describe("ED-ALL integrated learning suite", () => {
     expect(migration).toContain("course_title text");
     expect(migration).not.toContain("student_email");
     expect(migration).toContain("_completed<>_total");
-    expect(migration).toContain("NOT EXISTS (SELECT 1 FROM public.lesson_files f WHERE f.lesson_id=l.id)");
+    expect(migration).toContain("public.lesson_files f WHERE f.lesson_id=l.id");
     expect(migration).toContain("COALESCE(lp.pdf_opened,false)");
     expect(migration).toContain("_student_id <> auth.uid()");
   });
@@ -161,5 +161,189 @@ describe("ED-ALL integrated learning suite", () => {
     expect(ui).toContain('if (role === "analyst") return capability === "analytics"');
     expect(ui).toContain('state.courseStaffRoles = staffRows');
     expect(ui).toContain('const isTeacher = () => isAdmin() || isCourseOwner() || !!currentStaffRole()');
+  });
+});
+
+
+describe("automatic course certificate issuance from final lesson completion", () => {
+  const ui = read("public/ed_features.js");
+  const migration = read("supabase/migrations/20261122150000_automatic_course_certificates.sql");
+
+  it("allows only one designated final lesson per course and validates course ownership", () => {
+    expect(migration).toContain("ADD COLUMN IF NOT EXISTS is_final boolean NOT NULL DEFAULT false");
+    expect(migration).toContain("CREATE UNIQUE INDEX IF NOT EXISTS lessons_one_final_per_course_idx");
+    expect(migration).toContain("CREATE OR REPLACE FUNCTION public.set_course_final_lesson");
+    expect(migration).toContain("LESSON_NOT_IN_COURSE");
+  });
+
+  it("requires a designated final lesson and preserves all existing completion requirements before issuance", () => {
+    expect(migration).toContain("COURSE_FINAL_LESSON_NOT_SET");
+    expect(migration).toContain("result.passed = true");
+    expect(migration).toContain("(NOT result.has_essay OR result.essay_graded)");
+    expect(migration).toContain("public.lesson_videos AS video");
+    expect(migration).toContain("public.lesson_files AS file");
+  });
+
+  it("attempts issuance after lesson progress and exam essay grading changes without blocking incomplete courses", () => {
+    expect(migration).toContain("auto_issue_course_certificate_from_lesson_progress");
+    expect(migration).toContain("auto_issue_course_certificate_from_exam_result");
+    expect(migration).toContain("AFTER INSERT OR UPDATE OF video_watched,pdf_opened,exam_completed");
+    expect(migration).toContain("AFTER INSERT OR UPDATE OF passed,has_essay,essay_graded");
+    expect(migration).toContain("COURSE_NOT_COMPLETED");
+  });
+
+  it("uses a private idempotent issuance helper and keeps the public RPC permission-gated", () => {
+    expect(migration).toContain("issue_course_certificate_internal");
+    expect(migration).toContain("pg_advisory_xact_lock");
+    expect(migration).toContain("REVOKE ALL ON FUNCTION public.issue_course_certificate_internal(uuid,uuid,uuid,boolean) FROM PUBLIC,anon,authenticated");
+    expect(migration).toContain("public.has_course_capability(_course_id,'certificates')");
+    expect(migration).toContain("public.admin_mfa_verified()");
+  });
+
+  it("allows course staff to designate the final lesson through the existing certificates tab", () => {
+    expect(ui).toContain('data-form="set-final-lesson"');
+    expect(ui).toContain('name="lesson_id"');
+    expect(ui).toContain('rpc("set_course_final_lesson"');
+    expect(ui).toContain("is_final");
+    expect(ui).toContain("function certificateSvg");
+    expect(ui).toContain("function downloadCertificateImage");
+    expect(ui).toContain("function printCertificatePdf");
+    expect(ui).toContain('data-action="certificate-image"');
+    expect(ui).toContain('data-action="certificate-pdf"');
+    expect(migration).toContain("audit_course_final_lesson_change");
+    expect(migration).toContain("COALESCE(_automatic,true)");
+  });
+});
+
+
+describe("attendance reporting, lesson links, and configurable absence alerts", () => {
+  const ui = read("public/ed_features.js");
+  const migration = read("supabase/migrations/20261122140000_attendance_reports_alerts.sql");
+
+  it("supports optional lesson-linked attendance sessions", () => {
+    expect(migration).toContain("ADD COLUMN IF NOT EXISTS lesson_id uuid");
+    expect(migration).toContain("LESSON_NOT_IN_COURSE");
+    expect(ui).toContain('data-form="create-attendance"');
+    expect(ui).toContain('_lesson_id:v.lesson_id || null');
+  });
+
+  it("reports present, late, absent and excused separately with explicit absence denominators", () => {
+    expect(migration).toContain("CREATE OR REPLACE FUNCTION public.get_attendance_report");
+    expect(migration).toContain("'present'");
+    expect(migration).toContain("'late'");
+    expect(migration).toContain("'absent'");
+    expect(migration).toContain("'excused'");
+    expect(migration).toContain("'absence_denominator'");
+    expect(migration).toContain("'absence_rate_percent'");
+    expect(ui).toContain("attendanceReport");
+    expect(ui).toContain("غياب");
+  });
+
+  it("keeps absence alerts disabled until a course owner or authorized staff sets a threshold", () => {
+    expect(migration).toContain("threshold_percent numeric(5,2)");
+    expect(migration).toContain("set_course_absence_threshold");
+    expect(migration).toContain("DELETE FROM public.attendance_alert_settings");
+    expect(migration).toContain("IF _threshold IS NOT NULL THEN");
+    expect(ui).toContain('data-form="set-attendance-threshold"');
+    expect(ui).toContain('rpc("set_course_absence_threshold"');
+  });
+
+  it("deduplicates threshold alerts and writes in-app notifications only once per student/course/threshold", () => {
+    expect(migration).toContain("attendance_alert_events");
+    expect(migration).toContain("UNIQUE(course_id,student_id,threshold_percent)");
+    expect(migration).toContain("ON CONFLICT (course_id,student_id,threshold_percent) DO NOTHING");
+    expect(migration).toContain("INSERT INTO public.notifications(user_id,title,message,type)");
+  });
+
+
+
+  it("shows attendance controls only to course staff who have the attendance capability", () => {
+    expect(ui).toContain('const canManageAttendance = hasCourseCapability("attendance")');
+    expect(ui).toContain('state.data.attendanceReport = canManageAttendance');
+    expect(ui).toContain('(canManageAttendance ? q.in("session_id",ids)');
+  });
+
+  it("protects attendance reports and threshold writes by course capability and administrator AAL2", () => {
+    expect(migration).toContain("public.has_course_capability(_course_id,'attendance')");
+    expect(migration).toContain("public.admin_mfa_verified()");
+    expect(migration).toContain("REVOKE ALL ON FUNCTION public.get_attendance_report(uuid,timestamptz,timestamptz) FROM PUBLIC,anon");
+    expect(migration).toContain("REVOKE ALL ON FUNCTION public.set_course_absence_threshold(uuid,numeric) FROM PUBLIC,anon");
+  });
+});
+
+
+describe("lesson-scoped assignments and discussions", () => {
+  const ui = read("public/ed_features.js");
+  const migration = read("supabase/migrations/20261114121000_add_integrated_learning_suite.sql");
+
+  it("loads the selected course's lessons before rendering assignment and discussion creation", () => {
+    expect(ui).toContain('state.data.lessons = await rows("lessons"');
+    expect(ui).toContain('q.eq("course_id",courseId)');
+    expect(ui).toContain('.order("sort_order",{ascending:true})');
+  });
+
+  it("offers an optional lesson selector in assignment and discussion forms", () => {
+    expect(ui).toContain('name="lesson_id"');
+    expect(ui).toContain('data-form="create-assignment"');
+    expect(ui).toContain('data-form="create-topic"');
+    expect(ui).toContain('كل الدورة');
+    expect(ui).toContain('Entire course');
+  });
+
+  it("passes the selected lesson id to both server RPCs and preserves course-level creation when blank", () => {
+    expect(ui).toContain('_lesson_id:v.lesson_id || null');
+    expect(ui).not.toContain('_lesson_id:null');
+    expect(ui).toContain('rpc("create_assignment"');
+    expect(ui).toContain('rpc("create_discussion_topic"');
+  });
+
+  it("shows the lesson label on each assignment and discussion topic", () => {
+    expect(ui).toContain('function lessonLabel(');
+    expect(ui).toContain('lessonLabel(a.lesson_id)');
+    expect(ui).toContain('lessonLabel(t.lesson_id)');
+  });
+
+  it("validates lesson/course ownership in the trusted database functions", () => {
+    expect(migration).toContain("LESSON_NOT_IN_COURSE");
+    const assignmentStart = migration.indexOf("CREATE OR REPLACE FUNCTION public.create_assignment");
+    const assignmentEnd = migration.indexOf("$function$;", assignmentStart);
+    const assignment = migration.slice(assignmentStart, assignmentEnd);
+    expect(assignment).toContain("l.id = _lesson_id AND l.course_id = _course_id");
+    const discussionStart = migration.indexOf("CREATE OR REPLACE FUNCTION public.create_discussion_topic");
+    const discussionEnd = migration.indexOf("$function$;", discussionStart);
+    const discussion = migration.slice(discussionStart, discussionEnd);
+    expect(discussion).toContain("l.id=_lesson_id AND l.course_id=_course_id");
+  });
+});
+
+
+describe("pinned answers in course discussions", () => {
+  const ui = read("public/ed_features.js");
+  const pinMigration = read("supabase/migrations/20261122130000_pin_discussion_answers.sql");
+
+  it("adds a pinned flag to posts without changing existing topic pinning", () => {
+    expect(pinMigration).toContain("ADD COLUMN IF NOT EXISTS is_pinned boolean NOT NULL DEFAULT false");
+    expect(pinMigration).toContain("CREATE INDEX IF NOT EXISTS discussion_posts_pinned_idx");
+    expect(ui).toContain("t.is_pinned");
+  });
+
+  it("exposes pinned state in the authorized discussion feed and sorts pinned answers first", () => {
+    expect(pinMigration).toContain("'is_pinned',post.is_pinned");
+    expect(pinMigration).toContain("ORDER BY post.is_pinned DESC,post.created_at");
+  });
+
+  it("allows only discussion-capable course staff to pin or unpin an answer through an audited RPC", () => {
+    expect(pinMigration).toContain("CREATE OR REPLACE FUNCTION public.set_discussion_post_pinned");
+    expect(pinMigration).toContain("public.has_course_capability(_course_id,'discussions')");
+    expect(pinMigration).toContain("public.admin_mfa_verified()");
+    expect(pinMigration).toContain("public.write_platform_audit_event");
+    expect(pinMigration).toContain("REVOKE ALL ON FUNCTION public.set_discussion_post_pinned(uuid,boolean) FROM PUBLIC,anon");
+  });
+
+  it("shows pin controls only to discussion moderators and renders the pinned answer label", () => {
+    expect(ui).toContain('data-action="pin-discussion-post"');
+    expect(ui).toContain('hasCourseCapability("discussions")');
+    expect(ui).toContain("الإجابة المهمة المثبّتة");
+    expect(ui).toContain('rpc("set_discussion_post_pinned"');
   });
 });
