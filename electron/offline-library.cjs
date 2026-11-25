@@ -29,8 +29,37 @@ class OfflineLibrary {
     if (!path.isAbsolute(directory)) throw new TypeError('Offline storage path must be absolute.');
     if (typeof fetchMedia !== 'function') throw new TypeError('A trusted media fetcher is required.');
     this.directory = directory;
+    this.accountPath = path.join(directory, 'active-account.bin');
     this.safeStorage = safeStorage;
     this.fetchMedia = fetchMedia;
+  }
+
+  async rememberAccount(userId) {
+    if (!UUID_PATTERN.test(String(userId || ''))) throw new Error('A valid ED-ALL account is required.');
+    await assertSafeStorageAvailable(this.safeStorage);
+    await fs.mkdir(this.directory, { recursive: true });
+    const encrypted = await safeStorageEncryptString(this.safeStorage, String(userId));
+    const temporary = this.accountPath + '.part';
+    await fs.writeFile(temporary, Buffer.from(encrypted).toString('base64'), { flag: 'w', mode: 0o600 });
+    await fs.rename(temporary, this.accountPath);
+    return true;
+  }
+
+  async getRememberedAccount() {
+    try {
+      await assertSafeStorageAvailable(this.safeStorage);
+      const encoded = await fs.readFile(this.accountPath, 'utf8');
+      const userId = await safeStorageDecryptString(this.safeStorage, Buffer.from(encoded, 'base64'));
+      return UUID_PATTERN.test(String(userId || '')) ? String(userId) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async clearRememberedAccount() {
+    await fs.unlink(this.accountPath).catch(() => {});
+    await fs.unlink(this.accountPath + '.part').catch(() => {});
+    return true;
   }
 
   manifestPath(id) {
