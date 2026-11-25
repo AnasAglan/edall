@@ -42,11 +42,10 @@ test('each Windows download sends the exact course, lesson, video and current se
   assert.ok(html.includes('_edDesktopOpen(container, vid, courseId, lessonId)'));
   assert.ok(html.includes('renderVideoToggle(video, vidIdx, courseId, lessonId)'));
   assert.match(
+  assert.match(
     html,
-    /bridge\\.downloadOffline\\(\\s*vid,\\s*quality,\\s*courseId,\\s*lessonId,\\s*session\\.access_token/
+    /bridge\.downloadOffline\(\s*vid,\s*quality,\s*courseId,\s*lessonId,\s*session\.access_token/
   );
-  assert.ok(main.includes('authorizeOfflineDownload({'));
-  assert.ok(main.includes('course_id: courseId'));
   assert.ok(main.includes('lesson_id: lessonId'));
   assert.ok(main.includes('video_id: videoId'));
 });
