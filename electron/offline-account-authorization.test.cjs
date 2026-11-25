@@ -41,7 +41,10 @@ test('the page syncs sign-in and sign-out without persisting the bearer token', 
 test('each Windows download sends the exact course, lesson, video and current session token', () => {
   assert.ok(html.includes('_edDesktopOpen(container, vid, courseId, lessonId)'));
   assert.ok(html.includes('renderVideoToggle(video, vidIdx, courseId, lessonId)'));
-  assert.ok(html.includes('bridge.downloadOffline(\n                                vid, quality, courseId, lessonId, session.access_token'));
+  assert.match(
+    html,
+    /bridge\\.downloadOffline\\(\\s*vid,\\s*quality,\\s*courseId,\\s*lessonId,\\s*session\\.access_token/
+  );
   assert.ok(main.includes('authorizeOfflineDownload({'));
   assert.ok(main.includes('course_id: courseId'));
   assert.ok(main.includes('lesson_id: lessonId'));
