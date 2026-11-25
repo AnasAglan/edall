@@ -2,7 +2,7 @@
 -- Runs inside a transaction and rolls back all fixture accounts/data.
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT plan(44);
+SELECT plan(84);
 
 INSERT INTO auth.users (
   id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -302,6 +302,257 @@ SELECT ok(
   'first-admin bootstrap recounts after a shared lock only when roles are empty'
 )
 FROM positions;
+
+SELECT ok(
+  to_regprocedure('public.admin_list_users(text,integer,integer)') IS NOT NULL,
+  'administrator user directory RPC exists'
+);
+SELECT ok(
+  NOT has_function_privilege('anon','public.admin_list_users(text,integer,integer)','EXECUTE'),
+  'anonymous callers cannot list authenticated user accounts'
+);
+SELECT ok(
+  has_function_privilege('authenticated','public.admin_list_users(text,integer,integer)','EXECUTE'),
+  'authenticated callers can invoke the RPC subject to its internal administrator and AAL2 gate'
+);
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_proc p
+    WHERE p.oid='public.admin_list_users(text,integer,integer)'::regprocedure
+      AND p.prosecdef
+      AND 'search_path=""' = ANY(p.proconfig)
+  ),
+  'administrator directory RPC is SECURITY DEFINER with an empty search path'
+);
+
+SELECT ok(
+  to_regprocedure('public.set_discussion_post_pinned(uuid,boolean)') IS NOT NULL,
+  'course discussion pin RPC exists'
+);
+SELECT ok(
+  NOT has_function_privilege('anon','public.set_discussion_post_pinned(uuid,boolean)','EXECUTE'),
+  'anonymous callers cannot pin discussion answers'
+);
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_proc p
+    WHERE p.oid='public.set_discussion_post_pinned(uuid,boolean)'::regprocedure
+      AND p.prosecdef
+      AND 'search_path=""' = ANY(p.proconfig)
+  ),
+  'discussion pin RPC is SECURITY DEFINER with an empty search path'
+);
+
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_attribute
+    WHERE attrelid='public.attendance_sessions'::regclass
+      AND attname='lesson_id'
+      AND NOT attisdropped
+  ),
+  'attendance sessions can be linked to a lesson'
+);
+SELECT ok(
+  to_regclass('public.attendance_alert_settings') IS NOT NULL
+  AND to_regclass('public.attendance_alert_events') IS NOT NULL,
+  'attendance threshold settings and alert deduplication tables exist'
+);
+SELECT ok(
+  to_regprocedure('public.get_attendance_report(uuid,timestamptz,timestamptz)') IS NOT NULL,
+  'scoped attendance report RPC exists'
+);
+SELECT ok(
+  NOT has_function_privilege('anon','public.get_attendance_report(uuid,timestamptz,timestamptz)','EXECUTE'),
+  'anonymous callers cannot read attendance reports'
+);
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_proc p
+    WHERE p.oid='public.get_attendance_report(uuid,timestamptz,timestamptz)'::regprocedure
+      AND p.prosecdef
+      AND 'search_path=""' = ANY(p.proconfig)
+  ),
+  'attendance report RPC is SECURITY DEFINER with an empty search path'
+);
+SELECT ok(
+  NOT has_function_privilege('anon','public.set_course_absence_threshold(uuid,numeric)','EXECUTE'),
+  'anonymous callers cannot change attendance alert thresholds'
+);
+SELECT ok(
+  has_function_privilege('authenticated','public.create_attendance_session(uuid,text,timestamptz,uuid)','EXECUTE'),
+  'authenticated callers can create attendance sessions subject to the internal course permission gate'
+);
+
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='lessons' AND column_name='is_final'
+  ),
+  'lessons include a final lesson designation'
+);
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE schemaname='public' AND indexname='lessons_one_final_per_course_idx'
+  ),
+  'a course can have at most one final lesson'
+);
+SELECT ok(
+  to_regprocedure('public.set_course_final_lesson(uuid,uuid)') IS NOT NULL,
+  'course final lesson management RPC exists'
+);
+SELECT ok(
+  NOT has_function_privilege('anon','public.set_course_final_lesson(uuid,uuid)','EXECUTE'),
+  'anonymous callers cannot designate a course final lesson'
+);
+SELECT ok(
+  NOT has_function_privilege('authenticated','public.issue_course_certificate_internal(uuid,uuid,uuid,boolean)','EXECUTE'),
+  'authenticated clients cannot invoke the internal certificate issuer'
+);
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgname='auto_issue_course_certificate_lesson_progress'
+      AND NOT tgisinternal
+  )
+  AND EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgname='auto_issue_course_certificate_exam_results'
+      AND NOT tgisinternal
+  ),
+  'lesson progress and exam result changes trigger automatic certificate checks'
+);
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_proc p
+    WHERE p.oid='public.audit_course_final_lesson_change()'::regprocedure
+      AND p.prosecdef
+      AND 'search_path=""' = ANY(p.proconfig)
+  ),
+  'final lesson changes are audited by a protected trigger function'
+);
+
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='lessons' AND column_name='is_final'
+  ),
+  'lessons include a final lesson designation'
+);
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE schemaname='public' AND indexname='lessons_one_final_per_course_idx'
+  ),
+  'a course can have at most one final lesson'
+);
+SELECT ok(
+  to_regprocedure('public.set_course_final_lesson(uuid,uuid)') IS NOT NULL,
+  'course final lesson management RPC exists'
+);
+SELECT ok(
+  NOT has_function_privilege('anon','public.set_course_final_lesson(uuid,uuid)','EXECUTE'),
+  'anonymous callers cannot designate a course final lesson'
+);
+SELECT ok(
+  NOT has_function_privilege('authenticated','public.issue_course_certificate_internal(uuid,uuid,uuid,boolean)','EXECUTE'),
+  'authenticated clients cannot invoke the internal certificate issuer'
+);
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgname='auto_issue_course_certificate_lesson_progress'
+      AND tgrelid='public.lesson_progress'::regclass
+      AND NOT tgisinternal
+  )
+  AND EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgname='auto_issue_course_certificate_exam_results'
+      AND tgrelid='public.exam_results'::regclass
+      AND NOT tgisinternal
+  ),
+  'lesson progress and exam result changes trigger automatic certificate checks'
+);
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_proc p
+    WHERE p.oid='public.audit_course_final_lesson_change()'::regprocedure
+      AND p.prosecdef
+      AND 'search_path=""' = ANY(p.proconfig)
+  ),
+  'final lesson changes are audited by a protected trigger function'
+);
+
+SELECT ok(
+  to_regprocedure('public.get_my_learning_history()') IS NOT NULL,
+  'student learning history RPC exists'
+);
+SELECT ok(
+  NOT has_function_privilege('anon','public.get_my_learning_history()','EXECUTE'),
+  'anonymous callers cannot read student learning history'
+);
+SELECT ok(
+  has_function_privilege('authenticated','public.get_my_learning_history()','EXECUTE'),
+  'authenticated students can call their own history RPC'
+);
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_proc p
+    WHERE p.oid='public.get_my_learning_history()'::regprocedure
+      AND p.prosecdef
+      AND 'search_path=""' = ANY(p.proconfig)
+  ),
+  'student learning history RPC is SECURITY DEFINER with an empty search path'
+);
+SELECT ok(
+  to_regprocedure('public.wallet_user_ledger(uuid,integer,integer)') IS NOT NULL,
+  'administrator wallet ledger RPC exists'
+);
+SELECT ok(
+  NOT has_function_privilege('anon','public.wallet_user_ledger(uuid,integer,integer)','EXECUTE'),
+  'anonymous callers cannot access administrator wallet transaction history'
+);
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_proc p
+    WHERE p.oid='public.wallet_user_ledger(uuid,integer,integer)'::regprocedure
+      AND p.prosecdef
+      AND 'search_path=""' = ANY(p.proconfig)
+      AND position('admin_mfa_verified' in p.prosrc) > 0
+  ),
+  'wallet ledger RPC is a SECURITY DEFINER function with an internal AAL2 check'
+);
+
+SELECT ok(
+  to_regprocedure('public.get_teacher_analytics()') IS NOT NULL,
+  'teacher-wide learning analytics RPC exists'
+);
+SELECT ok(
+  NOT has_function_privilege('anon','public.get_teacher_analytics()','EXECUTE'),
+  'anonymous callers cannot invoke teacher analytics'
+);
+SELECT ok(
+  has_function_privilege('authenticated','public.get_teacher_analytics()','EXECUTE'),
+  'authenticated callers can invoke scoped teacher analytics subject to the internal capability check'
+);
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_proc p
+    WHERE p.oid='public.get_teacher_analytics()'::regprocedure
+      AND p.prosecdef
+      AND 'search_path=""' = ANY(p.proconfig)
+      AND position('has_course_capability' in p.prosrc) > 0
+  ),
+  'teacher analytics RPC is SECURITY DEFINER and enforces course-scoped analytics capabilities'
+);
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_proc p
+    WHERE p.oid='public.get_teacher_analytics()'::regprocedure
+      AND position('admin_mfa_verified' in p.prosrc) > 0
+  ),
+  'administrator access through teacher analytics requires AAL2'
+);
 
 SELECT * FROM finish();
 ROLLBACK;

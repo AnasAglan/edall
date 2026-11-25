@@ -159,6 +159,10 @@
     state.data = {};
     if (state.publicToken) return loadPublicCertificate();
     if (!state.user || !state.user.id) return;
+    if (state.tab === "analytics" && !isAdmin()) {
+      state.data.teacherAnalytics = await rpc("get_teacher_analytics",{});
+      return;
+    }
     if (state.tab === "mfa" || state.tab === "audit" || state.tab === "staff" || (state.tab === "analytics" && isAdmin())) {
       if (state.tab === "mfa") return;
       if (state.tab === "audit") {
@@ -177,6 +181,9 @@
      }
     if (!state.courseId) return;
     const courseId = state.courseId;
+    if (state.tab === "assignments" || state.tab === "discussions" || state.tab === "attendance" || state.tab === "certificates") {
+      state.data.lessons = await rows("lessons", q => q.eq("course_id",courseId).order("sort_order",{ascending:true}));
+    }
     if (state.tab === "assignments") {
       state.data.assignments = await rows("assignments", q => q.eq("course_id",courseId).order("due_at",{ascending:true}));
       const ids = state.data.assignments.map(a => a.id);
@@ -203,34 +210,53 @@
         return {...submission,attachments:signed};
       }));
     } else if (state.tab === "attendance") {
+      const canManageAttendance = hasCourseCapability("attendance");
       state.data.sessions = await rows("attendance_sessions", q => q.eq("course_id",courseId).order("starts_at",{ascending:false}));
+      state.data.attendanceReport = canManageAttendance
+        ? await rpc("get_attendance_report",{_course_id:courseId,_from:null,_to:null})
+        : null;
       const ids = state.data.sessions.map(a => a.id);
       state.data.attendance = ids.length ? await rows("attendance_records", q =>
-        (isTeacher() ? q.in("session_id",ids) : q.eq("student_id",state.user.id).in("session_id",ids))
+        (canManageAttendance ? q.in("session_id",ids) : q.eq("student_id",state.user.id).in("session_id",ids))
       ) : [];
-      state.data.roster = isTeacher() ? await rpc("list_course_students",{
+      state.data.roster = canManageAttendance ? await rpc("list_course_students",{
         _course_id:courseId,_capability:"attendance"
       }) : [];
+
     } else if (state.tab === "liveClasses") {
       state.data.liveClasses = await rows("live_classes", q => q.eq("course_id",courseId).order("starts_at",{ascending:true}));
     } else if (state.tab === "certificates") {
+      state.data.finalLessonId = (state.data.lessons.find(lesson => lesson.is_final) || {}).id || "";
+      const canManageCertificates = hasCourseCapability("certificates");
       state.data.certificates = await rows("course_certificates", q =>
-        isTeacher() ? q.eq("course_id",courseId).order("issued_at",{ascending:false}) :
+        canManageCertificates ? q.eq("course_id",courseId).order("issued_at",{ascending:false}) :
           q.eq("course_id",courseId).eq("student_id",state.user.id).order("issued_at",{ascending:false})
       );
     } else if (state.tab === "discussions") {
       state.data.topics = await rpc("get_course_discussion_feed",{_course_id:courseId}) || [];
       state.data.posts = [];
-    } else if (state.tab === "analytics") {
-      state.data.analytics = await rpc("get_course_analytics", { _course_id: courseId });
     }
   }
 
   function courseSelector() {
-    if (state.tab === "analytics" && isAdmin()) return "";
+    if (state.tab === "analytics") return "";
     if (!state.courses.length) return "";
     return '<label class="edf-course-select"><span>' + esc(text("الدورة", "Course")) + '</span><select data-field="course">' +
       state.courses.map(c => '<option value="' + esc(c.id) + '"' + (c.id === state.courseId ? " selected" : "") + '>' + esc(c.title) + '</option>').join("") +
+      '</select></label>';
+  }
+
+  function lessonLabel(lessonId) {
+    if (!lessonId) return text("كل الدورة","Entire course");
+    const lesson = (state.data.lessons || []).find(item => item.id === lessonId);
+    return lesson ? lesson.title : text("درس غير متاح","Lesson unavailable");
+  }
+
+  function lessonSelector(label) {
+    const lessons = state.data.lessons || [];
+    return '<label class="edf-lesson-select"><span>' + esc(label) + '</span><select name="lesson_id">' +
+      '<option value="">' + esc(text("كل الدورة","Entire course")) + '</option>' +
+      lessons.map(lesson => '<option value="' + esc(lesson.id) + '">' + esc(lesson.title || text("درس بدون عنوان","Untitled lesson")) + '</option>').join("") +
       '</select></label>';
   }
 
@@ -243,6 +269,7 @@
         '<h3>' + esc(text("إضافة واجب", "Create assignment")) + '</h3>' +
         '<input name="title" maxlength="180" required placeholder="' + esc(text("عنوان الواجب","Assignment title")) + '">' +
         '<textarea name="description" maxlength="12000" placeholder="' + esc(text("التعليمات","Instructions")) + '"></textarea>' +
+        lessonSelector(text("إضافة الواجب إلى درس (اختياري)","Attach assignment to a lesson (optional)")) +
         '<div class="edf-form-grid"><input name="due_at" type="datetime-local"><input name="max_score" type="number" min="1" max="100000" value="100" required></div>' +
         '<button class="edf-btn edf-primary" type="submit">' + esc(text("نشر الواجب","Publish assignment")) + '</button></form>';
     }
@@ -250,6 +277,7 @@
       const mine = submissions.find(s => s.assignment_id === a.id);
       const submitted = submissions.filter(s => s.assignment_id === a.id);
       let detail = '<p>' + esc(a.description || text("لا توجد تعليمات إضافية.","No extra instructions.")) + '</p>' +
+        '<div class="edf-meta">' + esc(text("الدرس: ","Lesson: ")) + esc(lessonLabel(a.lesson_id)) + '</div>' +
         '<div class="edf-meta">' + esc(text("آخر موعد: ","Due: ")) + esc(fmtDate(a.due_at)) + ' · ' +
         esc(text("الدرجة: ","Max score: ")) + esc(a.max_score) + '</div>';
       if (!isTeacher()) {
@@ -279,20 +307,70 @@
     return body;
   }
 
+  function attendanceLessonLabel(lessonId) {
+    if (!lessonId) return text("جلسة عامة","General session");
+    const lesson = (state.data.lessons || []).find(item => item.id === lessonId);
+    return lesson ? lesson.title : text("درس غير متاح","Lesson unavailable");
+  }
+
+  function attendanceLessonSelector() {
+    const lessons = state.data.lessons || [];
+    return '<label class="edf-course-select"><span>' + esc(text("ربط الجلسة بدرس (اختياري)","Link session to a lesson (optional)")) + '</span>' +
+      '<select name="lesson_id"><option value="">' + esc(text("جلسة عامة","General session")) + '</option>' +
+      lessons.map(lesson => '<option value="' + esc(lesson.id) + '">' + esc(lesson.title || text("درس بدون عنوان","Untitled lesson")) + '</option>').join("") +
+      '</select></label>';
+  }
+
   function renderAttendanceTab() {
     const sessions = state.data.sessions || [];
     const records = state.data.attendance || [];
+    const report = state.data.attendanceReport || null;
+    const canManageAttendance = hasCourseCapability("attendance");
     let body = "";
-    if (isTeacher()) {
+    if (canManageAttendance) {
       body += '<form class="edf-form" data-form="create-attendance"><h3>' + esc(text("إنشاء جلسة حضور","Create attendance session")) + '</h3>' +
         '<input name="title" maxlength="180" required placeholder="' + esc(text("اسم الجلسة","Session title")) + '">' +
         '<input name="starts_at" type="datetime-local" required>' +
+        attendanceLessonSelector() +
         '<button class="edf-btn edf-primary" type="submit">' + esc(text("إنشاء الجلسة","Create session")) + '</button></form>';
+    }
+    if (canManageAttendance && report) {
+      const summaryCards = [
+        [text("الجلسات","Sessions"),report.sessions],
+        [text("طلاب الدورة","Enrolled students"),report.enrolled_students],
+        [text("حاضر","Present"),report.present],
+        [text("متأخر","Late"),report.late],
+        [text("غائب","Absent"),report.absent],
+        [text("بعذر","Excused"),report.excused],
+        [text("غير مسجل","Unmarked"),report.unmarked],
+        [text("نسبة الغياب","Absence rate"),report.absence_rate_percent == null ? "—" : Number(report.absence_rate_percent).toFixed(1) + "%"]
+      ];
+      body += '<div class="edf-metrics">' + summaryCards.map(([label,value]) =>
+        card(label,'<strong>' + esc(value == null ? "0" : value) + '</strong>')
+      ).join("") + '</div>';
+      const threshold = report.absence_threshold_percent == null ? "" : report.absence_threshold_percent;
+      body += '<form class="edf-inline-form" data-form="set-attendance-threshold">' +
+        '<label>' + esc(text("تنبيه عند وصول غياب الطالب إلى نسبة (%)","Alert when a student absence rate reaches (%)")) +
+        '<input name="threshold_percent" type="number" min="0.1" max="100" step="0.1" value="' + esc(threshold) + '" placeholder="' + esc(text("فارغ = تعطيل التنبيه","Blank = disable alerts")) + '"></label>' +
+        '<button class="edf-btn" type="submit">' + esc(text("حفظ حد التنبيه","Save alert threshold")) + '</button></form>';
+      const students = Array.isArray(report.students) ? report.students : [];
+      body += '<h3>' + esc(text("تقرير الحضور حسب الطالب","Attendance by student")) + '</h3>' +
+        (students.length ? '<div class="edf-table-wrap"><table class="edf-table"><thead><tr>' +
+          '<th>' + esc(text("الطالب","Student")) + '</th><th>' + esc(text("حاضر","Present")) + '</th>' +
+          '<th>' + esc(text("متأخر","Late")) + '</th><th>' + esc(text("غائب","Absent")) + '</th>' +
+          '<th>' + esc(text("بعذر","Excused")) + '</th><th>' + esc(text("نسبة الغياب","Absence rate")) + '</th>' +
+          '</tr></thead><tbody>' + students.map(student =>
+            '<tr><td>' + esc(student.student_name || student.public_id || student.student_id) + '</td>' +
+            '<td>' + esc(student.present) + '</td><td>' + esc(student.late) + '</td>' +
+            '<td>' + esc(student.absent) + '</td><td>' + esc(student.excused) + '</td>' +
+            '<td>' + esc(student.absence_rate_percent == null ? "—" : Number(student.absence_rate_percent).toFixed(1) + "%") + '</td></tr>'
+          ).join("") + '</tbody></table></div>' : empty(text("لا توجد سجلات حضور كافية للتقرير بعد.","There are not enough attendance records for a report yet.")));
     }
     body += sessions.map(s => {
       const mine = records.filter(r => r.session_id === s.id);
-      let details = '<div class="edf-meta">' + esc(fmtDate(s.starts_at)) + '</div>';
-      if (isTeacher()) {
+      let details = '<div class="edf-meta">' + esc(fmtDate(s.starts_at)) +
+        ' · ' + esc(text("الدرس: ","Lesson: ")) + esc(attendanceLessonLabel(s.lesson_id)) + '</div>';
+      if (canManageAttendance) {
         const options = (state.data.roster || []).map(r =>
           '<option value="' + esc(r.user_id) + '">' + esc(r.student_name || r.public_id || r.user_id) + '</option>'
         ).join("");
@@ -340,47 +418,170 @@
     return body;
   }
 
+  function certificateLessonSelector() {
+    const lessons = state.data.lessons || [];
+    const current = state.data.finalLessonId || "";
+    return '<label class="edf-form-grid-field"><span>' + esc(text("تحديد الدرس الأخير للدورة","Designate the final course lesson")) + '</span>' +
+      '<select name="lesson_id"><option value="">' + esc(text("بدون درس أخير (إيقاف الإصدار التلقائي)","No final lesson (disable automatic issuance)")) + '</option>' +
+      lessons.map(lesson => '<option value="' + esc(lesson.id) + '"' + (lesson.id === current ? ' selected' : '') + '>' +
+        esc(lesson.title || text("درس بدون عنوان","Untitled lesson")) + '</option>').join("") + '</select></label>';
+  }
+
+  function certificateXml(value) {
+    return String(value == null ? "" : value).replace(/[&<>"']/g,character => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&apos;"
+    })[character]);
+  }
+
+  function certificateSvg(certificate) {
+    const course = (state.courses || []).find(item => item.id === certificate.course_id);
+    const courseTitle = course ? course.title : ((state.data.lessons || [])[0] && state.data.lessons[0].course_title) || "";
+    const studentName = state.user.name || state.user.full_name || state.user.email || "";
+    const issuedAt = certificate.issued_at ? new Date(certificate.issued_at).toLocaleDateString(document.documentElement.lang || "ar") : "";
+    const number = certificate.certificate_number || "";
+    const verifyUrl = window.location.origin + "/?verify-certificate=" + encodeURIComponent(certificate.verification_token || "");
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1100" viewBox="0 0 1600 1100">' +
+      '<defs><linearGradient id="paper" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fffdf8"/><stop offset="1" stop-color="#f2eadb"/></linearGradient>' +
+      '<linearGradient id="gold" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#96713a"/><stop offset=".5" stop-color="#d5b36b"/><stop offset="1" stop-color="#96713a"/></linearGradient></defs>' +
+      '<rect width="1600" height="1100" fill="url(#paper)"/>' +
+      '<rect x="34" y="34" width="1532" height="1032" rx="18" fill="none" stroke="#1d3552" stroke-width="8"/>' +
+      '<rect x="58" y="58" width="1484" height="984" rx="12" fill="none" stroke="url(#gold)" stroke-width="4"/>' +
+      '<path d="M110 160 H1490 M110 940 H1490" stroke="url(#gold)" stroke-width="3"/>' +
+      '<circle cx="800" cy="140" r="54" fill="#1d3552"/><text x="800" y="153" text-anchor="middle" font-family="Arial" font-size="38" font-weight="700" fill="#fff">ED</text>' +
+      '<text x="800" y="235" text-anchor="middle" font-family="Arial,Tahoma,sans-serif" font-size="42" font-weight="700" letter-spacing="8" fill="#1d3552">ED-ALL</text>' +
+      '<text x="800" y="335" text-anchor="middle" font-family="Tahoma,Arial,sans-serif" font-size="58" font-weight="700" fill="#1d3552" direction="rtl">شهادة إتمام دورة</text>' +
+      '<text x="800" y="390" text-anchor="middle" font-family="Georgia,serif" font-size="29" letter-spacing="3" fill="#8c6b36">CERTIFICATE OF COMPLETION</text>' +
+      '<text x="800" y="490" text-anchor="middle" font-family="Tahoma,Arial,sans-serif" font-size="31" fill="#35475e" direction="rtl">تشهد منصة ED-ALL بأن</text>' +
+      '<text x="800" y="590" text-anchor="middle" font-family="Tahoma,Arial,sans-serif" font-size="58" font-weight="700" fill="#173552" direction="rtl">' + certificateXml(studentName) + '</text>' +
+      '<path d="M330 625 H1270" stroke="url(#gold)" stroke-width="3"/>' +
+      '<text x="800" y="705" text-anchor="middle" font-family="Tahoma,Arial,sans-serif" font-size="30" fill="#35475e" direction="rtl">قد أتم بنجاح متطلبات الدورة التعليمية</text>' +
+      '<text x="800" y="785" text-anchor="middle" font-family="Tahoma,Arial,sans-serif" font-size="48" font-weight="700" fill="#1d3552" direction="rtl">' + certificateXml(courseTitle) + '</text>' +
+      '<text x="800" y="885" text-anchor="middle" font-family="Tahoma,Arial,sans-serif" font-size="24" fill="#35475e" direction="rtl">رقم الشهادة: ' + certificateXml(number) + '   •   تاريخ الإصدار: ' + certificateXml(issuedAt) + '</text>' +
+      '<text x="800" y="985" text-anchor="middle" font-family="Arial,sans-serif" font-size="17" fill="#66758a">' + certificateXml(verifyUrl) + '</text>' +
+      '</svg>';
+  }
+
+  function downloadCertificateImage(certificate) {
+    const svg = certificateSvg(certificate);
+    const blob = new Blob([svg],{type:"image/svg+xml;charset=utf-8"});
+    const sourceUrl = URL.createObjectURL(blob);
+    const image = new Image();
+    image.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = 1600;
+        canvas.height = 1100;
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("Canvas is unavailable.");
+        context.drawImage(image,0,0,1600,1100);
+        canvas.toBlob(output => {
+          URL.revokeObjectURL(sourceUrl);
+          if (!output) {
+            notify(text("تعذر إنشاء صورة الشهادة.","Could not create the certificate image."),"error");
+            return;
+          }
+          const downloadUrl = URL.createObjectURL(output);
+          const link = document.createElement("a");
+          link.href = downloadUrl;
+          link.download = (certificate.certificate_number || "ED-ALL-certificate") + ".png";
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(downloadUrl);
+        },"image/png");
+      } catch (error) {
+        URL.revokeObjectURL(sourceUrl);
+        notify(actionError(error),"error");
+      }
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(sourceUrl);
+      notify(text("تعذر تحميل تصميم الشهادة.","Could not render the certificate."),"error");
+    };
+    image.src = sourceUrl;
+  }
+
+  function printCertificatePdf(certificate) {
+    const popup = window.open("","_blank");
+    if (!popup) {
+      notify(text("اسمح بفتح نافذة منبثقة لتنزيل الشهادة بصيغة PDF.","Allow the pop-up window to print or save the certificate as PDF."),"warning");
+      return;
+    }
+    const svg = certificateSvg(certificate);
+    popup.document.open();
+    popup.document.write('<!doctype html><html lang="' + certificateXml(document.documentElement.lang || "ar") + '"><head><meta charset="utf-8"><title>' +
+      certificateXml(certificate.certificate_number || "ED-ALL certificate") +
+      '</title><style>@page{size:A4 landscape;margin:0}html,body{margin:0;padding:0;background:#fff}svg{display:block;width:100vw;height:100vh;object-fit:contain}@media print{svg{width:100%;height:100%}}</style></head><body>' +
+      svg + '<script>window.addEventListener("load",function(){window.focus();window.print();});</script></body></html>');
+    popup.document.close();
+  }
+
   function renderCertificatesTab() {
     const list = state.data.certificates || [];
+    const canManageCertificates = hasCourseCapability("certificates");
     let body = "";
-    if (isTeacher()) {
+    if (canManageCertificates) {
+      const selectedFinal = (state.data.lessons || []).find(lesson => lesson.id === state.data.finalLessonId);
+      body += '<form class="edf-form" data-form="set-final-lesson"><h3>' + esc(text("تحديد الدرس الأخير للدورة","Designate the final course lesson")) + '</h3>' +
+        certificateLessonSelector() +
+        '<p class="edf-help">' + esc(text("لن تصدر الشهادة تلقائيًا حتى يستوفي الطالب جميع متطلبات الدروس والاختبارات بعد تحديد الدرس الأخير.","Certificates are not issued automatically until all lesson and exam requirements are met after a final lesson is designated.")) + '</p>' +
+        '<button class="edf-btn edf-primary" type="submit">' + esc(text("حفظ الدرس الأخير","Save final lesson")) + '</button></form>';
+      if (selectedFinal) {
+        body += '<div class="edf-meta">' + esc(text("الدرس الأخير الحالي: ","Current final lesson: ")) + esc(selectedFinal.title) + '</div>';
+      }
       body += '<form class="edf-form" data-form="issue-certificate"><h3>' + esc(text("إصدار شهادة بعد التحقق من إكمال الدورة","Issue a certificate after course completion")) + '</h3>' +
         '<input name="student_id" required placeholder="' + esc(text("معرّف الطالب","Student user ID")) + '">' +
         '<button class="edf-btn edf-primary" type="submit">' + esc(text("إصدار الشهادة","Issue certificate")) + '</button></form>';
     } else {
-      body += '<div class="edf-actions">' + makeBtn(text("التحقق من أهليتي وإصدار الشهادة","Check eligibility & issue certificate"),"self-certificate","edf-primary") + '</div>';
+      body += '<div class="edf-actions">' + makeBtn(text("التحقق من الشهادة","Check certificate eligibility"),"self-certificate","edf-primary") + '</div>';
     }
     body += list.map(c => {
       const token = c.verification_token;
       const url = window.location.origin + "/?verify-certificate=" + encodeURIComponent(token);
+      const ownCertificate = c.student_id === state.user.id;
+      const downloads = ownCertificate
+        ? '<div class="edf-actions">' +
+          '<button class="edf-btn" data-action="certificate-image" data-id="' + esc(c.id) + '">' + esc(text("تنزيل صورة PNG","Download PNG image")) + '</button>' +
+          '<button class="edf-btn" data-action="certificate-pdf" data-id="' + esc(c.id) + '">' + esc(text("طباعة / حفظ PDF","Print / save PDF")) + '</button></div>'
+        : "";
       return card(c.certificate_number,
         '<div class="edf-meta">' + esc(fmtDate(c.issued_at)) + ' · ' + esc(c.revoked_at ? text("ملغاة","Revoked") : text("سارية","Valid")) + '</div>' +
-        '<a class="edf-link" href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(text("رابط التحقق العام","Public verification link")) + '</a>'
+        '<a class="edf-link" href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(text("رابط التحقق العام","Public verification link")) + '</a>' +
+        downloads
       );
     }).join("");
-    if (!list.length) body += empty(text("لا توجد شهادات لهذه الدورة حتى الآن.","No certificates are available for this course yet."));
+    if (!list.length) body += empty(text("لا توجد شهادات لهذه الدورة حتى الآن.","No certificates are available in this course yet."));
     return body;
   }
 
   function renderDiscussionsTab() {
     const topics = state.data.topics || [];
     const posts = state.data.posts || [];
+    const canModerateDiscussions = hasCourseCapability("discussions");
     let body = '<form class="edf-form" data-form="create-topic"><h3>' + esc(text("طرح سؤال أو نقاش","Start a discussion")) + '</h3>' +
       '<input name="title" maxlength="180" required placeholder="' + esc(text("عنوان النقاش","Discussion title")) + '">' +
+      lessonSelector(text("ربط النقاش بدرس (اختياري)","Attach discussion to a lesson (optional)")) +
       '<textarea name="content" maxlength="12000" required placeholder="' + esc(text("اكتب رسالتك","Write your post")) + '"></textarea>' +
       '<button class="edf-btn edf-primary" type="submit">' + esc(text("نشر","Publish")) + '</button></form>';
     body += topics.map(t => {
       const topicPosts = Array.isArray(t.posts) ? t.posts : posts.filter(p => p.topic_id === t.id);
       return card(t.title,
-        '<div class="edf-meta">' + esc(fmtDate(t.created_at)) + (t.is_pinned ? ' · ' + esc(text("مثبّت","Pinned")) : "") +
+        '<div class="edf-meta">' + esc(fmtDate(t.created_at)) +
+          ' · ' + esc(text("الدرس: ","Lesson: ")) + esc(lessonLabel(t.lesson_id)) +
+          (t.is_pinned ? ' · ' + esc(text("مثبّت","Pinned")) : "") +
           (t.is_locked ? ' · ' + esc(text("مغلق","Locked")) : "") + '</div>' +
-        topicPosts.map(p => '<div class="edf-post' + (p.is_hidden ? ' is-hidden' : '') + '"><strong>' + esc(p.author_name || "") + '</strong><p>' + esc(p.content) + '</p><small>' + esc(fmtDate(p.created_at)) + '</small>' +
-          (isTeacher() ? '<button class="edf-text-btn" data-action="moderate-post" data-id="' + esc(p.id) + '" data-hidden="' + (!p.is_hidden) + '">' + esc(p.is_hidden ? text("إظهار","Unhide") : text("إخفاء","Hide")) + '</button>' : "") +
+        topicPosts.map(p => '<div class="edf-post' + (p.is_hidden ? ' is-hidden' : '') + (p.is_pinned ? ' is-pinned' : '') + '">' +
+          (p.is_pinned ? '<div class="edf-pin-label">' + esc(text("الإجابة المهمة المثبّتة","Pinned important answer")) + '</div>' : "") +
+          '<strong>' + esc(p.author_name || "") + '</strong><p>' + esc(p.content) + '</p><small>' + esc(fmtDate(p.created_at)) + '</small>' +
+          (canModerateDiscussions ? '<div class="edf-actions">' +
+            '<button class="edf-text-btn" data-action="moderate-post" data-id="' + esc(p.id) + '" data-hidden="' + (!p.is_hidden) + '">' + esc(p.is_hidden ? text("إظهار","Unhide") : text("إخفاء","Hide")) + '</button>' +
+            '<button class="edf-text-btn" data-action="pin-discussion-post" data-id="' + esc(p.id) + '" data-pinned="' + (!!p.is_pinned) + '">' + esc(p.is_pinned ? text("إلغاء تثبيت الإجابة","Unpin answer") : text("تثبيت الإجابة","Pin answer")) + '</button>' +
+            '</div>' : "") +
           '</div>').join("") +
-        '<form class="edf-inline-form" data-form="reply-topic" data-id="' + esc(t.id) + '">' +
-        '<input name="content" maxlength="12000" required placeholder="' + esc(text("أضف ردًا","Add a reply")) + '">' +
-        '<button class="edf-btn" type="submit">' + esc(text("رد","Reply")) + '</button></form>' +
-        (isTeacher() ? '<div class="edf-actions">' +
+        (t.is_locked ? "" : '<form class="edf-inline-form" data-form="reply-topic" data-id="' + esc(t.id) + '">' +
+          '<input name="content" maxlength="12000" required placeholder="' + esc(text("أضف ردًا","Add a reply")) + '">' +
+          '<button class="edf-btn" type="submit">' + esc(text("رد","Reply")) + '</button></form>') +
+        (canModerateDiscussions ? '<div class="edf-actions">' +
           '<button class="edf-text-btn" data-action="moderate-topic" data-id="' + esc(t.id) + '" data-kind="lock">' + esc(t.is_locked ? text("فتح النقاش","Unlock topic") : text("إغلاق النقاش","Lock topic")) + '</button>' +
           '<button class="edf-text-btn" data-action="moderate-topic" data-id="' + esc(t.id) + '" data-kind="pin">' + esc(t.is_pinned ? text("إلغاء التثبيت","Unpin") : text("تثبيت","Pin")) + '</button>' +
           '</div>' : "")
@@ -391,12 +592,68 @@
   }
 
   function renderAnalyticsTab() {
-    const data = state.data.analytics;
-    if (!data) return empty(text("لا توجد بيانات تحليلية متاحة.","Analytics are not available."));
-    const keys = Object.keys(data);
-    const body = '<div class="edf-metrics">' + keys.map(k => card(k.replace(/_/g," "),'<strong>' + esc(typeof data[k] === "object" ? JSON.stringify(data[k]) : data[k]) + '</strong>')).join("") + '</div>' +
-      '<div class="edf-actions">' + makeBtn(text("تصدير Excel (XLSX)","Download Excel (XLSX)"),"export") + makeBtn(text("طباعة / حفظ PDF","Print / Save PDF"),"print") + '</div>';
-    state.exportRows = [data];
+    if (isAdmin()) {
+      const data = state.data.analytics;
+      if (!data) return empty(text("لا توجد بيانات تحليلية متاحة.","Analytics are not available."));
+      const keys = Object.keys(data);
+      const body = '<div class="edf-metrics">' + keys.map(k => card(k.replace(/_/g," "),'<strong>' + esc(typeof data[k] === "object" ? JSON.stringify(data[k]) : data[k]) + '</strong>')).join("") + '</div>' +
+        '<div class="edf-actions">' + makeBtn(text("تصدير Excel (XLSX)","Download Excel (XLSX)"),"export") + makeBtn(text("طباعة / حفظ PDF","Print / Save PDF"),"print") + '</div>';
+      state.exportRows = [data];
+      return body;
+    }
+
+    const analytics = state.data.teacherAnalytics;
+    if (!analytics || !analytics.totals) return empty(text("لا توجد بيانات تحليلية متاحة للدورات المسندة إليك.","No analytics are available for your assigned courses."));
+    const totals = analytics.totals;
+    const metricDefinitions = [
+      ["courses",text("الدورات","Courses")],
+      ["enrolled",text("الطلاب المسجلون","Enrolled students")],
+      ["assignments",text("الواجبات","Assignments")],
+      ["submissions",text("التسليمات","Submissions")],
+      ["graded_submissions",text("الواجبات المصححة","Graded submissions")],
+      ["exams",text("الامتحانات","Exams")],
+      ["exam_results",text("نتائج الامتحانات","Exam results")],
+      ["attendance_sessions",text("جلسات الحضور","Attendance sessions")],
+      ["present",text("حاضر","Present")],
+      ["late",text("متأخر","Late")],
+      ["absent",text("غائب","Absent")],
+      ["excused",text("بعذر","Excused")],
+      ["valid_certificates",text("الشهادات السارية","Valid certificates")]
+    ];
+    let body = '<h3>' + esc(text("ملخص جميع دوراتك","Overview of all your courses")) + '</h3>' +
+      '<div class="edf-metrics">' + metricDefinitions.map(([key,label]) =>
+        card(label,'<strong>' + esc(totals[key] == null ? 0 : totals[key]) + '</strong>')
+      ).join("") + '</div>';
+    const courses = Array.isArray(analytics.courses) ? analytics.courses : [];
+    body += '<h3 style="margin-top:22px;">' + esc(text("التحليلات حسب الدورة","Analytics by course")) + '</h3>';
+    if (!courses.length) {
+      body += empty(text("لا توجد دورات تملك صلاحية تحليلها بعد.","There are no courses you can analyze yet."));
+    } else {
+      body += '<div class="edf-course-analytics">' + courses.map(course => {
+        const rows = [
+          [text("الطلاب","Students"),course.enrolled],
+          [text("الواجبات","Assignments"),course.assignments],
+          [text("التسليمات","Submissions"),course.submissions],
+          [text("تم التصحيح","Graded"),course.graded_submissions],
+          [text("الامتحانات","Exams"),course.exams],
+          [text("نتائج الامتحانات","Exam results"),course.exam_results],
+          [text("جلسات الحضور","Attendance sessions"),course.attendance_sessions],
+          [text("حاضر","Present"),course.present],
+          [text("متأخر","Late"),course.late],
+          [text("غائب","Absent"),course.absent],
+          [text("بعذر","Excused"),course.excused],
+          [text("الشهادات السارية","Certificates"),course.valid_certificates]
+        ];
+        return card(course.course_title || course.course_id,
+          '<div class="edf-metrics">' + rows.map(([label,value]) =>
+            '<div class="edf-metric"><span>' + esc(label) + '</span><strong>' + esc(value == null ? 0 : value) + '</strong></div>'
+          ).join("") + '</div>'
+        );
+      }).join("") + '</div>';
+    }
+    body += '<div class="edf-actions">' + makeBtn(text("تصدير Excel (XLSX)","Download Excel (XLSX)"),"export") +
+      makeBtn(text("طباعة / حفظ PDF","Print / Save PDF"),"print") + '</div>';
+    state.exportRows = [{scope:analytics.scope,totals},...courses];
     return body;
   }
 
@@ -562,7 +819,7 @@
       switch (form.dataset.form) {
         case "create-assignment":
           await rpc("create_assignment",{
-            _course_id:course,_lesson_id:null,_title:v.title,_description:v.description || "",
+            _course_id:course,_lesson_id:v.lesson_id || null,_title:v.title,_description:v.description || "",
             _due_at:v.due_at ? new Date(v.due_at).toISOString() : null,_max_score:Number(v.max_score || 100)
           });
           break;
@@ -606,8 +863,20 @@
           await rpc("grade_assignment_submission",{_submission_id:id,_score:Number(v.score),_feedback:v.feedback || ""});
           break;
         case "create-attendance":
-          await rpc("create_attendance_session",{_course_id:course,_title:v.title,_starts_at:new Date(v.starts_at).toISOString()});
+          await rpc("create_attendance_session",{
+            _course_id:course,_title:v.title,_starts_at:new Date(v.starts_at).toISOString(),
+            _lesson_id:v.lesson_id || null
+          });
           break;
+        case "set-attendance-threshold": {
+          const rawThreshold = String(v.threshold_percent || "").trim();
+          const threshold = rawThreshold ? Number(rawThreshold) : null;
+          if (threshold !== null && (!Number.isFinite(threshold) || threshold <= 0 || threshold > 100)) {
+            throw new Error(text("أدخل نسبة بين 0.1 و100 أو اترك الحقل فارغًا لتعطيل التنبيهات.","Enter a percentage from 0.1 to 100 or leave blank to disable alerts."));
+          }
+          await rpc("set_course_absence_threshold",{_course_id:course,_threshold_percent:threshold});
+          break;
+        }
         case "mark-attendance":
           await rpc("mark_attendance",{_session_id:id,_student_id:v.student_id,_status:v.status,_note:v.note || ""});
           break;
@@ -624,8 +893,11 @@
         case "issue-certificate":
           await rpc("issue_course_certificate",{_course_id:course,_student_id:v.student_id});
           break;
+        case "set-final-lesson":
+          await rpc("set_course_final_lesson",{_course_id:course,_lesson_id:v.lesson_id || null});
+          break;
         case "create-topic":
-          await rpc("create_discussion_topic",{_course_id:course,_lesson_id:null,_title:v.title,_content:v.content});
+          await rpc("create_discussion_topic",{_course_id:course,_lesson_id:v.lesson_id || null,_title:v.title,_content:v.content});
           break;
         case "reply-topic":
           await rpc("create_discussion_post",{_topic_id:id,_content:v.content});
@@ -672,9 +944,29 @@
         await refresh();
         return data;
       }
+      if (action === "certificate-image" || action === "certificate-pdf") {
+        const certificate = (state.data.certificates || []).find(item => item.id === id);
+        if (!certificate || certificate.student_id !== state.user.id || certificate.revoked_at) {
+          throw new Error(text("لا يمكن تنزيل هذه الشهادة.","This certificate cannot be downloaded."));
+        }
+        if (action === "certificate-image") downloadCertificateImage(certificate);
+        else printCertificatePdf(certificate);
+        return;
+      }
       if (action === "moderate-post") {
         await rpc("moderate_discussion_post",{_post_id:id,_hidden:button.dataset.hidden==="true"});
         await refresh(); return;
+      }
+      if (action === "pin-discussion-post") {
+        if (!hasCourseCapability("discussions")) {
+          throw new Error(text("لا تملك صلاحية تثبيت الإجابات في هذه الدورة.","You cannot pin answers in this course."));
+        }
+        await rpc("set_discussion_post_pinned",{
+          _post_id:id,
+          _pinned:button.dataset.pinned !== "true"
+        });
+        await refresh();
+        return;
       }
       if (action === "moderate-topic") {
         const item=(state.data.topics||[]).find(x=>x.id===id); if(!item) return;
