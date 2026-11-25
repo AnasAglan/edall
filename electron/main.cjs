@@ -507,14 +507,15 @@ ipcMain.handle('edall:video-fullscreen', (event, enabled) => {
     if (!UUID_PATTERN.test(String(activeOfflineUserId || ''))) {
       activeOfflineUserId = await offlineLibrary.getRememberedAccount();
     }
-    if (!UUID_PATTERN.test(String(activeOfflineUserId || ''))) {
-      throw new Error('Sign in to ED-ALL while online once before opening account-scoped offline downloads.');
-    }
     return windowRef.loadFile(path.join(__dirname, 'offline.html'), {
-      query: { userId: activeOfflineUserId }
+      query: { userId: UUID_PATTERN.test(String(activeOfflineUserId || '')) ? activeOfflineUserId : '' }
     });
   };
-  windowRef.webContents.on('did-fail-load', (_e, code, _d, url, isMain) => { if (isMain && code !== -3 && !String(url).startsWith('file:')) showOffline(); });
+  windowRef.webContents.on('did-fail-load', (_e, code, _d, url, isMain) => {
+    if (isMain && code !== -3 && !String(url).startsWith('file:')) {
+      showOffline().catch(error => console.warn('[ED-ALL Desktop] Offline library could not open:', error && error.message));
+    }
+  });
   let online = net.isOnline();
   if (online) { try { const r = await net.fetch(ORIGIN + '/robots.txt', { bypassCustomProtocolHandlers: true, signal: AbortSignal.timeout(8000), cache: 'no-store' }); online = r.ok; } catch { online = false; } }
   if (!online) return showOffline();
