@@ -42,7 +42,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          supabase functions deploy authorize-offline-download --project-ref "$SUPABASE_PROJECT_ID"
+          supabase functions deploy authorize-offline-download --project-ref "$SUPABASE_PROJECT_ID" --use-api --yes
 
       - name: Verify the Staging function endpoint requires authentication
         shell: bash
