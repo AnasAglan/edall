@@ -225,7 +225,7 @@ describe("ED ALL Piped player", () => {
     expect(platformHtml).toContain("_edLoadLib({ nativeOnly: isDesktop || isAndroidApp });");
     expect(platformHtml).toContain("if (nativeOnly) return;");
     expect(platformHtml).toContain("if (!isAndroidApp && window.EDPipedPlayer && window.Plyr)");
-    expect(platformHtml).toContain("await _edDesktopOpen(container, vid);");
+    expect(platformHtml).toContain("await _edDesktopOpen(container, vid, courseId, lessonId);");
     expect(platformHtml).toContain("Native apps use their own extractors: yt-dlp on desktop and NewPipe");
     expect(platformHtml).not.toContain("same Piped + Shaka engine in browsers, Android WebView and Electron");
     expect(electronMain).not.toMatch(/piped/i);
