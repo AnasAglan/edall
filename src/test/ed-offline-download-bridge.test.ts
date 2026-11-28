@@ -17,10 +17,13 @@ const lessonAccessMigration = readFileSync(
 );
 
 describe("Android encrypted offline library account scoping", () => {
-  it("only opens the local library after reading the current authenticated user", () => {
+  it("passes the active Supabase session to the native bridge before opening the local library", () => {
     expect(html).toContain("window.openYouTubeOfflineLibrary = async function()");
     expect(html).toContain("const { data, error } = await sb.auth.getSession()");
-    expect(html).toContain("window.edallDesktop.openOfflineLibrary(userId)");
+    expect(html).toContain("const accessToken = session && session.access_token");
+    expect(html).toContain("accessToken.length < 40");
+    expect(html).toContain("window.edallDesktop.openOfflineLibrary(");
+    expect(html).toContain("userId, accessToken, SUPABASE_URL, SUPABASE_ANON_KEY");
     expect(html).toContain('onclick="window.openYouTubeOfflineLibrary()"');
     expect(html).not.toContain('onclick="window.edallDesktop.openOfflineLibrary()"');
   });
