@@ -30,6 +30,9 @@ on:
       - ".github/workflows/apply-supabase-auth-email-template.yml"
       - "package.json"
       - ".github/workflows/ed-security-suite.yml"
+      - ".github/workflows/deploy-offline-download-staging.yml"
+      - ".github/workflows/deploy-offline-download-production.yml"
+      - "docs/operations/offline-download-authorization-deployment.md"
   push:
     branches: [main]
     paths:
@@ -53,6 +56,9 @@ on:
       - ".github/workflows/apply-supabase-auth-email-template.yml"
       - "package.json"
       - ".github/workflows/ed-security-suite.yml"
+      - ".github/workflows/deploy-offline-download-staging.yml"
+      - ".github/workflows/deploy-offline-download-production.yml"
+      - "docs/operations/offline-download-authorization-deployment.md"
   workflow_dispatch:
 
 permissions:
