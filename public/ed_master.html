@@ -3038,13 +3038,18 @@ word-spacing: normal !important;
                 typeof window.edallDesktop.openOfflineLibrary !== 'function') return;
             try {
                 const { data, error } = await sb.auth.getSession();
-                const userId = data && data.session && data.session.user && data.session.user.id;
-                if (error || !/^[0-9a-f-]{36}$/i.test(String(userId || ''))) {
+                const session = data && data.session;
+                const userId = session && session.user && session.user.id;
+                const accessToken = session && session.access_token;
+                if (error || !/^[0-9a-f-]{36}$/i.test(String(userId || '')) ||
+                    typeof accessToken !== 'string' || accessToken.length < 40) {
                     throw new Error(currentLanguage === 'ar'
                         ? 'سجّل الدخول إلى الحساب الذي حفظ الفيديوهات.'
                         : 'Sign in to the account that saved these videos.');
                 }
-                window.edallDesktop.openOfflineLibrary(userId);
+                window.edallDesktop.openOfflineLibrary(
+                    userId, accessToken, SUPABASE_URL, SUPABASE_ANON_KEY
+                );
             } catch (error) {
                 showToast((currentLanguage === 'ar' ? 'تعذر فتح الفيديوهات المحفوظة: ' : 'Could not open saved videos: ') +
                     String(error && error.message || error), 'error');
