@@ -18,6 +18,8 @@ jobs:
   deploy-staging:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    environment:
+      name: staging
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_PROJECT_ID: atpltvpwfammcnxcpvop
